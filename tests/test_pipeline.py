@@ -85,3 +85,9 @@ def test_esquema_declarado_rechaza_archivo(lago, tmp_path):
     pd.DataFrame({"SCOP": ["1"], "FECHA": ["2020-01-01"]}).to_csv(malo, index=False)
     with pytest.raises(ValueError, match="esquema declarado"):
         handler.procesar_archivo(str(malo), "aba_02")
+
+
+def test_ingerir_rechaza_origen_inexistente(tmp_path):
+    origen = tmp_path / "no_existe"
+    with pytest.raises(FileNotFoundError, match="No existe la carpeta origen"):
+        internos.ingerir(origen)

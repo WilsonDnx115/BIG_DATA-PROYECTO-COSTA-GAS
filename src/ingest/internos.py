@@ -44,9 +44,17 @@ def subir(local: Path, destino: str) -> None:
 
 def ingerir(origen: Path, fecha_carga: str | None = None) -> list[str]:
     """Recorre <origen>/<proceso>/<codigo>/<archivo> y sube cada archivo a Bronze."""
+    origen = Path(origen)
+    if not origen.exists():
+        raise FileNotFoundError(
+            f"No existe la carpeta origen '{origen}'. Comprueba la ruta o usa --origen data/sample/entrega."
+        )
+    if not origen.is_dir():
+        raise NotADirectoryError(f"La ruta de origen '{origen}' no es un directorio válido.")
+
     man = Manifiesto(fecha_carga)
     destinos = []
-    for f in sorted(Path(origen).rglob("*")):
+    for f in sorted(origen.rglob("*")):
         if f.suffix.lower() not in EXTENSIONES or f.name.startswith("_"):
             continue
         rel = f.relative_to(origen).parts

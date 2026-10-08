@@ -85,3 +85,5 @@ Al terminar: `SUFIJO=equipo01 ./infra/scripts/teardown.sh`.
 ## Técnicas del curso
 
 Mapa S1–S5 → archivo y línea en [docs/tecnicas_curso.md](docs/tecnicas_curso.md).
+
+# BIG_DATA-PROYECTO-COSTA-GAS
