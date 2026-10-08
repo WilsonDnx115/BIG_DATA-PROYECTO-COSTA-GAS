@@ -129,7 +129,7 @@ costagas-bigdata/
 
 - [ ] **0.1.1 Repositorio y permisos.** Crear el repositorio, invitar a los cuatro integrantes y proteger la rama `main` (cambios por pull request).
   - *Aceptación:* los cuatro pueden hacer push a una rama y abrir un PR.
-- [ ] **0.1.2 Roles en el repositorio.** Archivo `docs/equipo.md` con la Tabla de roles del informe (Semanas 2–7 y 8–14) y una etiqueta de GitHub por rol.
+- [x] **0.1.2 Roles en el repositorio.** Archivo `docs/equipo.md` con la Tabla de roles del informe (Semanas 2–7 y 8–14) y una etiqueta de GitHub por rol.
 - [x] **0.1.3 `CLAUDE.md`.** Reglas que Claude Code debe respetar siempre.
   > **Instrucción para Claude Code:** Crea `CLAUDE.md` con estas reglas: región us-east-1; nunca leer, imprimir ni commitear archivos de `data/raw/`; no crear recursos AWS fuera de `infra/cloudformation/stack.yaml`; no usar `collect()` en Spark; esquemas declarados en `src/common/schemas.py`; nombres en snake_case sin tildes; capas `bronze/`, `silver/`, `gold/`; toda función nueva con prueba en `tests/`; antes de proponer un comando AWS que cree recursos, indicar su costo estimado.
   - *Aceptación:* `CLAUDE.md` en `main`.
