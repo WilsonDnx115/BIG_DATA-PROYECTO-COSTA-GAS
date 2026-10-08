@@ -22,6 +22,7 @@ Se actualiza cuando cambia el código.
 | S4 · Spark | `cache()` de la conciliación reutilizada por varias señales | [conciliacion.py:82](../src/silver_to_gold/conciliacion.py#L82) | tiempo con y sin caché (3.6.5) |
 | S4 · Spark | Nunca `collect()`; inspección con `show()`/`take()` | [conciliacion.py:120](../src/silver_to_gold/conciliacion.py#L120) | regla en `CLAUDE.md` |
 | S4 · Spark | Driver, Executors y particiones | [replicar.py:53](../src/scaletest/replicar.py#L53) | `particiones_entrada` en la tabla de escalabilidad |
+| S5 · Spark SQL | Schema-on-read en Bronze: los encabezados reales se inventarían antes de declarar el esquema | [encabezados.py:244](../src/ingest/encabezados.py#L244) | `docs/evidencias/encabezados_raw.md` con el contraste declarado vs. hallado por fuente |
 | S5 · Spark SQL | Esquema declarado, sin `inferSchema` | [schemas.py](../src/common/schemas.py), [conciliacion.py:44](../src/silver_to_gold/conciliacion.py#L44) | archivo que no cumple → rechazo (`test_esquema_declarado_rechaza_archivo`) |
 | S5 · Spark SQL | Partition pruning (`anio`) | [conciliacion.py:47](../src/silver_to_gold/conciliacion.py#L47), [lake_io.py:62](../src/common/lake_io.py#L62) | `PartitionFilters` en `explain()`; bytes escaneados en Athena |
 | S5 · Spark SQL | Predicate pushdown (`id_producto`) | [conciliacion.py:49](../src/silver_to_gold/conciliacion.py#L49) | `PushedFilters` |
