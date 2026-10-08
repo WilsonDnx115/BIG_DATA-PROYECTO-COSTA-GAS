@@ -1,0 +1,50 @@
+{
+  "registros_scop": 10122,
+  "pct_compras_con_scop": 0.9688,
+  "incidencias_por_regla": {
+    "aba_02.placa_valida": 0,
+    "aba_02.kg_en_rango": 42,
+    "aba_02.fecha_coherente": 5,
+    "aba_02.unicidad": 0,
+    "com_19.placa_valida": 0,
+    "com_19.kg_en_rango": 2,
+    "com_19.fecha_coherente": 0,
+    "com_19.unicidad": 183,
+    "com_19.precio_en_rango": 3163,
+    "dis_01.placa_valida": 0,
+    "red_02.ruc_valido": 0,
+    "red_02.unicidad": 0
+  },
+  "pct_maestro_documento_invalido_o_vacio": 0.24,
+  "clases_documento_maestro": {
+    "RUC": 0.536,
+    "DNI": 0.224,
+    "VACIO": 0.136,
+    "INVALIDO": 0.104
+  },
+  "precio_b10_por_canal": {
+    "DIRECTO": {
+      "min": 14.57,
+      "max": 30.36,
+      "p50": 25.9
+    },
+    "MAYORISTA": {
+      "min": 10.81,
+      "max": 22.26,
+      "p50": 18.91
+    },
+    "MINORISTA": {
+      "min": 13.12,
+      "max": 27.78,
+      "p50": 23.72
+    }
+  },
+  "referencia_informe": {
+    "registros_scop": 79,
+    "incidencias_campos_clave": 16,
+    "precio_b10_min": 17.45,
+    "precio_b10_max": 24.15
+  },
+  "nota": "Con data/sample (sintética) los valores no reproducen el informe; con data/raw sí deben.",
+  "lake_uri": "file://data/lake"
+}

@@ -1,0 +1,21 @@
+# Datos reales: NUNCA se versionan (3.8.5)
+data/raw/
+data/lake/
+data/sample/entrega/
+*.xlsx
+*.zip
+
+# Credenciales y secretos
+.env
+*.pem
+.aws/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.ipynb_checkpoints/
+spark-warehouse/
+metastore_db/
+derby.log

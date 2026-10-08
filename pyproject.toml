@@ -1,0 +1,12 @@
+[project]
+name = "costagas-bigdata"
+version = "0.1.0"
+description = "Detección de anomalías y prevención de pérdidas de GLP - Costa Gas Trujillo (UPAO 2026-20)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120

@@ -1,0 +1,122 @@
+{
+  "lake_uri": "file://data/lake",
+  "motor": "pandas",
+  "muestra": {
+    "unidades_anomalas": [
+      "C1M977",
+      "F1B180",
+      "H7D250"
+    ],
+    "no_habilitadas": [
+      "B5W157",
+      "H6D801"
+    ],
+    "compras": 10453,
+    "ventas": 36842,
+    "semilla": 42
+  },
+  "bronze_archivos": 5,
+  "silver": {
+    "aba_02": {
+      "filas_entrada": 10453,
+      "filas_salida": 10448,
+      "rechazadas": 5
+    },
+    "com_19": {
+      "filas_entrada": 36842,
+      "filas_salida": 36659,
+      "rechazadas": 183
+    },
+    "dis_01": {
+      "filas_entrada": 25,
+      "filas_salida": 25,
+      "rechazadas": 0
+    },
+    "bcrp_tc": {
+      "filas_entrada": null,
+      "filas_salida": 2348,
+      "rechazadas": null
+    },
+    "red_02": {
+      "filas_entrada": 125,
+      "filas_salida": 125,
+      "rechazadas": 0
+    }
+  },
+  "movimientos": 47107,
+  "gold_conciliacion": {
+    "motor": "pandas",
+    "anios": null,
+    "filas": 10152,
+    "segundos": 2.53
+  },
+  "senales": [
+    {
+      "senal": "S1",
+      "alertas": 219,
+      "kg": 870796.2,
+      "unidades": 3,
+      "hipotesis": "H1",
+      "descripcion": "Placa cargada distinta de la facturada"
+    },
+    {
+      "senal": "S10",
+      "alertas": 394,
+      "kg": 426440.4,
+      "unidades": 25,
+      "hipotesis": "H4",
+      "descripcion": "Precio por debajo de la mediana del canal"
+    },
+    {
+      "senal": "S4",
+      "alertas": 99,
+      "kg": 614280.0,
+      "unidades": 24,
+      "hipotesis": "H1",
+      "descripcion": "Carga superior a la capacidad del vehículo"
+    },
+    {
+      "senal": "S5",
+      "alertas": 52,
+      "kg": 306530.2,
+      "unidades": 9,
+      "hipotesis": "H1",
+      "descripcion": "Entrega superior a la capacidad del local"
+    },
+    {
+      "senal": "S7",
+      "alertas": 872,
+      "kg": 2963063.8,
+      "unidades": 2,
+      "hipotesis": "H1",
+      "descripcion": "Volumen asignado a unidad no habilitada"
+    },
+    {
+      "senal": "S8",
+      "alertas": 374,
+      "kg": 433690.2,
+      "unidades": 25,
+      "hipotesis": "H1",
+      "descripcion": "Venta sin compra SCOP asociada"
+    }
+  ],
+  "modelo_base": {
+    "precision@20": 0.25,
+    "pct_kg_cubiertos": 0.425,
+    "alertas_por_mes_media": 2.24,
+    "alertas_por_mes_max": 3,
+    "alertas_total": 235,
+    "etiqueta": "debil (S1/S8 evidencia alta) hasta validación de gerencia"
+  },
+  "modelo_definitivo": {
+    "modelo": "lof",
+    "contamination": 0.02,
+    "precision@20_piloto": 0.3,
+    "precision@20_estabilidad": 0.2,
+    "n_neighbors": 10.0
+  },
+  "validacion_sintetica": {
+    "precision@20_base_vs_verdad": 1.0,
+    "precision@20_definitivo_vs_verdad": 0.1
+  }
+}

@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Costa Gas Trujillo - Data Lake medallon (Bronze/Silver/Gold) en S3 con Lambda,
+  Glue Spark y Athena. Tope de costo US$ 1. Region us-east-1. Paso 2.1.1 del PLAN.
+  Sin KMS propio, sin crawlers, sin VPC, sin NAT, sin EC2/EMR (costos fijos).
+
+Parameters:
+  Sufijo:
+    Type: String
+    Description: Sufijo unico del bucket (p. ej. iniciales del equipo + fecha)
+    AllowedPattern: "[a-z0-9-]{3,20}"
+  CorreosAlerta:
+    Type: CommaDelimitedList
+    Description: Correos del equipo para las alertas de AWS Budgets
+  CodigoKey:
+    Type: String
+    Default: _code/costagas_src.zip
+    Description: Zip con src/ subido por deploy.sh
+  LambdaMemoriaMB:
+    Type: Number
+    Default: 1024
+    AllowedValues: [1024, 3008, 10240]
+    Description: 1 GB normal; 10 GB solo en la prueba de escalabilidad (3.7)
+  GlueTrabajadores:
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 5
+    Description: 2 normal; 5 solo en la prueba de escalabilidad 100x
+  PandasLayerArn:
+    Type: String
+    Default: arn:aws:lambda:us-east-1:336392948345:layer:AWSSDKPandas-Python312:13
+    Description: Capa gestionada AWS SDK for pandas (verificar version vigente en la doc de AWS)
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # (1) Bucket del lago. Costo: S3 Standard ~US$ 0.023/GB-mes -> < US$ 0.01 con ~0.2 GB.
+  # ---------------------------------------------------------------------------
+  Lago:
+    Type: AWS::S3::Bucket
+    DependsOn: PermisoS3InvocaLambda
+    Properties:
+      BucketName: !Sub costagas-trujillo-lake-${Sufijo}
+      VersioningConfiguration: { Status: Suspended }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }   # SSE-S3, sin costo
+      LifecycleConfiguration:
+        Rules:
+          - { Id: borrar-athena-results, Status: Enabled, Prefix: athena-results/, ExpirationInDays: 7 }
+          - { Id: borrar-scaletest, Status: Enabled, Prefix: scaletest/, ExpirationInDays: 3 }
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt BronzeToSilver.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: bronze/interno/ }
+
+  # (3.8.3) Rechazo de peticiones sin TLS
+  PoliticaLago:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Lago
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SoloTLS
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+              - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/*
+            Condition: { Bool: { aws:SecureTransport: "false" } }
+
+  # ---------------------------------------------------------------------------
+  # (2) Rol de Lambda: lee bronze/*, escribe silver/*. Sin costo.
+  # ---------------------------------------------------------------------------
+  RolLambda:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: bronze-lectura-silver-escritura
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/*
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                Condition: { StringLike: { s3:prefix: ["bronze/*", "silver/*"] } }
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/costagas/seudonimo/sal
+
+  # Lambda Bronze -> Silver (pandas). Costo: capa gratuita (400 000 GB-s/mes).
+  BronzeToSilver:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-bronze-to-silver
+      Runtime: python3.12
+      Handler: src.bronze_to_silver.handler.lambda_handler
+      Role: !GetAtt RolLambda.Arn
+      MemorySize: !Ref LambdaMemoriaMB
+      Timeout: 900
+      EphemeralStorage: { Size: 1024 }
+      Layers: [!Ref PandasLayerArn]
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          SSM_PARAM_SAL: /costagas/seudonimo/sal
+
+  PermisoS3InvocaLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BronzeToSilver
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+      SourceAccount: !Ref AWS::AccountId
+
+  # ---------------------------------------------------------------------------
+  # (3) Rol de Glue: lee silver/* y padron SUNAT; escribe silver/* y gold/*.
+  # ---------------------------------------------------------------------------
+  RolGlue:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: glue.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: silver-gold
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/scaletest/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/externo/publico/sunat_padron/*
+                  - !Sub arn:aws:s3:::costagas-code-${Sufijo}/*
+              - Effect: Allow
+                Action: [s3:PutObject, s3:DeleteObject]
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                  - !Sub arn:aws:s3:::costagas-code-${Sufijo}
+
+  # Job Glue Spark: 2 trabajadores G.1X, FLEX, timeout 15 min.
+  # Costo: US$ 0.29/DPU-h (FLEX) -> ~US$ 0.01 por corrida de 1 minuto con 2 DPU (minimo 1 min).
+  JobConciliacion:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: costagas-gold-conciliacion
+      Role: !GetAtt RolGlue.Arn
+      GlueVersion: "5.0"
+      WorkerType: G.1X
+      NumberOfWorkers: !Ref GlueTrabajadores
+      ExecutionClass: FLEX
+      Timeout: 15
+      MaxRetries: 0
+      Command:
+        Name: glueetl
+        PythonVersion: "3"
+        ScriptLocation: !Sub s3://costagas-code-${Sufijo}/_code/glue_conciliacion.py
+      DefaultArguments:
+        --extra-py-files: !Sub s3://costagas-code-${Sufijo}/${CodigoKey}
+        --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+        --ANIO: "todos"
+        --enable-spark-ui: "true"
+        --spark-event-logs-path: !Sub s3://costagas-code-${Sufijo}/_sparkui/
+        --conf: spark.sql.adaptive.enabled=true --conf spark.sql.adaptive.skewJoin.enabled=true
+
+  # ---------------------------------------------------------------------------
+  # (4) Catalogo: una base por capa. Tablas por DDL (sql/athena/ddl), sin crawlers. Sin costo.
+  # ---------------------------------------------------------------------------
+  BaseSilver:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput: { Name: costagas_silver }
+  BaseGold:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput: { Name: costagas_gold }
+
+  # ---------------------------------------------------------------------------
+  # (5) Workgroup de Athena: 1 GB maximo por consulta. Costo: US$ 5/TB escaneado.
+  # ---------------------------------------------------------------------------
+  WorkgroupAthena:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: costagas-wg
+      State: ENABLED
+      RecursiveDeleteOption: true
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        BytesScannedCutoffPerQuery: 1073741824
+        PublishCloudWatchMetricsEnabled: false
+        ResultConfiguration:
+          OutputLocation: !Sub s3://costagas-trujillo-lake-${Sufijo}/athena-results/
+          EncryptionConfiguration: { EncryptionOption: SSE_S3 }
+
+  # ---------------------------------------------------------------------------
+  # (6) Presupuesto con alertas en US$ 0.50 y US$ 1.00. Los 2 primeros presupuestos no cuestan.
+  # ---------------------------------------------------------------------------
+  Presupuesto:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: costagas-tope-1usd
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: 1, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE }
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Select [0, !Ref CorreosAlerta] }
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Select [0, !Ref CorreosAlerta] }
+        - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Select [0, !Ref CorreosAlerta] }
+
+Outputs:
+  Bucket: { Value: !Ref Lago }
+  LakeUri: { Value: !Sub "s3://costagas-trujillo-lake-${Sufijo}" }
+  Workgroup: { Value: !Ref WorkgroupAthena }
+  Lambda: { Value: !Ref BronzeToSilver }
+  GlueJob: { Value: !Ref JobConciliacion }

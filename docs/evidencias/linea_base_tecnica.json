@@ -1,0 +1,8 @@
+{
+  "precision@20": 0.25,
+  "pct_kg_cubiertos": 0.425,
+  "alertas_por_mes_media": 2.24,
+  "alertas_por_mes_max": 3,
+  "alertas_total": 235,
+  "etiqueta": "debil (S1/S8 evidencia alta) hasta validación de gerencia"
+}

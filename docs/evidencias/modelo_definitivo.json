@@ -1,0 +1,7 @@
+{
+  "modelo": "lof",
+  "contamination": 0.02,
+  "precision@20_piloto": 0.3,
+  "precision@20_estabilidad": 0.2,
+  "n_neighbors": 10.0
+}
