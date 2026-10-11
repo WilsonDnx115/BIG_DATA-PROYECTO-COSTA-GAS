@@ -1,7 +1,7 @@
 # Costa Gas Trujillo · Big Data para la detección de anomalías en GLP
 
 Plataforma en AWS (S3 como data lake medallón, Lambda, Glue Spark, Athena) que concilia por unidad vehicular el GLP comprado, despachado y vendido por la planta Trujillo (2016–2024, piloto 2020) y emite alertas respaldadas por registros públicos. Tope de costo: **US$ 1**.
-UPAO 2026-20 · Big Data y Analítica de Datos · Plan paso a paso en [PLAN.md](PLAN.md) · Reglas para Claude Code en [CLAUDE.md](CLAUDE.md).
+UPAO 2026-20 · Big Data y Analítica de Datos · Plan paso a paso en [PLAN.md](PLAN.md) · Reglas para Claude Code en [CLAUDE.md](CLAUDE.md)
 
 ## Arquitectura
 
