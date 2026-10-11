@@ -1,0 +1,69 @@
+tabla: ventas_unidad_mes
+dominio: ventas_unidad
+descripcion: Ventas por unidad de reparto, mes y presentación, 2020 y 2021
+grano: unidad por mes por artículo por vendedor
+llave: [anio, mes, proyecto, articulo, vendedor_hash]
+valor_esperado: {filas: 1194, fuente: "diccionario v3.0"}
+
+fuentes:
+  - id: ventas_flota_2020
+    familia: F17
+    archivo: '^VENTAS FLOTA 2020\.xlsx$'
+    hojas: '^VENTAS$'
+    anio: 2020
+    fila_encabezado: 1
+    exigir: [proyecto, mes_texto]
+    columnas:
+      MES: mes_texto
+      Proyecto: proyecto
+      Descripcion: articulo
+      TIPO: tipo
+      Unidad de negocio: unidad_negocio
+      Unidad: unidad_medida
+      Cantidad: cantidad
+      Promedio: precio_promedio
+      Vendedor: vendedor
+      Cant Klg: kg
+      Cant balones/galones: balones_galones
+  - id: ventas_flota_2021
+    familia: F19
+    archivo: '^VENTAS FLOTA 2021\.xlsx$'
+    hojas: '^VENTAS$'
+    anio: 2021
+    fila_encabezado: 1
+    exigir: [proyecto, mes_texto]
+    columnas:
+      MES: mes_texto
+      Proyecto: proyecto
+      Descripcion: articulo
+      TIPO: tipo
+      Unidad de negocio: unidad_negocio
+      Unidad: unidad_medida
+      Cantidad: cantidad
+      Promedio: precio_promedio
+      Vendedor: vendedor
+      Cant Klg: kg
+      Cant balones/galones: balones_galones
+
+pendiente:
+  - "Las hojas MAYO, JUNIO y Hoja3 de 2020 tienen la misma estructura que VENTAS. Falta confirmar con el diccionario si son subconjuntos o datos adicionales."
+  - "Las hojas RESUMEN, GRANEL, DIRECTA e INDIRECTA son tablas dinámicas: no pasan a Silver."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje}
+  - {nombre: hoja, tipo: string, rol: linaje}
+  - {nombre: fila, tipo: int, rol: linaje}
+  - {nombre: anio, tipo: int, rol: dimension}
+  - {nombre: mes, tipo: int, rol: dimension, regla: "desde el nombre del mes"}
+  - {nombre: proyecto, tipo: string, rol: llave, regla: "valor original de la columna Proyecto"}
+  - {nombre: placa_norm, tipo: string, rol: llave, regla: "placa extraída de Proyecto"}
+  - {nombre: centro_costo, tipo: string, rol: atributo, regla: "Proyecto cuando no es una placa"}
+  - {nombre: articulo, tipo: string, rol: llave}
+  - {nombre: tipo, tipo: string, rol: atributo}
+  - {nombre: unidad_negocio, tipo: string, rol: dimension}
+  - {nombre: unidad_medida, tipo: string, rol: atributo}
+  - {nombre: cantidad, tipo: double, rol: medida}
+  - {nombre: precio_promedio, tipo: double, rol: medida}
+  - {nombre: vendedor_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal"}
+  - {nombre: kg, tipo: double, rol: medida}
+  - {nombre: balones_galones, tipo: double, rol: medida}

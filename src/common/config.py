@@ -69,6 +69,11 @@ META_SCOP_COMPRAS = _env_float("META_SCOP_COMPRAS", 0.95)
 TOL_TIPO_CAMBIO = _env_float("TOL_TIPO_CAMBIO", 0.01)
 PRECIO_PCT_INF = _env_float("PRECIO_PCT_INF", 0.01)
 PRECIO_PCT_SUP = _env_float("PRECIO_PCT_SUP", 0.99)
+TC_MIN = _env_float("TC_MIN", 3.2)                 # rango válido del tipo de cambio (Tabla 3.7 del v6)
+TC_MAX = _env_float("TC_MAX", 4.2)
+MAX_FILAS_VACIAS = _env_int("MAX_FILAS_VACIAS", 3000)   # corte de hojas infladas por fórmulas (hallazgo C6)
+KG_POR_GALON = _env_float("KG_POR_GALON", 2.04)    # sensibilidad 2.04–2.10 (hallazgo B4)
+KG_POR_LITRO = _env_float("KG_POR_LITRO", 0.54)
 
 # --- Señales y modelos (4.2, 4.3) -------------------------------------------
 UMBRAL_Z_MAD = _env_float("UMBRAL_Z_MAD", 3.5)

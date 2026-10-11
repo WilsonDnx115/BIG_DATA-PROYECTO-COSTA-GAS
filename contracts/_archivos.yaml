@@ -1,0 +1,17 @@
+# Dominio de Bronze de cada archivo de la entrega (informe v6, Tabla 3.4b).
+# La ingesta usa la primera regla cuyo patrón coincide con el nombre del archivo.
+# Destino: bronze/interno/estructurado/<dominio>/<codigo>/fecha_carga=AAAA-MM-DD/<nombre original>
+# El código es el nombre del archivo en minúsculas y sin signos, hasta fijar la numeración D01–D35 del diccionario.
+reglas:
+  - {patron: '^1\. PEDIDOS GLP', dominio: compras}
+  - {patron: '^COMPRAS ', dominio: compras}
+  - {patron: '^VENTAS FLOTA ', dominio: ventas_unidad}
+  - {patron: '^(VENTAS|VENTAR|ventas) ', dominio: ventas}
+  - {patron: '^Ventas Por Proyecto', dominio: ventas}
+  - {patron: '^(GASTOS |CO01)', dominio: gastos}
+  - {patron: '^(Cuadro de Control de Flota|Grupo Costa Gas Soat|RELACION DE UNIDADES)', dominio: flota}
+  - {patron: '^(CLIENTES |RELACION DE DISTRIBUIDORES|RELCION DE PLANTAS)', dominio: maestros}
+  - {patron: '^(Reporte de Produccion|ROTACION TANQUES)', dominio: produccion}
+  - {patron: '^RATIOS CORPORATIVOS', dominio: referencia}
+por_defecto: referencia
+extensiones: [".xlsx", ".xls"]

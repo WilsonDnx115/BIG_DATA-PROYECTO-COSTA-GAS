@@ -1,0 +1,74 @@
+tabla: unidades
+dominio: flota
+descripcion: Vehículos según tres maestros (seguros, control de flota y SOAT). Una fila por placa y maestro
+grano: vehículo por maestro
+llave: [placa_norm, origen]
+valor_esperado: {filas: 290, fuente: "diccionario v3.0 (placas distintas)"}
+
+fuentes:
+  - id: relacion_unidades
+    familia: F22
+    archivo: '^RELACION DE UNIDADES 2020-2021\.xlsx$'
+    hojas: '^(?P<empresa>GLP NAZARENO|MEGA GAS|COSTAGAS TRUJILLO|COSTAGAS CHIMBOTE|PIURA GAS)$'
+    fila_encabezado: 5
+    exigir: [placa]
+    columnas: {CLASE: clase, PLACA: placa, MARCA: marca, MODELO: modelo, AÑO: anio_fabricacion}
+  - id: relacion_unidades_otras
+    familia: F22
+    archivo: '^RELACION DE UNIDADES 2020-2021\.xlsx$'
+    hojas: '^(?P<empresa>OTRAS)$'
+    fila_encabezado: 4
+    exigir: [placa]
+    columnas: {CLASE: clase, PLACA: placa, MARCA: marca, MODELO: modelo, AÑO: anio_fabricacion}
+  - id: control_flota
+    familia: F24
+    archivo: '^Cuadro de Control de Flota\.xlsx$'
+    hojas: '^Master_Doc_$'
+    fila_encabezado: 7
+    exigir: [placa]
+    columnas:
+      ZONAL: zonal
+      PLACA: placa
+      MARCA: marca
+      MODELO: modelo
+      AÑO FABRICACION: anio_fabricacion
+      CATEGORIA/ CLASE: clase
+      Capacidad Total de GLP Autorizado (KG): capacidad_glp_kg
+      Cert. Mercancias Peligrosas: cert_mercancias_peligrosas
+  - id: soat_2020
+    familia: F26
+    archivo: '^Grupo Costa Gas Soat 2020\(1\)\.xlsx$'
+    hojas: '^Hoja1$'
+    fila_encabezado: 4
+    exigir: [placa]
+    columnas:
+      EMPRESA: empresa
+      PLACA: placa
+      CLASE: clase
+      MARCA: marca
+      MODELO: modelo
+      AÑO: anio_fabricacion
+      USO: uso
+      ESTADO: estado_soat
+      TRASLADO DE GAS (SI/NO): traslada_gas
+
+pendiente:
+  - "No se toman las columnas CLIENTE, ENDOSATARIO, motor ni serie: no se usan y pueden identificar a personas."
+  - "Falta ubicar la cuarta familia del diccionario (F27). El conteo de 290 se compara contra placas distintas."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje}
+  - {nombre: hoja, tipo: string, rol: linaje}
+  - {nombre: fila, tipo: int, rol: linaje}
+  - {nombre: empresa, tipo: string, rol: dimension, regla: "nombre de la hoja o columna EMPRESA"}
+  - {nombre: zonal, tipo: string, rol: dimension}
+  - {nombre: placa_norm, tipo: string, rol: llave, regla: "6 caracteres"}
+  - {nombre: clase, tipo: string, rol: atributo}
+  - {nombre: marca, tipo: string, rol: atributo}
+  - {nombre: modelo, tipo: string, rol: atributo}
+  - {nombre: anio_fabricacion, tipo: int, rol: atributo}
+  - {nombre: capacidad_glp_kg, tipo: double, rol: medida, regla: "capacidad autorizada; base de S4"}
+  - {nombre: cert_mercancias_peligrosas, tipo: string, rol: atributo}
+  - {nombre: uso, tipo: string, rol: atributo}
+  - {nombre: estado_soat, tipo: string, rol: atributo}
+  - {nombre: traslada_gas, tipo: bool, rol: senal, regla: "SI/NO; base de S7"}

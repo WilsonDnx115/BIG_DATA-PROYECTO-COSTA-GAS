@@ -1,0 +1,43 @@
+tabla: scop
+dominio: compras
+descripcion: Órdenes SCOP con placa cargada y placa facturada (base de la señal S1)
+grano: orden SCOP
+llave: [nro_scop]
+valor_esperado: {filas: 29, fuente: "diccionario v3.0"}
+
+fuentes:
+  - id: scops_generados
+    familia: F05
+    archivo: '^1\. PEDIDOS GLP\.xlsx$'
+    hojas: '^SCOPS GENERADOS$'
+    fila_encabezado: 2
+    exigir: [nro_scop]
+    columnas:
+      FECHA: fecha
+      SCOP CARGADO: nro_scop
+      PRODUCTO: producto
+      PROVEEDOR: proveedor
+      ORIGEN: lugar_origen
+      PLACA CARGADA: placa_cargada
+      PLACA FACTURADA: placa_facturada
+      FACTURA: factura
+      ESTADO: estado
+
+pendiente:
+  - "Las hojas PETROPERU, SOLGAS, PRIMAX y PLUSPETROL del mismo archivo alimentan la tabla pedidos_proveedor (WP 1.2)."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje}
+  - {nombre: hoja, tipo: string, rol: linaje}
+  - {nombre: fila, tipo: int, rol: linaje}
+  - {nombre: fecha, tipo: date, rol: dimension, regla: "la columna llega como texto dd/mm/aaaa"}
+  - {nombre: nro_scop, tipo: string, rol: llave, regla: "solo dígitos"}
+  - {nombre: producto, tipo: string, rol: atributo}
+  - {nombre: proveedor, tipo: string, rol: atributo}
+  - {nombre: lugar_origen, tipo: string, rol: atributo}
+  - {nombre: placa_cargada, tipo: string, rol: llave, regla: "placa normalizada"}
+  - {nombre: placa_facturada, tipo: string, rol: llave, regla: "placa normalizada; la celda puede traer una fecha"}
+  - {nombre: fecha_en_placa, tipo: string, rol: atributo, regla: "fecha escrita junto a la placa facturada"}
+  - {nombre: flag_placa_divergente, tipo: bool, rol: senal, regla: "ambas placas válidas y distintas (S1)"}
+  - {nombre: factura, tipo: string, rol: atributo}
+  - {nombre: estado, tipo: string, rol: atributo, regla: "catálogo cerrado"}
