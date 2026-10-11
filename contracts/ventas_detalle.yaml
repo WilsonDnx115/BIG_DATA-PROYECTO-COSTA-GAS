@@ -1,0 +1,76 @@
+tabla: ventas_detalle
+dominio: ventas
+descripcion: Líneas de venta del ERP. Por ahora las dos fuentes con encabezado; faltan los reportes mensuales de 2019
+grano: línea de comprobante
+llave: [origen, fila]
+valor_esperado: {filas: 28618, fuente: "diccionario v3.0 (todas las fuentes F09-F13 y F18)"}
+
+fuentes:
+  - id: ventas_mayo_2020
+    familia: F18
+    archivo: '^VENTAS MAYO 2020\.xlsx$'
+    hojas: '^Hoja1$'
+    fila_encabezado: 1
+    exigir: [proyecto, cantidad]
+    columnas:
+      Proyecto: proyecto
+      Descripcion: articulo
+      Unidad: unidad_medida
+      Cantidad: cantidad
+      Precio: precio_unitario
+      Importe: importe
+      DocDate: fecha
+      Vendedor: vendedor
+      KILOS: kg
+  - id: ventas_por_proyecto
+    familia: F09
+    archivo: '^Ventas Por Proyecto\.xlsx$'
+    hojas: '^Hoja1$'
+    fila_encabezado: 1
+    exigir: [proyecto, cantidad]
+    columnas:
+      "#": linea
+      Proyecto: proyecto
+      Codigo Articulo: articulo_codigo
+      Descripcion: articulo
+      Unidad: unidad_medida
+      Cantidad: cantidad
+      Precio: precio_unitario
+      Importe: importe
+      DocDate: fecha
+      CardCode: cliente_codigo
+      CardName: cliente_nombre
+      Indicator: indicador
+      Documento: documento
+      Vendedor: vendedor
+
+pendiente:
+  - "Faltan los reportes mensuales de 2019 (VENTAS ENERO.xls a VENTAS AGOSTO.xls y otros): no tienen encabezado y van agrupados por vendedor. Requieren esquema por posición (WP 1.2)."
+  - "Ventas Por Proyecto.xlsx, Hoja2, repite Hoja1 con menos columnas: no se carga."
+  - "La llave natural (comprobante + artículo) se define cuando se integren todas las fuentes."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje}
+  - {nombre: hoja, tipo: string, rol: linaje}
+  - {nombre: fila, tipo: int, rol: linaje}
+  - {nombre: anio, tipo: int, rol: dimension, regla: "año de la fecha del documento"}
+  - {nombre: mes, tipo: int, rol: dimension}
+  - {nombre: fecha, tipo: date, rol: dimension}
+  - {nombre: proyecto, tipo: string, rol: atributo}
+  - {nombre: placa_norm, tipo: string, rol: llave}
+  - {nombre: centro_costo, tipo: string, rol: atributo}
+  - {nombre: linea, tipo: int, rol: atributo}
+  - {nombre: articulo_codigo, tipo: string, rol: atributo}
+  - {nombre: articulo, tipo: string, rol: atributo}
+  - {nombre: es_glp, tipo: bool, rol: dimension, regla: "el artículo es GLP; la planta también vende abarrotes"}
+  - {nombre: unidad_medida, tipo: string, rol: atributo}
+  - {nombre: cantidad, tipo: double, rol: medida}
+  - {nombre: precio_unitario, tipo: double, rol: medida}
+  - {nombre: importe, tipo: double, rol: medida}
+  - {nombre: kg, tipo: double, rol: medida, regla: "solo GLP: KILOS si viene; si no, unidades por presentación, galones por 2.04, litros por 0.54"}
+  - {nombre: kg_origen, tipo: string, rol: calidad, regla: "registrado, derivado, sin_conversion o no_glp"}
+  - {nombre: cliente_id, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal del código de cliente"}
+  - {nombre: indicador, tipo: string, rol: atributo}
+  - {nombre: documento, tipo: string, rol: atributo}
+  - {nombre: vendedor_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

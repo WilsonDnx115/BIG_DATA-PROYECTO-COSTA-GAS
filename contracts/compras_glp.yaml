@@ -1,0 +1,86 @@
+# Contrato de la tabla Silver compras_glp (informe v6, Tabla 3.5b).
+# Fuente de verdad del esquema: la Lambda, las reglas de calidad y el DDL de Athena
+# se generan desde este archivo (WP 1.1, hallazgo C5).
+tabla: compras_glp
+dominio: compras
+descripcion: Facturas de compra de GLP a proveedores, 2020 y feb-2022 a ago-2023
+grano: factura de compra
+llave: [proveedor, serie, numero]
+valor_esperado: {filas: 1541, fuente: "diccionario v3.0"}
+
+fuentes:
+  - id: compras_mensuales_2022_2023
+    familia: F06
+    archivo: '^COMPRAS MENSUALES\.xlsx$'
+    hojas: '^(?P<mes>[A-Za-zñÑ]+) (?P<anio>20\d\d)$'
+    fila_encabezado: 2
+    exigir: [proveedor, numero]
+    columnas:
+      PROVEEDOR: proveedor
+      CODIGO OSINER: codigo_osinergmin
+      NUMERO SCOP: nro_scop
+      FECHA FACTURA: fecha_factura
+      SERIE: serie
+      NUMERO: numero
+      GLP-E (Kilogramos): kg_glp_e
+      GLP-G (Kilogramos): kg_glp_g
+      PLACA: placa
+      GUIA: guia
+      monto DOLARES (inc impuestos): monto_usd
+      T.C: tipo_cambio
+      MONTO PAGADO: monto_pagado
+  - id: compras_total_2020
+    familia: F07
+    archivo: '^COMPRAS TOTAL 2020\.xlsx$'
+    hojas: '^(?P<mes>ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|OCTUBRE|NOVIEMBRE|DICIEMBRE)$'
+    anio: 2020
+    fila_encabezado: 1
+    exigir: [proveedor, numero]
+    columnas:
+      SCOP: nro_scop
+      PROVEEDOR: proveedor
+      N° FACT: numero
+      FECHA FACT: fecha_factura
+      TIPO: tipo
+      CANTIDAD: kg
+      PLACA: placa
+      CONDUCTOR: conductor
+      PRECIO U: precio_unitario
+      ESTADO: estado
+      TOTAL: total
+
+pendiente:
+  - "COMPRAS TOTAL 2020.xlsx, hoja SETIEMBRE: el encabezado no está en la fila 1 y el inventario no publica sus nombres. Falta declararla por posición."
+  - "Las hojas TOTAL *, FACT PENDIENTES y Hoja1 a Hoja6 son resúmenes u otros temas: no pasan a Silver."
+  - "COMPRAS MENSUALES (1).xlsx es copia de COMPRAS MENSUALES.xlsx: la ingesta la rechaza por hash."
+  - "El tipo de cambio fuera de rango se marca. La imputación con el T.C. del BCRP se hace al cargar PU-02."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje, regla: "id de la fuente del contrato"}
+  - {nombre: hoja, tipo: string, rol: linaje, regla: "hoja de Excel de origen"}
+  - {nombre: fila, tipo: int, rol: linaje, regla: "fila de Excel de origen"}
+  - {nombre: anio, tipo: int, rol: dimension, regla: "año de la hoja"}
+  - {nombre: mes, tipo: int, rol: dimension, regla: "mes de la hoja"}
+  - {nombre: proveedor, tipo: string, rol: llave, regla: "mayúsculas, sin espacios dobles"}
+  - {nombre: codigo_osinergmin, tipo: string, rol: atributo}
+  - {nombre: nro_scop, tipo: string, rol: llave, regla: "solo dígitos; 11 dígitos es válido"}
+  - {nombre: fecha_factura, tipo: date, rol: dimension, regla: "se invierte día y mes si así cae en el mes de la hoja"}
+  - {nombre: estado_fecha, tipo: string, rol: calidad, regla: "ok, invertida, discrepa o sin_fecha"}
+  - {nombre: serie, tipo: string, rol: llave}
+  - {nombre: numero, tipo: string, rol: llave}
+  - {nombre: tipo, tipo: string, rol: atributo, regla: "producto declarado en 2020"}
+  - {nombre: kg_glp_e, tipo: double, rol: medida, regla: "GLP envasado, en kg"}
+  - {nombre: kg_glp_g, tipo: double, rol: medida, regla: "GLP a granel, en kg"}
+  - {nombre: kg, tipo: double, rol: medida, regla: "kg_glp_e + kg_glp_g, o CANTIDAD en 2020"}
+  - {nombre: placa_norm, tipo: string, rol: llave, regla: "6 caracteres sin guion ni sufijo"}
+  - {nombre: centro_costo, tipo: string, rol: atributo, regla: "valor de PLACA cuando no es una placa"}
+  - {nombre: guia, tipo: string, rol: atributo}
+  - {nombre: monto_usd, tipo: double, rol: medida}
+  - {nombre: tipo_cambio, tipo: double, rol: medida}
+  - {nombre: tc_valido, tipo: bool, rol: calidad, regla: "tipo de cambio entre TC_MIN y TC_MAX"}
+  - {nombre: monto_pagado, tipo: double, rol: medida}
+  - {nombre: precio_unitario, tipo: double, rol: medida}
+  - {nombre: total, tipo: double, rol: medida}
+  - {nombre: estado, tipo: string, rol: atributo, regla: "texto original en mayúsculas"}
+  - {nombre: conductor_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal; el nombre no pasa a Silver"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

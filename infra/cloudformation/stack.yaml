@@ -28,12 +28,12 @@ Parameters:
   CodigoKey:
     Type: String
     Default: _code/costagas_src.zip
-    Description: Zip con src/ y openpyxl subido por deploy.sh
+    Description: Zip con src/, contracts/ y dependencias subido por deploy.sh
   LambdaMemoriaMB:
     Type: Number
-    Default: 1024
+    Default: 3008
     AllowedValues: [1024, 3008, 10240]
-    Description: 1 a 3 GB normal; 10 GB solo en la prueba de escalabilidad (3.7)
+    Description: 3 GB para los Excel grandes (uno pesa 62 MB); 10 GB solo en la prueba de escalabilidad (3.7)
   GlueTrabajadores:
     Type: Number
     Default: 2
@@ -138,7 +138,7 @@ Resources:
     Properties:
       FunctionName: costagas-bronze-to-silver
       Runtime: python3.12
-      Handler: src.bronze_to_silver.handler.lambda_handler
+      Handler: src.silver.procesar.lambda_handler
       Role: !GetAtt RolLambda.Arn
       MemorySize: !Ref LambdaMemoriaMB
       Timeout: 900
