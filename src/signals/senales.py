@@ -12,106 +12,75 @@ registro es externo (Osinergmin/SCOP, MTC, SUNAT) y «medio» si es interno.
   S10 precio bajo la mediana del canal          (COM-19)              medio  H4
   (*) «alto» cuando exista el dato externo del MTC / Registro de Hidrocarburos.
 """
+
 from __future__ import annotations
-
-import hashlib
-
 import pandas as pd
+from src.common import lake_io, rutas
+from src.signals.contratos import validar, leer_entradas
+from src.signals.common import COLUMNAS, HITO, cargar_catalogo, _numero, _ventana
+from src.signals.s2 import s2
+from src.signals.s3 import s3, s3_control
+from src.signals.s6 import s6
+from src.signals.s7 import s7
+from src.signals.s9 import s9
+from src.signals.s11 import s11
 
-from src.common import config, lake_io, rutas, schemas
-from src.common.hipotesis import SENAL_A_HIPOTESIS
-from src.silver_to_gold import uniones
-
-CATALOGO = {
-    "S1": ("Placa cargada distinta de la facturada", "alto"),
-    "S4": ("Carga superior a la capacidad del vehículo", "medio"),
-    "S5": ("Entrega superior a la capacidad del local", "medio"),
-    "S7": ("Volumen asignado a unidad no habilitada", "medio"),
-    "S8": ("Venta sin compra SCOP asociada", "alto"),
-    "S10": ("Precio por debajo de la mediana del canal", "medio"),
-}
-
-
-def _alertas(df: pd.DataFrame, senal: str, placa: str, kg: str, puntaje=None) -> pd.DataFrame:
-    if df.empty:
-        return pd.DataFrame(columns=schemas.CONTRATOS["fact_alerta"].columnas())
-    out = pd.DataFrame({
-        "senal": senal, "tipo": "regla", "fecha": df["fecha"].values,
-        "placa_norm": df[placa].values, "documento": df["documento"].astype(str).values,
-        "kg": df[kg].astype(float).values,
-        "valor_soles": df[kg].astype(float).values * config.PRECIO_REF_KG,
-        "puntaje": puntaje.values if puntaje is not None else 1.0,
-        "grado_evidencia": CATALOGO[senal][1], "estado_revision": "pendiente",
-        "anio": df["anio"].astype("int32").values, "mes": df["mes"].astype("int32").values,
-    })
-    out["id_alerta"] = [hashlib.md5(f"{senal}|{d}|{p}".encode()).hexdigest()[:12]
-                        for d, p in zip(out["documento"], out["placa_norm"])]
-    return out[schemas.CONTRATOS["fact_alerta"].columnas()]
-
-
-def s1(compras):
-    d = compras[compras["flag_placa_divergente"].fillna(False)]
-    return _alertas(d, "S1", "placa_cargada", "kg")
-
-
-def s4(compras, flota):
-    d = compras.merge(flota[["placa_norm", "capacidad_kg"]], left_on="placa_cargada",
-                      right_on="placa_norm", how="inner")
-    d = d[d["kg"] > d["capacidad_kg"]]
-    return _alertas(d, "S4", "placa_cargada", "kg", d["kg"] / d["capacidad_kg"])
-
-
-def s5(ventas, maestro):
-    d = ventas.merge(maestro[["card_code", "capacidad_kg"]].rename(columns={"capacidad_kg": "cap_local"}),
-                     on="card_code", how="inner")
-    d = d[d["cap_local"].notna() & (d["kg"] > d["cap_local"])]
-    return _alertas(d, "S5", "placa_norm", "kg", d["kg"] / d["cap_local"])
-
-
-def s7(compras, flota):
-    c = compras.rename(columns={"placa_cargada": "placa_norm"})
-    d = uniones.left_anti_pd(c, flota[flota["habilitada"].fillna(False)], "placa_norm")
-    return _alertas(d, "S7", "placa_norm", "kg")
-
-
-def s8(ventas, compras):
-    d = uniones.ventas_sin_compra_pd(ventas.dropna(subset=["codigo_scop"]), compras)
-    return _alertas(d, "S8", "placa_norm", "kg")
-
-
-def s10(ventas):
-    v = ventas.dropna(subset=["precio"]).copy()
-    v["mediana"] = v.groupby(["canal", "id_producto", "anio", "mes"])["precio"].transform("median")
-    d = v[v["precio"] < v["mediana"] * (1 - config.TOL_PRECIO_S10)]
-    return _alertas(d, "S10", "placa_norm", "kg", 1 - d["precio"] / d["mediana"])
+def calcular(tablas: dict) -> pd.DataFrame:
+    requeridas = {'compras', 'tc', 'unidades', 'unidad_mes', 'produccion'}
+    if not requeridas <= tablas.keys():
+        raise ValueError('Faltan tablas de entrada WP 0.8')
+    partes = [s2(tablas['compras']), s3(tablas['compras']), s6(tablas['compras'], tablas['tc']),
+              s7(tablas['unidad_mes'], tablas['unidades']), s9(tablas['unidad_mes']), s11(tablas['produccion'])]
+    if 'sobrecobros' in tablas:
+        partes.append(s3_control(tablas['sobrecobros']))
+    no_vacias = [p for p in partes if not p.empty]
+    return pd.concat(no_vacias, ignore_index=True) if no_vacias else pd.DataFrame(columns=COLUMNAS)
 
 
 def calcular_todas() -> pd.DataFrame:
-    leer = lambda *p: lake_io.leer_parquet(rutas.ruta("silver", *p))  # noqa: E731
-    compras = leer("compras", "aba_02_ordenes_scop")
-    ventas = leer("ventas", "com_19_lineas")
-    flota = leer("flota", "dis_01_vehiculos")
-    maestro = leer("maestro", "red_02_distribuidores")
-    partes = [s1(compras), s4(compras, flota), s5(ventas, maestro),
-              s7(compras, flota), s8(ventas, compras), s10(ventas)]
-    return pd.concat([p for p in partes if len(p)], ignore_index=True)
+    tablas = leer_entradas()
+    control = lake_io.leer_parquet(rutas.ruta('silver', 'control_sobrecobros'))
+    if not control.empty:
+        tablas['sobrecobros'] = control
+    return calcular(tablas)
 
 
-def resumen(alertas: pd.DataFrame) -> pd.DataFrame:
-    r = alertas.groupby("senal").agg(alertas=("id_alerta", "count"), kg=("kg", "sum"),
-                                     unidades=("placa_norm", "nunique")).reset_index()
-    r["hipotesis"] = r["senal"].map(SENAL_A_HIPOTESIS)
-    r["descripcion"] = r["senal"].map(lambda s: CATALOGO.get(s, ("",))[0])
-    return r
+def evaluabilidad(tablas: dict) -> dict:
+    """Distingue ausencia de referencia/procedencia de una regla sin alertas."""
+    c = validar(tablas['compras'], 'compras')
+    c6 = c.loc[_ventana(c, 'S6')].merge(validar(tablas['tc'], 'tc'), on='fecha', how='left', validate='many_to_one')
+    valido_tc = _numero(c6.tc_oficial).gt(0) & _numero(c6.tipo_cambio).gt(0)
+    um = validar(tablas['unidad_mes'], 'unidad_mes')
+    um = um.loc[_ventana(um, 'S7')].merge(validar(tablas['unidades'], 'unidades'), on='unidad_id', how='left', validate='many_to_one')
+    p = validar(tablas['produccion'], 'produccion')
+    p = p.loc[_ventana(p, 'S11')]
+    numeros = p[['stock_inicial', 'produccion', 'ventas', 'bonificaciones', 'stock_final']].apply(_numero)
+    c3 = c.loc[_ventana(c, 'S3')]
+    return {
+        'S2': {'filas_en_ventana': int(_ventana(c, 'S2').sum())},
+        'S3': {'filas_en_ventana': len(c3), 'precios_ausentes_o_no_positivos': int((~_numero(c3.precio_usd_kg).gt(0)).sum()),
+               'control_F08_disponible': 'sobrecobros' in tablas},
+        'S6': {'filas_en_ventana': len(c6), 'comparables': int(valido_tc.sum()), 'sin_tc_comparable': int((~valido_tc).sum())},
+        'S7': {'unidad_mes_en_ventana': len(um), 'habilitacion_desconocida': int(um.habilitada.isna().sum())},
+        'S9': {'unidad_mes_en_ventana': len(um), 'nota': 'Ver estado_puntaje; volumen desconocido no equivale a cero.'},
+        'S11': {'dias_en_ventana': len(p), 'sin_procedencia_del_stock': int(p.stock_final_es_calculado.isna().sum()),
+                'sin_terminos_numericos_completos': int((~numeros.notna().all(axis=1)).sum())},
+    }
 
 
-def guardar(alertas: pd.DataFrame) -> str:
-    destino = rutas.ruta("gold", "fact_alerta")
-    lake_io.escribir_parquet(alertas, destino, contrato="fact_alerta")
+def resumen(alertas):
+    return alertas.groupby('senal').agg(alertas=('id_alerta', 'nunique')).reindex(HITO, fill_value=0).reset_index()
+
+
+def guardar(alertas):
+    destino = rutas.ruta('gold', 'fact_alerta_base')
+    if set(alertas) != set(COLUMNAS) or alertas.id_alerta.duplicated().any():
+        raise ValueError('Contrato de alertas WP 0.8 inválido')
+    lake_io.escribir_parquet(alertas, destino, contrato='fact_alerta_base')
     return destino
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     a = calcular_todas()
     guardar(a)
     print(resumen(a).to_string(index=False))
