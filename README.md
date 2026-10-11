@@ -39,9 +39,28 @@ python -m src.pipeline --regenerar-muestra
 python -m pytest -q
 ```
 
-El pipeline genera la muestra (`data/sample/entrega/`), la carga a `data/lake/bronze/`, procesa Silver y Gold, calcula señales y modelos, y deja la evidencia en `docs/evidencias/`.
+El pipeline genera la muestra (`data/sample/entrega/`), la carga a `data/lake/bronze/`, procesa Silver y Gold y calcula las señales y modelos v2 con módulos `*_fixture.py`. La línea base y el top sintéticos usan nombres `*_fixture`; no certifican el modelo v6.
 
 Para Gold con Spark local (Java 17 + Python 3.11): `pip install -r requirements-spark.txt` y `python -m src.pipeline --motor spark`.
+
+## Modelo base v6 · WP 0.8
+
+El catálogo [S1–S12](src/signals/catalogo.yaml) y las seis señales S2, S3, S6, S7,
+S9 y S11 siguen el informe v6. El modelo usa el z robusto de
+`log(S/ combustible por tonelada)`, separado por rol. S8 queda no resoluble y
+S12 corresponde al WP 0.11.
+
+Con las tablas normalizadas Silver/Gold disponibles en `LAKE_URI`:
+
+```bash
+python -m src.models.evaluacion_base --tipo-datos muestra_enmascarada
+```
+
+Genera top, expedientes para revisión ciega y métricas. La precisión documental,
+recuperación y cobertura permanecen `null` hasta disponer de revisión independiente,
+casos conocidos y diferencias atribuibles. Los contratos, las tablas faltantes y
+el comando posterior a la revisión están en
+[la evidencia del WP 0.8](docs/evidencias/wp_0.8_modelo_base.md).
 
 ## Parametrización
 
@@ -53,7 +72,8 @@ Todo se controla con variables de `.env` (ver [.env.example](.env.example)) leí
 | Alcance | `PLANTA`, `ANIO_INI`, `ANIO_FIN`, `ANIO_PILOTO` |
 | Spark | `SPARK_SHUFFLE_PARTITIONS`, `SALTING_BUCKETS` |
 | Calidad | `META_PLACA_VALIDA`, `META_KG_EN_RANGO`, `TOL_TIPO_CAMBIO` |
-| Modelos | `UMBRAL_Z_MAD`, `TOP_K`, `TOL_PRECIO_S10`, `MERMA_TECNICA`, `PRECIO_REF_KG`, `SEMILLA` |
+| Modelos | `UMBRAL_Z_MAD`, `TOP_K`, `MUESTRA_REVISION_ALEATORIA`, `TOL_PRECIO_COMPRA`, `TOL_PRECIO_S10`, `MERMA_TECNICA`, `PRECIO_REF_KG`, `SEMILLA` |
+| Metas documentales WP 0.8 | `META_PRECISION_DOCUMENTAL`, `META_RECUPERACION_CASOS`, `META_KG_CUBIERTOS`, `META_ALERTAS_MES` |
 
 Las columnas de cada archivo interno se declaran en [src/common/schemas.py](src/common/schemas.py). Si un archivo real trae otro encabezado, se ajusta solo ahí.
 
@@ -65,6 +85,7 @@ Las columnas de cada archivo interno se declaran en [src/common/schemas.py](src/
 | 3.3.3 Bronze → Silver | se dispara por evento S3 (Lambda) o lo llama `src.pipeline` |
 | 3.3.6 Conciliación | `python -m src.silver_to_gold.conciliacion --motor pandas --anio 2020` |
 | 4.2 Señales | `python -m src.signals.senales` |
+| 4.2.2–4.2.4 Modelo base v6 | `python -m src.models.evaluacion_base --tipo-datos muestra_enmascarada` |
 | 2.2.1 Reproceso | `python -m src.common.reproceso --fuente aba_02 --anio 2020 --mes 7` |
 | 3.7 Escalabilidad | `python -m src.scaletest.replicar --factores 1 10 --motores pandas spark` |
 | 1.7.1 Volumen | `python -m src.quality.volumen` |

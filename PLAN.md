@@ -227,7 +227,7 @@ Esta fase deja en el repositorio la evidencia que sostiene las cifras del capít
 
 - [ ] **3.1.1 Fichas como datos.** `docs/fichas/fuentes.yaml` con una entrada por fuente (ID, entidad, enlace, fecha de obtención, licencia, período, registros, tamaño, formato, tipo de dato). Un script genera las fichas en Markdown a partir del YAML.
 - [ ] **3.1.2 Diccionario de columnas.** `docs/diccionario/columnas.md` con las columnas relevantes (Tabla 3.3) más las que agregue la implementación.
-- [ ] **3.1.3 Señales completas.** Extraer del diccionario v2.0 la definición de las once señales (S1 a S11) a `src/signals/catalogo.yaml`.
+- [x] **3.1.3 Señales completas — WP 0.8.** Catálogo S1–S12 del informe v6 en `src/signals/catalogo.yaml`, con resolución, familias fuente, ventana, estado y evidencia. S8 queda no resoluble; S12 se implementa en WP 0.11. Los valores del informe son referencias, no resultados de ejecución.
 
 ### 3.2 · Ingesta y organización del data lake (capa Bronze)
 
@@ -354,11 +354,12 @@ Cada optimización se mide **antes y después** y se guarda en `docs/evidencias/
 
 ### 4.2 · Modelo base
 
-- [ ] **4.2.1 Señales determinísticas.** `src/signals/`: un módulo por señal (S1, S4, S5, S7, S8, S10 y las restantes de `catalogo.yaml`). Cada una devuelve filas para `gold/fact_alerta/` con su grado de evidencia (nulo, medio, alto) según tenga o no respaldo externo.
-- [x] **4.2.2 Puntaje z robusto.** `src/models/base_mad.py`: z modificado con mediana y MAD por producto; alerta cuando |z| > 3.5.
-- [ ] **4.2.3 Lista para validación.** Exportar las 20 alertas de mayor puntaje con su expediente (orden SCOP, volumen, fecha, unidad declarada, comprobante) a `docs/evidencias/top20_base.csv`, sin nombres.
-- [ ] **4.2.4 Métricas base.** `precision@20`, porcentaje de kg cubiertos y alertas por mes. Mientras la gerencia no valide, se usa como etiqueta débil la coincidencia con evidencia externa de grado alto (S1/S8), y se declara así en el informe.
-  - *Aceptación:* `docs/evidencias/linea_base_tecnica.json` con las tres métricas (Tabla 4.4).
+- [x] **4.2.1 Señales determinísticas del hito — WP 0.8.** Módulos S2, S3, S6, S7, S9 y S11 en `src/signals/`, probados con tablas pequeñas. La interfaz normalizada espera Silver/Gold del WP 0.2; las reglas v2 quedan exclusivamente como fixtures. Salida de desarrollo: `gold/fact_alerta_base/`. S12 se entrega en WP 0.11; las demás señales conservan su estado y alcance en el catálogo.
+  - *Pendiente de integración real:* ejecutar sobre las tablas v6 y contrastar los conteos; pruebas no equivalen a resultados medidos.
+- [x] **4.2.2 Puntaje z robusto — WP 0.8.** `src/models/base_mad.py`: z de `log(S/ combustible por tonelada)`, separado por rol; reparto usa kg vendidos y transporte kg transportados; alerta con `abs(z) > 3.5`. Volumen/combustible no positivo y MAD cero se declaran no evaluables. Lógica probada; el resultado real de 0 de 82 unidad-mes sigue como referencia del informe, sin copiarlo como medición.
+- [ ] **4.2.3 Lista para validación — WP 0.8.** Exportador implementado en `src/models/evaluacion_base.py`: hasta 20 alertas con SCOP, volumen, fecha, unidad, factura y fuentes, más control aleatorio y expediente sin puntaje para revisión ciega. `docs/evidencias/top20_base.csv` contiene únicamente el encabezado mientras faltan las tablas reales; no se declara una lista medida.
+- [ ] **4.2.4 Métricas base — WP 0.8.** Implementadas precisión documental en el top 20, tasa base del control aleatorio, recuperación de casos conocidos, cobertura de kg atribuibles y alertas por mes. Requieren segundo registro y revisor distinto del autor; no se usa S1/S8 como etiqueta débil. Las métricas ausentes se registran como `null`.
+  - *Aceptación:* `docs/evidencias/linea_base_tecnica.json` con métricas medidas y trazables; el archivo actual declara el bloqueo por tablas v6, casos conocidos y validación documental. Detalles y comandos en `docs/evidencias/wp_0.8_modelo_base.md`.
 
 ### 4.3 · Modelo definitivo, selección y evaluación
 

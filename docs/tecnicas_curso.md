@@ -7,6 +7,7 @@ Se actualiza cuando cambia el código.
 |---|---|---|---|
 | S1 · Fundamentos | 5 V: volumen y variedad medidos, no estimados | [volumen.py](../src/quality/volumen.py) | `docs/evidencias/volumen.md` |
 | S1 · Fundamentos | Veracidad: reglas de calidad por corrida | [reglas.py](../src/quality/reglas.py), [handler.py:46](../src/bronze_to_silver/handler.py#L46) | `silver/_calidad/fecha=…/*.json` |
+| S1 · Fundamentos | Veracidad y trazabilidad del modelo base v6 | [contratos.py:23](../src/signals/contratos.py#L23), [evaluacion_base.py:71](../src/models/evaluacion_base.py#L71) | Claves y fechas validadas; revisión independiente; métricas ausentes como `null`, sin etiquetas débiles S1/S8 |
 | S1 · Fundamentos | Data Lake medallón (Bronze/Silver/Gold), no DWH | [rutas.py](../src/common/rutas.py), [stack.yaml](../infra/cloudformation/stack.yaml) | estructura del bucket |
 | S1 · Fundamentos | ELT: se carga crudo y se transforma después | [internos.py:45](../src/ingest/internos.py#L45) | Bronze inmutable con `fecha_carga=` |
 | S1 · Fundamentos | Escalado vertical (Lambda/pandas) vs horizontal (Glue/Spark) | [replicar.py:40](../src/scaletest/replicar.py#L40), [replicar.py:53](../src/scaletest/replicar.py#L53) | `docs/evidencias/escalabilidad.md` |
@@ -24,6 +25,7 @@ Se actualiza cuando cambia el código.
 | S4 · Spark | Driver, Executors y particiones | [replicar.py:53](../src/scaletest/replicar.py#L53) | `particiones_entrada` en la tabla de escalabilidad |
 | S5 · Spark SQL | Schema-on-read en Bronze: los encabezados reales se inventarían antes de declarar el esquema | [encabezados.py:244](../src/ingest/encabezados.py#L244) | `docs/evidencias/encabezados_raw.md` con el contraste declarado vs. hallado por fuente |
 | S5 · Spark SQL | Esquema declarado, sin `inferSchema` | [schemas.py](../src/common/schemas.py), [conciliacion.py:44](../src/silver_to_gold/conciliacion.py#L44) | archivo que no cumple → rechazo (`test_esquema_declarado_rechaza_archivo`) |
+| S5 · Spark SQL | Contrato de salida y selección de columnas para WP 0.8 | [schemas.py](../src/common/schemas.py), [contratos.py:23](../src/signals/contratos.py#L23) | `gold/fact_alerta_base/` en Parquet; pruebas rechazan entradas incompatibles y verifican que columnas personales extra no se exporten |
 | S5 · Spark SQL | Partition pruning (`anio`) | [conciliacion.py:47](../src/silver_to_gold/conciliacion.py#L47), [lake_io.py:62](../src/common/lake_io.py#L62) | `PartitionFilters` en `explain()`; bytes escaneados en Athena |
 | S5 · Spark SQL | Predicate pushdown (`id_producto`) | [conciliacion.py:49](../src/silver_to_gold/conciliacion.py#L49) | `PushedFilters` |
 | S5 · Spark SQL | Column pruning (`select`) | [conciliacion.py:50](../src/silver_to_gold/conciliacion.py#L50) | `ReadSchema` solo con las columnas usadas |
