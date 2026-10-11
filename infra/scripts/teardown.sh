@@ -4,6 +4,7 @@
 #      ./infra/scripts/teardown.sh scaletest  (solo réplicas de 3.7)
 # Lee PROYECTO_SUFIJO y AWS_REGION de .env; usa el perfil costagas.
 set -euo pipefail
+export MSYS_NO_PATHCONV=1      # Git Bash en Windows: no convertir "/costagas/..." en una ruta de disco
 cd "$(dirname "$0")/../.."
 
 leer_env() { [[ -f .env ]] && grep -E "^$1=" .env | tail -1 | cut -d= -f2- | tr -d '"\r' || true; }

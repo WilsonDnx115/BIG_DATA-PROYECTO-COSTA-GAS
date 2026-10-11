@@ -10,6 +10,7 @@
 # Uso (Git Bash, desde la raíz del repositorio):  ./infra/scripts/deploy.sh
 #      Solo validar, sin crear nada:              ./infra/scripts/deploy.sh --validar
 set -euo pipefail
+export MSYS_NO_PATHCONV=1      # Git Bash en Windows: no convertir "/costagas/..." en una ruta de disco
 cd "$(dirname "$0")/../.."          # rutas relativas: evita problemas con espacios y con Git Bash en Windows
 
 leer_env() {                        # valor de una clave de .env, sin ejecutar el archivo
