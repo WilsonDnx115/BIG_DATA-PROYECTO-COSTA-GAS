@@ -1,26 +1,39 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   Costa Gas Trujillo - Data Lake medallon (Bronze/Silver/Gold) en S3 con Lambda,
-  Glue Spark y Athena. Tope de costo US$ 1. Region us-east-1. Paso 2.1.1 del PLAN.
-  Sin KMS propio, sin crawlers, sin VPC, sin NAT, sin EC2/EMR (costos fijos).
+  Glue Spark y Athena. Tope de costo US$ 1. Region us-east-2 (ADR 0011).
+  Sin KMS propio, sin crawlers, sin VPC, sin NAT, sin EC2 (costos fijos).
 
 Parameters:
   Sufijo:
     Type: String
     Description: Sufijo unico del bucket (p. ej. iniciales del equipo + fecha)
     AllowedPattern: "[a-z0-9-]{3,20}"
-  CorreosAlerta:
-    Type: CommaDelimitedList
-    Description: Correos del equipo para las alertas de AWS Budgets
+  Correo1:
+    Type: String
+    Description: Correo que recibe las alertas de AWS Budgets (obligatorio)
+    AllowedPattern: "[^@\\s]+@[^@\\s]+"
+  Correo2:
+    Type: String
+    Default: ""
+    Description: Segundo correo de alertas (opcional)
+  Correo3:
+    Type: String
+    Default: ""
+    Description: Tercer correo de alertas (opcional)
+  Correo4:
+    Type: String
+    Default: ""
+    Description: Cuarto correo de alertas (opcional)
   CodigoKey:
     Type: String
     Default: _code/costagas_src.zip
-    Description: Zip con src/ subido por deploy.sh
+    Description: Zip con src/ y openpyxl subido por deploy.sh
   LambdaMemoriaMB:
     Type: Number
     Default: 1024
     AllowedValues: [1024, 3008, 10240]
-    Description: 1 GB normal; 10 GB solo en la prueba de escalabilidad (3.7)
+    Description: 1 a 3 GB normal; 10 GB solo en la prueba de escalabilidad (3.7)
   GlueTrabajadores:
     Type: Number
     Default: 2
@@ -29,8 +42,13 @@ Parameters:
     Description: 2 normal; 5 solo en la prueba de escalabilidad 100x
   PandasLayerArn:
     Type: String
-    Default: arn:aws:lambda:us-east-1:336392948345:layer:AWSSDKPandas-Python312:13
-    Description: Capa gestionada AWS SDK for pandas (verificar version vigente en la doc de AWS)
+    Default: arn:aws:lambda:us-east-2:336392948345:layer:AWSSDKPandas-Python312:29
+    Description: Capa gestionada AWS SDK for pandas 3.16 para us-east-2 (verificada el 2026-10-10)
+
+Conditions:
+  HayCorreo2: !Not [!Equals [!Ref Correo2, ""]]
+  HayCorreo3: !Not [!Equals [!Ref Correo3, ""]]
+  HayCorreo4: !Not [!Equals [!Ref Correo4, ""]]
 
 Resources:
   # ---------------------------------------------------------------------------
@@ -54,6 +72,7 @@ Resources:
         Rules:
           - { Id: borrar-athena-results, Status: Enabled, Prefix: athena-results/, ExpirationInDays: 7 }
           - { Id: borrar-scaletest, Status: Enabled, Prefix: scaletest/, ExpirationInDays: 3 }
+          - { Id: borrar-sparkui, Status: Enabled, Prefix: sparkui/, ExpirationInDays: 30 }
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
@@ -81,11 +100,13 @@ Resources:
             Condition: { Bool: { aws:SecureTransport: "false" } }
 
   # ---------------------------------------------------------------------------
-  # (2) Rol de Lambda: lee bronze/*, escribe silver/*. Sin costo.
+  # (2) Rol de Lambda: lee solo bronze/interno/*, escribe silver/*. Sin costo.
+  #     Informe v6, Tabla 3.12: un rol por servicio con acceso solo a su prefijo.
   # ---------------------------------------------------------------------------
   RolLambda:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: costagas-lambda-role
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -93,20 +114,20 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: bronze-lectura-silver-escritura
+        - PolicyName: bronze-interno-lectura-silver-escritura
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action: s3:GetObject
-                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/*
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/interno/*
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
                 Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/*
               - Effect: Allow
                 Action: s3:ListBucket
                 Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
-                Condition: { StringLike: { s3:prefix: ["bronze/*", "silver/*"] } }
+                Condition: { StringLike: { s3:prefix: ["bronze/interno/*", "silver/*"] } }
               - Effect: Allow
                 Action: ssm:GetParameter
                 Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/costagas/seudonimo/sal
@@ -141,11 +162,12 @@ Resources:
       SourceAccount: !Ref AWS::AccountId
 
   # ---------------------------------------------------------------------------
-  # (3) Rol de Glue: lee silver/* y padron SUNAT; escribe silver/* y gold/*.
+  # (3) Rol de Glue: lee bronze/externo/* y silver/*; escribe silver/* y gold/*.
   # ---------------------------------------------------------------------------
   RolGlue:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: costagas-glue-role
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -153,22 +175,24 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
       Policies:
-        - PolicyName: silver-gold
+        - PolicyName: externo-silver-gold
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action: s3:GetObject
                 Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/externo/*
                   - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/*
                   - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/scaletest/*
-                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/externo/publico/sunat_padron/*
                   - !Sub arn:aws:s3:::costagas-code-${Sufijo}/*
               - Effect: Allow
                 Action: [s3:PutObject, s3:DeleteObject]
                 Resource:
                   - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/*
                   - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/sparkui/*
               - Effect: Allow
                 Action: s3:ListBucket
                 Resource:
@@ -197,7 +221,7 @@ Resources:
         --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
         --ANIO: "todos"
         --enable-spark-ui: "true"
-        --spark-event-logs-path: !Sub s3://costagas-code-${Sufijo}/_sparkui/
+        --spark-event-logs-path: !Sub s3://costagas-trujillo-lake-${Sufijo}/sparkui/
         --conf: spark.sql.adaptive.enabled=true --conf spark.sql.adaptive.skewJoin.enabled=true
 
   # ---------------------------------------------------------------------------
@@ -232,7 +256,8 @@ Resources:
           EncryptionConfiguration: { EncryptionOption: SSE_S3 }
 
   # ---------------------------------------------------------------------------
-  # (6) Presupuesto con alertas en US$ 0.50 y US$ 1.00. Los 2 primeros presupuestos no cuestan.
+  # (6) Presupuesto con alertas en US$ 0.50 y US$ 1.00 a los correos del equipo.
+  #     Los 2 primeros presupuestos de la cuenta no cuestan.
   # ---------------------------------------------------------------------------
   Presupuesto:
     Type: AWS::Budgets::Budget
@@ -245,13 +270,22 @@ Resources:
       NotificationsWithSubscribers:
         - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE }
           Subscribers:
-            - { SubscriptionType: EMAIL, Address: !Select [0, !Ref CorreosAlerta] }
+            - { SubscriptionType: EMAIL, Address: !Ref Correo1 }
+            - !If [HayCorreo2, { SubscriptionType: EMAIL, Address: !Ref Correo2 }, !Ref "AWS::NoValue"]
+            - !If [HayCorreo3, { SubscriptionType: EMAIL, Address: !Ref Correo3 }, !Ref "AWS::NoValue"]
+            - !If [HayCorreo4, { SubscriptionType: EMAIL, Address: !Ref Correo4 }, !Ref "AWS::NoValue"]
         - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
           Subscribers:
-            - { SubscriptionType: EMAIL, Address: !Select [0, !Ref CorreosAlerta] }
+            - { SubscriptionType: EMAIL, Address: !Ref Correo1 }
+            - !If [HayCorreo2, { SubscriptionType: EMAIL, Address: !Ref Correo2 }, !Ref "AWS::NoValue"]
+            - !If [HayCorreo3, { SubscriptionType: EMAIL, Address: !Ref Correo3 }, !Ref "AWS::NoValue"]
+            - !If [HayCorreo4, { SubscriptionType: EMAIL, Address: !Ref Correo4 }, !Ref "AWS::NoValue"]
         - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
           Subscribers:
-            - { SubscriptionType: EMAIL, Address: !Select [0, !Ref CorreosAlerta] }
+            - { SubscriptionType: EMAIL, Address: !Ref Correo1 }
+            - !If [HayCorreo2, { SubscriptionType: EMAIL, Address: !Ref Correo2 }, !Ref "AWS::NoValue"]
+            - !If [HayCorreo3, { SubscriptionType: EMAIL, Address: !Ref Correo3 }, !Ref "AWS::NoValue"]
+            - !If [HayCorreo4, { SubscriptionType: EMAIL, Address: !Ref Correo4 }, !Ref "AWS::NoValue"]
 
 Outputs:
   Bucket: { Value: !Ref Lago }
@@ -259,3 +293,5 @@ Outputs:
   Workgroup: { Value: !Ref WorkgroupAthena }
   Lambda: { Value: !Ref BronzeToSilver }
   GlueJob: { Value: !Ref JobConciliacion }
+  RolLambda: { Value: !GetAtt RolLambda.Arn }
+  RolGlue: { Value: !GetAtt RolGlue.Arn }

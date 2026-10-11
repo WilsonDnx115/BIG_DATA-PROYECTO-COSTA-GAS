@@ -48,7 +48,7 @@ ANIO_FIN = _env_int("ANIO_FIN", 2024)
 ANIO_PILOTO = _env_int("ANIO_PILOTO", 2020)
 
 # --- Infraestructura (2.x, D) ------------------------------------------------
-AWS_REGION = _env("AWS_REGION", "us-east-1")
+AWS_REGION = _env("AWS_REGION", "us-east-2")   # asignada por el plan gratuito (ADR 0011)
 SUFIJO = _env("PROYECTO_SUFIJO", "dev")
 BUCKET = _env("LAKE_BUCKET", f"costagas-trujillo-lake-{SUFIJO}")
 LAKE_URI = _env("LAKE_URI", "file://data/lake")

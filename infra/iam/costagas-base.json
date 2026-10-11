@@ -1,0 +1,57 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GestionarSuPropiaClaveYMFA",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetUser", "iam:ChangePassword", "iam:CreateAccessKey", "iam:DeleteAccessKey",
+        "iam:UpdateAccessKey", "iam:ListAccessKeys", "iam:EnableMFADevice",
+        "iam:ResyncMFADevice", "iam:ListMFADevices", "iam:CreateVirtualMFADevice",
+        "iam:ListVirtualMFADevices"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:user/${aws:username}", "arn:aws:iam::*:mfa/*"
+      ]
+    },
+    {
+      "Sid": "SoloUsEast2",
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:*", "sts:*", "budgets:*", "ce:*", "billing:*", "account:*", "support:*",
+        "s3:ListAllMyBuckets", "s3:GetBucketLocation"
+      ],
+      "Resource": "*",
+      "Condition": {"StringNotEquals": {"aws:RequestedRegion": "us-east-2"}}
+    },
+    {
+      "Sid": "ServiciosConCostoFijo",
+      "Effect": "Deny",
+      "Action": [
+        "ec2:RunInstances", "ec2:CreateNatGateway", "quicksight:*", "kms:CreateKey",
+        "glue:CreateCrawler", "glue:StartCrawler", "emr-serverless:*", "sagemaker:*",
+        "redshift:*", "rds:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SoloElTitularGestionaIdentidades",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateUser", "iam:DeleteUser", "iam:AttachUserPolicy", "iam:DetachUserPolicy",
+        "iam:PutUserPolicy", "iam:DeleteUserPolicy", "iam:CreatePolicy",
+        "iam:CreatePolicyVersion", "iam:DeletePolicy", "iam:SetDefaultPolicyVersion",
+        "iam:DeactivateMFADevice", "iam:DeleteVirtualMFADevice"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SinAclPublicas",
+      "Effect": "Deny",
+      "Action": [
+        "s3:PutBucketAcl", "s3:PutObjectAcl"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

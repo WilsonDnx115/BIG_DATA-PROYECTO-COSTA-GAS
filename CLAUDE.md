@@ -18,7 +18,7 @@ Proyecto: Big Data para detección de anomalías y prevención de pérdidas de G
 - Cada decisión de diseño nueva: ADR en `docs/adr/` a partir de `0000-plantilla.md`.
 
 ## AWS
-- Región **us-east-1**. No crear recursos fuera de `infra/cloudformation/stack.yaml`.
+- Región **us-east-2** (Ohio): el plan gratuito de AWS fija el proyecto ahí (ADR 0011). Perfil de la CLI: `costagas`. No crear recursos fuera de `infra/cloudformation/stack.yaml`.
 - Prohibido: EC2, EMR, NAT Gateway, QuickSight, KMS propio, Glue crawlers.
 - Glue: máximo 2 trabajadores (5 solo en la prueba de escalabilidad), FLEX, timeout 15 min.
 - Antes de proponer un comando AWS que cree recursos o ejecute jobs, indicar su **costo estimado**.
