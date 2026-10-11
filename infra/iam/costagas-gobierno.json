@@ -1,0 +1,104 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListarSoloSusPrefijos",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket", "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::costagas-trujillo-lake-*",
+      "Condition": {"StringLike": {"s3:prefix": ["silver/*", "gold/*", "athena-results/*"]}}
+    },
+    {
+      "Sid": "LeerCapasPermitidas",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::costagas-trujillo-lake-*/silver/*",
+        "arn:aws:s3:::costagas-trujillo-lake-*/gold/*"
+      ]
+    },
+    {
+      "Sid": "ResultadosDeAthena",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::costagas-trujillo-lake-*/athena-results/*"
+    },
+    {
+      "Sid": "ConsultarEnElWorkgroup",
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution", "athena:StopQueryExecution", "athena:GetQueryExecution",
+        "athena:GetQueryResults", "athena:GetQueryResultsStream",
+        "athena:BatchGetQueryExecution", "athena:ListQueryExecutions", "athena:GetWorkGroup"
+      ],
+      "Resource": "arn:aws:athena:us-east-2:*:workgroup/costagas-wg"
+    },
+    {
+      "Sid": "ListarAthena",
+      "Effect": "Allow",
+      "Action": [
+        "athena:ListWorkGroups", "athena:ListDataCatalogs", "athena:GetDataCatalog",
+        "athena:ListDatabases", "athena:GetDatabase", "athena:ListTableMetadata",
+        "athena:GetTableMetadata"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LeerCatalogoYJobs",
+      "Effect": "Allow",
+      "Action": [
+        "glue:Get*", "glue:List*", "glue:BatchGet*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "VerConfiguracionDelBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketPolicy", "s3:GetEncryptionConfiguration", "s3:GetBucketPublicAccessBlock",
+        "s3:GetLifecycleConfiguration", "s3:GetBucketVersioning", "s3:GetBucketNotification",
+        "s3:ListAllMyBuckets"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "VerCostos",
+      "Effect": "Allow",
+      "Action": [
+        "budgets:ViewBudget", "budgets:Describe*", "ce:Get*", "ce:Describe*", "ce:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AuditarSeguridad",
+      "Effect": "Allow",
+      "Action": [
+        "iam:Get*", "iam:List*", "iam:GenerateCredentialReport", "access-analyzer:List*",
+        "access-analyzer:Get*", "access-analyzer:ValidatePolicy", "cloudtrail:LookupEvents"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "VerInfraestructura",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:Describe*", "cloudformation:List*", "cloudformation:GetTemplate",
+        "lambda:Get*", "lambda:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LeerLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups", "logs:DescribeLogStreams", "logs:GetLogEvents",
+        "logs:FilterLogEvents", "logs:StartQuery", "logs:GetQueryResults"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

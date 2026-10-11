@@ -3,12 +3,17 @@ data/raw/
 data/lake/
 data/sample/entrega/
 *.xlsx
+*.xls
 *.zip
 
 # Credenciales y secretos
 .env
+.env.*
+!.env.example
 *.pem
 .aws/
+*accessKeys*.csv
+*credentials*.csv
 
 # Python
 __pycache__/
@@ -19,3 +24,7 @@ __pycache__/
 spark-warehouse/
 metastore_db/
 derby.log
+
+# Temporales de despliegue y de Spark
+.build/
+artifacts/

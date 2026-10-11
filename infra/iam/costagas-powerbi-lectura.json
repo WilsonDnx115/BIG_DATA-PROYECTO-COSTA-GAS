@@ -1,0 +1,62 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListarSoloSusPrefijos",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket", "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::costagas-trujillo-lake-*",
+      "Condition": {"StringLike": {"s3:prefix": ["gold/*", "athena-results/*"]}}
+    },
+    {
+      "Sid": "LeerCapasPermitidas",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::costagas-trujillo-lake-*/gold/*"
+      ]
+    },
+    {
+      "Sid": "ResultadosDeAthena",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::costagas-trujillo-lake-*/athena-results/*"
+    },
+    {
+      "Sid": "ConsultarEnElWorkgroup",
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution", "athena:StopQueryExecution", "athena:GetQueryExecution",
+        "athena:GetQueryResults", "athena:GetQueryResultsStream",
+        "athena:BatchGetQueryExecution", "athena:ListQueryExecutions", "athena:GetWorkGroup"
+      ],
+      "Resource": "arn:aws:athena:us-east-2:*:workgroup/costagas-wg"
+    },
+    {
+      "Sid": "ListarAthena",
+      "Effect": "Allow",
+      "Action": [
+        "athena:ListWorkGroups", "athena:ListDataCatalogs", "athena:GetDataCatalog",
+        "athena:ListDatabases", "athena:GetDatabase", "athena:ListTableMetadata",
+        "athena:GetTableMetadata"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LeerSoloCatalogoGold",
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabase", "glue:GetDatabases", "glue:GetTable", "glue:GetTables",
+        "glue:GetPartition", "glue:GetPartitions", "glue:BatchGetPartition"
+      ],
+      "Resource": [
+        "arn:aws:glue:us-east-2:*:catalog", "arn:aws:glue:us-east-2:*:database/costagas_gold",
+        "arn:aws:glue:us-east-2:*:table/costagas_gold/*"
+      ]
+    }
+  ]
+}
