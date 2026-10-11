@@ -58,9 +58,9 @@ if ! aws s3api head-bucket --bucket "$CODE_BUCKET" 2>/dev/null; then
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 fi
 
-echo ">> Empaquetando src/ + openpyxl (sin datos ni credenciales)"
+echo ">> Empaquetando src/, contracts/ y dependencias (sin datos ni credenciales)"
 rm -rf "$BUILD" && mkdir -p "$BUILD/pkg"
-python -m pip install --quiet --no-compile --target "$BUILD/pkg" openpyxl
+python -m pip install --quiet --no-compile --target "$BUILD/pkg" openpyxl xlrd pyyaml
 python - <<'PY'
 import pathlib
 import zipfile
@@ -68,6 +68,8 @@ import zipfile
 build = pathlib.Path(".build")
 with zipfile.ZipFile(build / "costagas_src.zip", "w", zipfile.ZIP_DEFLATED) as z:
     for f in sorted(pathlib.Path("src").rglob("*.py")):
+        z.write(f, f.as_posix())
+    for f in sorted(pathlib.Path("contracts").glob("*.yaml")):      # los contratos viajan con el código
         z.write(f, f.as_posix())
     pkg = build / "pkg"
     for f in sorted(pkg.rglob("*")):

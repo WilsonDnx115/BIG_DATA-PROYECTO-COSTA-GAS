@@ -1,6 +1,7 @@
 # Datos reales: NUNCA se versionan (3.8.5)
 data/raw/
 data/lake/
+data/lake_verificacion/
 data/sample/entrega/
 *.xlsx
 *.xls
