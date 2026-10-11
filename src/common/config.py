@@ -79,6 +79,12 @@ KG_POR_LITRO = _env_float("KG_POR_LITRO", 0.54)
 # --- Señales y modelos (4.2, 4.3) -------------------------------------------
 UMBRAL_Z_MAD = _env_float("UMBRAL_Z_MAD", 3.5)
 TOP_K = _env_int("TOP_K", 20)
+MUESTRA_REVISION_ALEATORIA = _env_int("MUESTRA_REVISION_ALEATORIA", 10)
+TOL_PRECIO_COMPRA = _env_float("TOL_PRECIO_COMPRA", 0.05)
+META_PRECISION_DOCUMENTAL = _env_float("META_PRECISION_DOCUMENTAL", 0.40)
+META_RECUPERACION_CASOS = _env_float("META_RECUPERACION_CASOS", 0.70)
+META_KG_CUBIERTOS = _env_float("META_KG_CUBIERTOS", 0.50)
+META_ALERTAS_MES = _env_int("META_ALERTAS_MES", 20)
 TOL_PRECIO_S10 = _env_float("TOL_PRECIO_S10", 0.10)   # 10 % bajo la mediana del canal
 MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # a confirmar con la empresa (H5)
 UMBRAL_KPI_DIF = _env_float("UMBRAL_KPI_DIF", 0.02)

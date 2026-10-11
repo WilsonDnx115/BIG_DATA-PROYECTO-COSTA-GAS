@@ -1,0 +1,125 @@
+version: 6
+fuente: Proyecto_BigData_CostaGas_Trujillo_final_v6.docx, Tabla 4.3
+paquete: WP 0.8
+nota: Valores de referencia del informe; no son resultados de esta ejecución ni etiquetas de robo.
+senales:
+  S1:
+    descripcion: Placa cargada distinta de la facturada
+    resolucion: orden_scop
+    fuentes: [F05]
+    ventana: ene–jul 2023
+    estado: parcial
+    evidencia: alta
+    implementacion: fuera_del_hito_wp_0.8
+    hipotesis: [H1, H2]
+    referencia: 3 de 9 órdenes con ambas placas
+  S2:
+    descripcion: Compra sin número SCOP o con SCOP repetido
+    resolucion: factura
+    fuentes: [F06, F07]
+    ventana: 2020; feb-2022–ago-2023
+    estado: resoluble
+    evidencia: alta
+    implementacion: wp_0.8
+    hipotesis: [H1, H2]
+    referencia: 3.2 % sin SCOP en 2020; 26 SCOP repetidos en 2022–23
+  S3:
+    descripcion: Precio de compra fuera de lo pactado o de la mediana
+    resolucion: factura
+    fuentes: [F08, F06]
+    ventana: 2020; 2022–23
+    estado: resoluble
+    evidencia: media
+    implementacion: wp_0.8
+    hipotesis: [H1, H2, H4]
+    referencia: 10 de 12 sobrecobros (S/ 773); 192 de 995 desvían más del 5 %
+  S4:
+    descripcion: Carga superior a la capacidad autorizada
+    resolucion: factura
+    fuentes: [F06, F07, F22, PU-03]
+    ventana: 2020; 2022–23
+    estado: parcial
+    evidencia: alta_si_existe_dato_mtc
+    implementacion: fuera_del_hito_wp_0.8
+    hipotesis: [H1, H2]
+    referencia: Capacidad conocida en dos facturas; ambas la superan
+  S5:
+    descripcion: Volumen a distribuidor superior a su capacidad
+    resolucion: cliente_mes
+    fuentes: [F29, F09, F10]
+    ventana: feb-2021; abr-2024
+    estado: parcial
+    evidencia: media
+    implementacion: fuera_del_hito_wp_0.8
+    hipotesis: [H1, H2]
+    referencia: 32 de 64 distribuidores con ventas en SAP
+  S6:
+    descripcion: Tipo de cambio distinto del oficial
+    resolucion: factura
+    fuentes: [F04, F06, PU-02]
+    ventana: 2022–23
+    estado: resoluble
+    evidencia: alta
+    implementacion: wp_0.8
+    hipotesis: [H2, H4]
+    referencia: 514 de 942 facturas con T.C. igual a 1
+  S7:
+    descripcion: Operación de unidad declarada no habilitada para GLP
+    resolucion: unidad_mes
+    fuentes: [F26, F17, F20]
+    ventana: 2020
+    estado: resoluble
+    evidencia: media
+    implementacion: wp_0.8
+    hipotesis: [H1, H2]
+    referencia: Tres unidades no habilitadas con gastos; cero con ventas
+  S8:
+    descripcion: Venta sin compra que la respalde en circuito SCOP
+    resolucion: orden_scop
+    fuentes: [F09, F06]
+    ventana: Sin ventana común
+    estado: no_resoluble
+    evidencia: alta_si_existe_contraste
+    implementacion: no_ejecutar
+    hipotesis: [H1, H2]
+    referencia: SCOP en ventas solo en abr-2024; no hay compras de ese período
+  S9:
+    descripcion: Combustible sin venta o carga proporcional
+    resolucion: unidad_mes
+    fuentes: [F17, F20, F07]
+    ventana: 2020
+    estado: resoluble
+    evidencia: media
+    implementacion: wp_0.8
+    hipotesis: [H1, H2]
+    referencia: Mediana S/ 54.7 por tonelada; 73 unidad-mes con combustible sin venta
+  S10:
+    descripcion: Precio de venta bajo la mediana de su canal
+    resolucion: linea_venta
+    fuentes: [F09, F10, F11, F12, F13, F14, F15, F16, F17, EN-01, NE-09]
+    ventana: 2019–2021; abr-2024
+    estado: resoluble
+    evidencia: media
+    implementacion: fuera_del_hito_wp_0.8
+    hipotesis: [H1, H4]
+    referencia: B10 en 2020; 5.3 % indirecta y 7.4 % directa bajo el 90 % de la mediana
+  S11:
+    descripcion: Cierre de planta sin medición física independiente
+    resolucion: dia
+    fuentes: [F36]
+    ventana: oct-2018
+    estado: resoluble
+    evidencia: alta
+    implementacion: wp_0.8
+    hipotesis: [H1, H2, H3, H5]
+    referencia: Residuo cero en 31 días; un ajuste de producción de -9095
+  S12:
+    descripcion: Factura ausente o con kg distinto entre tesorería y logística
+    resolucion: factura
+    fuentes: [F01, F02, F03, F04, F06]
+    ventana: feb-2022–jul-2023
+    estado: resoluble
+    evidencia: alta
+    implementacion: wp_0.11_pendiente
+    hipotesis: [H1, H2]
+    referencia: 36 solo en logística; 19 solo en tesorería; 22 con kg distinto; 4 SCOP corregidos

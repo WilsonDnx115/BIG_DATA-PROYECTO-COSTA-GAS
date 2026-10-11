@@ -14,53 +14,56 @@ import numpy as np
 import pandas as pd
 
 from src.common import config
+from src.signals.contratos import validar
 
 
 def z_robusto(x: pd.Series) -> pd.Series:
-    x = x.astype(float)
-    mediana = np.nanmedian(x)
-    mad = np.nanmedian(np.abs(x - mediana)) or 1e-9
+    """Conserva índice/nulos; MAD cero o entrada no finita no produce un puntaje."""
+    x = pd.to_numeric(x, errors='coerce').astype(float)
+    x = x.where(np.isfinite(x))
+    validos = x.dropna()
+    if validos.empty:
+        return pd.Series(np.nan, index=x.index, dtype=float)
+    mediana = validos.median()
+    mad = (validos - mediana).abs().median()
+    if mad == 0:
+        return pd.Series(np.nan, index=x.index, dtype=float)
     return 0.6745 * (x - mediana) / mad
 
 
-def puntuar(um: pd.DataFrame, columna: str = "pct_diferencia", grupo: str | None = None,
-            umbral: float = config.UMBRAL_Z_MAD) -> pd.DataFrame:
-    df = um.copy()
-    df["z"] = df.groupby(grupo)[columna].transform(z_robusto) if grupo else z_robusto(df[columna])
-    df["puntaje"] = df["z"]                     # solo faltantes (z>0): un sobrante no es pérdida
-    df["alerta_base"] = df["z"] > umbral
+def puntuar(um: pd.DataFrame, umbral: float = config.UMBRAL_Z_MAD) -> pd.DataFrame:
+    """Transporte usa carga y reparto venta; no sustituye volumen cero ni negativo."""
+    if not np.isfinite(umbral) or umbral <= 0:
+        raise ValueError('El umbral MAD debe ser positivo y finito')
+    df = validar(um, 'unidad_mes')
+    for col in ('kg_vendidos', 'kg_transportados', 'gasto_combustible'):
+        booleanos = df[col].map(lambda v: isinstance(v, (bool, np.bool_)))
+        df[col] = pd.to_numeric(df[col], errors='coerce').astype(float).mask(booleanos)
+    volumen = df.kg_vendidos.where(df.rol.eq('reparto'), df.kg_transportados)
+    gasto = df.gasto_combustible
+    validos = volumen.gt(0) & gasto.gt(0) & np.isfinite(volumen) & np.isfinite(gasto)
+    df['kg_base_rol'] = volumen
+    ratio = gasto / (volumen.where(validos) / 1000)
+    ratio = ratio.where(np.isfinite(ratio) & ratio.gt(0))
+    df['soles_comb_por_t'] = ratio
+    df['log_combustible_por_t'] = np.log(ratio)
+    df['z'] = df.groupby('rol')['log_combustible_por_t'].transform(z_robusto)
+    df['puntaje'] = df.z.abs()
+    df['alerta_base'] = df.puntaje.gt(umbral).fillna(False)
+    df['estado_puntaje'] = np.where(~validos | ratio.isna(), 'sin_combustible_o_volumen_positivo',
+                                    np.where(df.z.isna(), 'mad_cero_o_sin_grupo_evaluable', 'evaluable'))
     return df
 
 
-def etiqueta_debil(um: pd.DataFrame, alertas: pd.DataFrame, senales=("S1", "S8")) -> pd.Series:
-    """1 si la unidad-mes tiene alguna alerta de evidencia alta (declarado en el informe)."""
-    a = alertas[alertas["senal"].isin(senales)][["placa_norm", "anio", "mes"]].drop_duplicates()
-    a["_y"] = 1
-    m = um[["placa_norm", "anio", "mes"]].merge(a, on=["placa_norm", "anio", "mes"], how="left")
-    return m["_y"].fillna(0).astype(int).set_axis(um.index)
-
-
-def precision_at_k(puntaje: pd.Series, y: pd.Series, k: int = config.TOP_K) -> float:
-    top = puntaje.sort_values(ascending=False).head(k).index
-    return float(y.loc[top].mean()) if len(top) else 0.0
-
-
-def metricas(df: pd.DataFrame, y: pd.Series, col_alerta: str = "alerta_base",
-             col_puntaje: str = "puntaje", k: int = config.TOP_K) -> dict:
-    faltante = df["kg_diferencia"].clip(lower=0)
-    cubierto = faltante[df[col_alerta]].sum() / faltante.sum() if faltante.sum() else 0.0
-    por_mes = df[df[col_alerta]].groupby(["anio", "mes"]).size()
-    return {
-        f"precision@{k}": round(precision_at_k(df[col_puntaje], y, k), 3),
-        "pct_kg_cubiertos": round(float(cubierto), 3),
-        "alertas_por_mes_media": round(float(por_mes.mean()) if len(por_mes) else 0.0, 2),
-        "alertas_por_mes_max": int(por_mes.max()) if len(por_mes) else 0,
-        "alertas_total": int(df[col_alerta].sum()),
-        "etiqueta": "debil (S1/S8 evidencia alta) hasta validación de gerencia",
-    }
-
-
-def top_k(df: pd.DataFrame, k: int = config.TOP_K, col: str = "puntaje") -> pd.DataFrame:
-    cols = ["placa_norm", "anio", "mes", "kg_comprados", "kg_vendidos", "kg_diferencia",
-            "pct_diferencia", col]
-    return df.sort_values(col, ascending=False).head(k)[cols]
+def precision_at_k(puntaje: pd.Series, y: pd.Series, k: int = config.TOP_K) -> float | None:
+    """Utilidad matemática: no convierte etiquetas débiles en revisión documental."""
+    if k <= 0 or not puntaje.index.is_unique or not y.index.is_unique:
+        raise ValueError('k positivo e índices únicos son obligatorios')
+    p = pd.to_numeric(puntaje, errors='coerce')
+    top = p[np.isfinite(p)].sort_values(ascending=False, kind='stable').head(k).index
+    etiquetas = y.reindex(top)
+    if len(top) < k or etiquetas.isna().any():
+        return None
+    if not etiquetas.isin([0, 1]).all():
+        raise ValueError('Las etiquetas deben ser 0 o 1')
+    return float(etiquetas.mean())

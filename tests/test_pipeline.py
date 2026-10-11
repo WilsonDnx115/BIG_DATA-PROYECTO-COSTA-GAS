@@ -6,7 +6,7 @@ from src.bronze_to_silver import handler
 from src.common import lake_io, muestra, rutas, schemas
 from src.common.reproceso import regenerar
 from src.ingest import internos
-from src.signals import senales
+from src.signals import senales_fixture as senales
 from src.silver_to_gold import conciliacion
 
 

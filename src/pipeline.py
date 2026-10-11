@@ -30,9 +30,9 @@ def correr(origen: Path | None, motor: str, regenerar_muestra: bool) -> dict:
     from src.bronze_to_silver import handler
     from src.common import muestra
     from src.ingest import internos
-    from src.models import base_mad, definitivo
+    from src.models import base_mad_fixture as base_mad, definitivo
     from src.quality import linea_base, volumen
-    from src.signals import senales
+    from src.signals import senales_fixture as senales
     from src.silver_to_gold import conciliacion, features
 
     os.environ.setdefault("SEUDONIMO_SAL", "sal-local-solo-para-muestra")
@@ -69,8 +69,8 @@ def correr(origen: Path | None, motor: str, regenerar_muestra: bool) -> dict:
     y = base_mad.etiqueta_debil(um, alertas)
     base = base_mad.puntuar(um)
     resumen["modelo_base"] = base_mad.metricas(base, y)
-    _guardar("linea_base_tecnica.json", resumen["modelo_base"])
-    base_mad.top_k(base).to_csv(EVID / "top20_base.csv", index=False)
+    _guardar("linea_base_tecnica_fixture.json", resumen["modelo_base"])
+    base_mad.top_k(base).to_csv(EVID / "top20_base_fixture.csv", index=False)
 
     print("6) Modelo definitivo (Isolation Forest vs LOF, partición temporal)")
     feats = [f for f in features.FEATURES if f != "flag_placa_divergente"]  # evita fuga con la etiqueta débil
