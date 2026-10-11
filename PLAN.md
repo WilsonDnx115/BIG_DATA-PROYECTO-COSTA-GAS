@@ -166,7 +166,7 @@ Esta fase deja en el repositorio la evidencia que sostiene las cifras del capít
 - [x] **1.3.1 Hipótesis como código.** `src/common/hipotesis.py` con las cinco hipótesis (H1 a H5) y, para cada una, qué señal o variable la contrasta. Las señales y el EDA las referencian por código.
 
 ### 1.4 · Línea base del negocio
-- [ ] **1.4.1 Script de línea base.** `src/quality/linea_base.py` que, sobre los datos de Bronze, calcula y guarda en `docs/evidencias/linea_base.json`:
+- [x] **1.4.1 Script de línea base.** `src/quality/linea_base.py` que, sobre los datos de Bronze, calcula y guarda en `docs/evidencias/linea_base.json`:
   - días de producción con residuo cero en la ecuación de stock;
   - número de registros SCOP disponibles;
   - número de incidencias por campo clave;
