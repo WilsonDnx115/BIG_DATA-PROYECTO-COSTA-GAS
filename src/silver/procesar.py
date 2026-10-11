@@ -93,10 +93,12 @@ def _leer_fuente(local: str, hojas: list[str], f: contratos.Fuente) -> tuple[pd.
         d["_anio"] = int(grupos["anio"]) if grupos.get("anio") else f.anio
         d["_mes"] = L.mes_a_numero(grupos.get("mes"))
         d["_empresa"] = (grupos.get("empresa") or "").upper() or None
-        partes.append(d)
+        if len(d):
+            partes.append(d)
         detalle.append({"hoja": hoja, "estado": "leida", "filas_leidas": lec.leidas,
                         "filas_efectivas": lec.efectivas, "cortada_por_filas_vacias": lec.cortada})
-    datos = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
+    # astype(object): cada celda conserva su tipo; pandas no convierte los vacíos a NaN ni a NaT
+    datos = pd.concat([d.astype(object) for d in partes], ignore_index=True) if partes else pd.DataFrame()
     return datos, detalle
 
 
@@ -104,11 +106,17 @@ def _filtrar(df: pd.DataFrame, f: contratos.Fuente) -> tuple[pd.DataFrame, dict]
     """Quita filas de total y filas sin los campos exigidos por el contrato."""
     presentes = [c for c in _COLUMNAS_DE_TOTAL if c in df.columns]
     es_total = df[presentes].apply(lambda fila: L.es_fila_total(*fila), axis=1) if presentes else pd.Series(False, index=df.index)
-    df = df[~es_total]
+    # Encabezado repetido en medio de los datos: la celda dice lo mismo que el título de su columna
+    titulos = {estandar: titulo for titulo, estandar in f.columnas.items()}
+    es_titulo = pd.Series(False, index=df.index)
+    for col in (f.exigir or list(titulos)[:2]):
+        if col in df.columns:
+            es_titulo |= df[col].map(lambda v, t=titulos[col]: contratos.normalizar_encabezado(lector.a_texto(v)) == t)
+    df = df[~es_total & ~es_titulo]
     incompleta = pd.Series(False, index=df.index)
     for c in f.exigir:
         incompleta |= df[c].map(lambda v: lector.a_texto(v) is None)
-    return df[~incompleta].reset_index(drop=True), {"filas_de_total": int(es_total.sum()),
+    return df[~incompleta].reset_index(drop=True), {"filas_de_total": int(es_total.sum()), "encabezados_repetidos": int(es_titulo.sum()),
                                                     "sin_campos_exigidos": int(incompleta.sum())}
 
 
@@ -123,14 +131,16 @@ def procesar_fuente(local: str, hojas: list[str], c: contratos.Contrato, f: cont
     salida, calidad = TRANSFORMACIONES[c.tabla](filtrado)
     salida = salida.assign(origen=f.id, hoja=filtrado.loc[salida.index, "hoja"],
                            fila=filtrado.loc[salida.index, "fila"].astype("Int64"))
-    duplicada = salida.duplicated(subset=list(c.llave), keep="first")
-    salida = salida[~duplicada]
+    repetida = salida.duplicated(subset=list(c.llave), keep=False)
+    salida = salida.assign(llave_repetida=repetida.astype("boolean"))
     faltan = [n for n in c.nombres() if n not in salida.columns]
     if faltan:
         raise ValueError(f"{c.tabla}: la transformación no produjo las columnas {faltan}")
     tabla = pa.Table.from_pandas(salida[c.nombres()], schema=c.esquema(), preserve_index=False, safe=False)
     control.update(estado="ok", filas_leidas=sum(h.get("filas_leidas", 0) for h in detalle),
-                   filas_efectivas=len(crudo), filas_salida=tabla.num_rows, duplicadas_por_llave=int(duplicada.sum()),
+                   filas_efectivas=len(crudo), filas_salida=tabla.num_rows, filas_con_llave_repetida=int(repetida.sum()),
+                   celdas_con_dato={k: int(crudo[k].map(lambda v: lector.a_texto(v) is not None).sum())
+                                    for k in crudo.columns if not k.startswith("_") and k not in ("hoja", "fila")},
                    descartes=descartes, calidad=calidad)
     if escribir:
         _escribir_parquet(tabla, f"{ruta_tabla(c)}/{f.id}.parquet")

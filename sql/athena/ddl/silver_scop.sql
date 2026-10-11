@@ -13,7 +13,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS costagas_silver.scop (
   fecha_en_placa string COMMENT 'fecha escrita junto a la placa facturada',
   flag_placa_divergente boolean COMMENT 'ambas placas válidas y distintas (S1)',
   factura string,
-  estado string COMMENT 'catálogo cerrado')
+  estado string COMMENT 'texto original en mayúsculas',
+  llave_repetida boolean COMMENT 'la llave natural aparece en más de una fila; se conserva y se marca')
 COMMENT 'Órdenes SCOP con placa cargada y placa facturada (base de la señal S1)'
 STORED AS PARQUET
 LOCATION '${LAKE}/silver/compras/scop/';

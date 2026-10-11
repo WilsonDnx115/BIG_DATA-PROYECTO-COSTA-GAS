@@ -171,8 +171,19 @@ MESES = {"ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6
          "SETIEMBRE": 9, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12}
 
 
+_ERRORES_EXCEL = frozenset({"#VALUE!", "#N/A", "#REF!", "#DIV/0!", "#NAME?", "#NULL!", "#NUM!"})
+
+
 def _vacio(valor) -> bool:
-    return valor is None or (isinstance(valor, float) and valor != valor) or str(valor).strip() == ""
+    """None, NaN, NaT o texto en blanco."""
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return not valor.strip() or valor.strip().upper() in _ERRORES_EXCEL
+    try:
+        return bool(valor != valor)
+    except (TypeError, ValueError):
+        return False
 
 
 def parsear_placa(valor) -> tuple[str | None, str | None, str | None]:
@@ -253,11 +264,11 @@ def tc_valido(tc) -> bool:
     return tc is not None and tc == tc and config.TC_MIN <= tc <= config.TC_MAX
 
 
-_RE_PRESENTACION = re.compile(r"(?<!\d)(5|10|15|45)\s*(?:KG|KILOS?)\b|\bB(05|10|15|45)\b")
+_RE_PRESENTACION = re.compile(r"(?<!\d)(5|10|15|45)\s*(?:KGS?|KLGS?|KILOS?)\b|\bBL?(05|10|15|45)\b")
 
 
 def presentacion_kg(descripcion) -> float | None:
-    """Kilos por balón desde 'BALON 10 KG' o 'B10'. Granel y otros → None."""
+    """Kilos por balón desde 'GLP ENVASE DE 10 KLG', 'GLP 10 KG' o 'BL10'. Granel y otros → None."""
     if _vacio(descripcion):
         return None
     m = _RE_PRESENTACION.search(_sin_tildes(str(descripcion)).upper())
@@ -285,3 +296,8 @@ def es_fila_total(*valores) -> bool:
     """Filas de total o subtotal metidas dentro del detalle ('TOTAL GENERAL', 'Total')."""
     return any(not _vacio(v) and _sin_tildes(str(v)).strip().upper().startswith(("TOTAL", "SUBTOTAL", "SUMA "))
                for v in valores)
+
+
+def es_glp(descripcion) -> bool:
+    """El artículo es GLP (envasado o granel). La planta también vende abarrotes, que no entran al balance."""
+    return not _vacio(descripcion) and bool(re.search(r"\bGLP\b", _sin_tildes(str(descripcion)).upper()))

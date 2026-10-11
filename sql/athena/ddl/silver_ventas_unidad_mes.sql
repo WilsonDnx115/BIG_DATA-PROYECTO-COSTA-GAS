@@ -16,7 +16,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS costagas_silver.ventas_unidad_mes (
   precio_promedio double,
   vendedor_hash string COMMENT 'SHA-256 con sal',
   kg double,
-  balones_galones double)
+  balones_galones double,
+  llave_repetida boolean COMMENT 'la llave natural aparece en más de una fila; se conserva y se marca')
 COMMENT 'Ventas por unidad de reparto, mes y presentación, 2020 y 2021'
 STORED AS PARQUET
 LOCATION '${LAKE}/silver/ventas_unidad/ventas_unidad_mes/';

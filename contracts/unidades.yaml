@@ -1,9 +1,9 @@
 tabla: unidades
 dominio: flota
 descripcion: Vehículos según tres maestros (seguros, control de flota y SOAT). Una fila por placa y maestro
-grano: vehículo por maestro
-llave: [placa_norm, origen]
-valor_esperado: {filas: 290, fuente: "diccionario v3.0 (placas distintas)"}
+grano: fila de cada maestro de vehículos
+llave: [origen, hoja, fila]
+valor_esperado: {filas: 290, fuente: "diccionario v3.0"}
 
 fuentes:
   - id: relacion_unidades
@@ -62,7 +62,8 @@ columnas:
   - {nombre: fila, tipo: int, rol: linaje}
   - {nombre: empresa, tipo: string, rol: dimension, regla: "nombre de la hoja o columna EMPRESA"}
   - {nombre: zonal, tipo: string, rol: dimension}
-  - {nombre: placa_norm, tipo: string, rol: llave, regla: "6 caracteres"}
+  - {nombre: placa_texto, tipo: string, rol: atributo, regla: "valor original de la columna PLACA, en mayúsculas"}
+  - {nombre: placa_norm, tipo: string, rol: llave, regla: "6 caracteres; nulo si el valor no es una placa"}
   - {nombre: clase, tipo: string, rol: atributo}
   - {nombre: marca, tipo: string, rol: atributo}
   - {nombre: modelo, tipo: string, rol: atributo}
@@ -72,3 +73,4 @@ columnas:
   - {nombre: uso, tipo: string, rol: atributo}
   - {nombre: estado_soat, tipo: string, rol: atributo}
   - {nombre: traslada_gas, tipo: bool, rol: senal, regla: "SI/NO; base de S7"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

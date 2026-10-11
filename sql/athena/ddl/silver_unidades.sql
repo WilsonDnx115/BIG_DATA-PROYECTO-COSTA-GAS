@@ -5,7 +5,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS costagas_silver.unidades (
   fila bigint,
   empresa string COMMENT 'nombre de la hoja o columna EMPRESA',
   zonal string,
-  placa_norm string COMMENT '6 caracteres',
+  placa_texto string COMMENT 'valor original de la columna PLACA, en mayúsculas',
+  placa_norm string COMMENT '6 caracteres; nulo si el valor no es una placa',
   clase string,
   marca string,
   modelo string,
@@ -14,7 +15,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS costagas_silver.unidades (
   cert_mercancias_peligrosas string,
   uso string,
   estado_soat string,
-  traslada_gas boolean COMMENT 'SI/NO; base de S7')
+  traslada_gas boolean COMMENT 'SI/NO; base de S7',
+  llave_repetida boolean COMMENT 'la llave natural aparece en más de una fila; se conserva y se marca')
 COMMENT 'Vehículos según tres maestros (seguros, control de flota y SOAT). Una fila por placa y maestro'
 STORED AS PARQUET
 LOCATION '${LAKE}/silver/flota/unidades/';

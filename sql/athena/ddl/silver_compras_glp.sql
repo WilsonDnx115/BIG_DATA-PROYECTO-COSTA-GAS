@@ -25,8 +25,9 @@ CREATE EXTERNAL TABLE IF NOT EXISTS costagas_silver.compras_glp (
   monto_pagado double,
   precio_unitario double,
   total double,
-  estado string COMMENT 'catálogo cerrado',
-  conductor_hash string COMMENT 'SHA-256 con sal; el nombre no pasa a Silver')
+  estado string COMMENT 'texto original en mayúsculas',
+  conductor_hash string COMMENT 'SHA-256 con sal; el nombre no pasa a Silver',
+  llave_repetida boolean COMMENT 'la llave natural aparece en más de una fila; se conserva y se marca')
 COMMENT 'Facturas de compra de GLP a proveedores, 2020 y feb-2022 a ago-2023'
 STORED AS PARQUET
 LOCATION '${LAKE}/silver/compras/compras_glp/';

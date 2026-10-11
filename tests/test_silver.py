@@ -63,7 +63,8 @@ def test_fecha_invertida_y_tc():
 
 
 @pytest.mark.parametrize("unidad,cantidad,articulo,kg", [
-    ("UNIDADES", 3, "BALON 10 KG", 30.0), ("GALONES", 100, "GLP GRANEL", 204.0), ("LITROS", 100, None, 54.0),
+    ("UNIDADES", 3, "BALON 10 KG", 30.0), ("UNIDADES", 2, "GLP ENVASE DE 45 KLG COSTAGAS TRUJILLO", 90.0),
+    ("UNIDADES", 4, "BL10", 40.0), ("GALONES", 100, "GLP GRANEL", 204.0), ("LITROS", 100, None, 54.0),
     ("KILOS", 45, None, 45.0), ("UNIDADES", 2, "VALVULA", None)])
 def test_a_kilos(unidad, cantidad, articulo, kg):
     assert L.a_kilos(unidad, cantidad, articulo) == pytest.approx(kg) if kg is not None else L.a_kilos(unidad, cantidad, articulo) is None
@@ -120,14 +121,35 @@ def test_hoja_sin_las_columnas_del_contrato_se_rechaza(lago, tmp_path):
 # --- Bronze → Silver ----------------------------------------------------------
 def test_compras_glp(compras):
     r = procesar.procesar_archivo(compras)[0]
-    assert r["estado"] == "ok" and r["filas_salida"] == 4
-    assert r["descartes"]["filas_de_total"] == 1 and r["duplicadas_por_llave"] == 1
+    assert r["estado"] == "ok" and r["filas_salida"] == 5
+    assert r["descartes"]["filas_de_total"] == 1 and r["filas_con_llave_repetida"] == 2      # se marcan, no se borran
+    assert r["celdas_con_dato"]["numero"] == 5 and r["celdas_con_dato"]["kg_glp_g"] == 0
     assert r["calidad"]["fechas_invertidas"] == 1 and r["calidad"]["tc_fuera_de_rango"] == 1
-    df = procesar.leer_tabla("compras_glp").set_index("numero")
+    todo = procesar.leer_tabla("compras_glp")
+    assert todo.loc[todo["numero"] == "100", "llave_repetida"].all() and todo["llave_repetida"].sum() == 2
+    df = todo.drop_duplicates("numero").set_index("numero")
     assert df.loc["101", "fecha_factura"] == dt.date(2022, 2, 5) and df.loc["101", "estado_fecha"] == "invertida"
     assert df.loc["100", "placa_norm"] == "T2N841" and df.loc["102", "centro_costo"] == "PLANTA"
     assert df.loc["102", "tc_valido"] == False and df.loc["100", "kg"] == 24070.0   # noqa: E712
     assert df.loc["100", "proveedor"] == "PROVEEDOR UNO" and (df["anio"] == 2022).all() and (df["mes"] == 2).all()
+
+
+def test_fechas_vacias_en_varias_hojas(lago, tmp_path):
+    ruta = _libro(tmp_path / "COMPRAS MENSUALES.xlsx", {
+        "Febrero 2022": [["t"], ENC_2022, _fila("200", dt.datetime(2022, 2, 5)), _fila("201", None)],
+        "Marzo 2022": [["t"], ENC_2022, _fila("300", None), _fila("301", None)]})
+    r = procesar.procesar_archivo(ruta)[0]
+    assert r["filas_salida"] == 4 and r["celdas_con_dato"]["fecha_factura"] == 1
+    df = procesar.leer_tabla("compras_glp").set_index("numero")
+    assert df["estado_fecha"].to_dict() == {"200": "ok", "201": "sin_fecha", "300": "sin_fecha", "301": "sin_fecha"}
+    assert df.loc["300", "mes"] == 3 and df["fecha_factura"].notna().sum() == 1
+
+
+def test_celdas_vacias_de_cualquier_tipo():
+    import pandas as pd
+
+    for v in (None, float("nan"), pd.NaT, "  ", "#VALUE!", "#N/A"):
+        assert lector.a_texto(v) is None and L.a_fecha(v) is None and L.parsear_placa(v) == (None, None, None)
 
 
 def test_reproceso_es_idempotente(compras):
@@ -135,7 +157,7 @@ def test_reproceso_es_idempotente(compras):
     antes = procesar.leer_tabla("compras_glp")
     procesar.procesar_archivo(compras)
     despues = procesar.leer_tabla("compras_glp")
-    assert len(antes) == len(despues) == 4 and antes.equals(despues)
+    assert len(antes) == len(despues) == 5 and antes.equals(despues)
 
 
 def test_scop_y_placa_divergente(lago, tmp_path):
@@ -146,10 +168,10 @@ def test_scop_y_placa_divergente(lago, tmp_path):
         ["16/07/2023", 12345678902, "GLP-G", "prov", "callao", "T1A-123", "B2E-983", "F1-2", "ATENDIDO"],
         ["17/07/2023", None, "GLP-G", "prov", "callao", "T1A-123", "B2E-983", "F1-3", "ATENDIDO"]]})
     r = procesar.procesar_archivo(ruta)[0]
-    assert r["filas_salida"] == 2 and r["calidad"]["ordenes_con_placa_divergente"] == 1
+    assert r["filas_salida"] == 3 and r["calidad"]["ordenes_con_placa_divergente"] == 2      # la orden sin número se conserva
     df = procesar.leer_tabla("scop")
-    assert df["nro_scop"].tolist() == ["12345678901", "12345678902"]
-    assert df["fecha_en_placa"].iloc[0] == "15/7/23" and df["estado"].nunique() == 1
+    assert df["nro_scop"].tolist() == ["12345678901", "12345678902", None]
+    assert df["fecha_en_placa"].iloc[0] == "15/7/23" and df["estado"].nunique() == 1 and df["estado"].iloc[0] == "ATENDIDO"
 
 
 def test_ventas_sin_nombres_de_persona(lago, tmp_path):
@@ -172,28 +194,33 @@ def test_ventas_detalle_deriva_kg(lago, tmp_path):
            "CardCode", "CardName", "Indicator", "Documento", "Vendedor"]
     ruta = _libro(tmp_path / "Ventas Por Proyecto.xlsx", {"Hoja1": [
         enc,
-        [1, "T2N - 841 CAMION", "A10", "BALON 10 KG", "UNIDADES", 3, 20.0, 60.0, dt.datetime(2024, 4, 2), "C001", "CLIENTE FICTICIO", "01", "B001-1", "VEND"],
-        [2, "PLANTA", "A99", "VALVULA", "UNIDADES", 1, 5.0, 5.0, dt.datetime(2024, 4, 3), "C002", "OTRO FICTICIO", "01", "B001-2", "VEND"]]})
+        [1, "T2N - 841 CAMION", "A10", "GLP ENVASE DE 10 KLG COSTAGAS", "UNIDADES", 3, 20.0, 60.0, dt.datetime(2024, 4, 2), "C001", "CLIENTE FICTICIO", "01", "B001-1", "VEND"],
+        [2, "PLANTA", "A99", "FILETE DE ATUN 1 KG", "KILOS", 1, 5.0, 5.0, dt.datetime(2024, 4, 3), "C002", "OTRO FICTICIO", "01", "B001-2", "VEND"]]})
     r = procesar.procesar_archivo(ruta)[0]
     assert r["filas_salida"] == 2 and r["calidad"]["kg_derivado"] == 1
     df = procesar.leer_tabla("ventas_detalle")
-    assert df["kg"].iloc[0] == 30.0 and df["kg_origen"].tolist() == ["derivado", "sin_conversion"]
+    assert df["kg"].iloc[0] == 30.0 and df["kg_origen"].tolist() == ["derivado", "no_glp"]
+    assert df["es_glp"].tolist() == [True, False] and df["kg"].isna().iloc[1]          # los abarrotes no suman kg
+    assert r["calidad"]["lineas_glp_convertibles_a_kg"] == 1.0 and r["calidad"]["lineas_no_glp"] == 1
     assert not {"cliente_nombre", "cliente_codigo"} & set(df.columns) and df["cliente_id"].nunique() == 2
     assert (df["anio"] == 2024).all() and (df["mes"] == 4).all()
 
 
-def test_unidades_descarta_filas_sin_placa(lago, tmp_path):
+def test_unidades_conserva_filas_sin_placa_valida(lago, tmp_path):
     enc = ["EMPRESA", "PLACA", "CLASE", "MARCA", "MODELO", "NRO. MOTOR", "NRO. SERIE", "AÑO", "ASIENTOS", "USO",
            "FECHA", "ESTADO", "TRASLADO DE GAS (SI/NO)"]
     ruta = _libro(tmp_path / "Grupo Costa Gas Soat 2020(1).xlsx", {"Hoja1": [
         ["t"], ["t"], ["t"], enc,
         ["Costa Gas", "T2N-841", "CAMION", "JMC", "NKR", "m", "s", 2015, 3, "CARGA", "01/01/2020", "VIGENTE", "SI"],
         ["Costa Gas", "AOX 941", "CAMION", "JMC", "NKR", "m", "s", 2016, 3, "CARGA", "01/01/2020", "VIGENTE", "NO"],
-        ["Costa Gas", "sin placa", "CAMION", "JMC", "NKR", "m", "s", 2016, 3, "CARGA", "01/01/2020", "VIGENTE", "NO"]]})
+        ["Costa Gas", "sin placa", "CAMION", "JMC", "NKR", "m", "s", 2016, 3, "CARGA", "01/01/2020", "VIGENTE", "NO"],
+        enc]})                                                              # encabezado repetido dentro del detalle
     r = procesar.procesar_archivo(ruta)[0]
     df = procesar.leer_tabla("unidades")
-    assert r["filas_salida"] == 2 and df["placa_norm"].tolist() == ["T2N841", "AOX941"]
-    assert df["traslada_gas"].tolist() == [True, False] and df["anio_fabricacion"].tolist() == [2015, 2016]
+    assert r["descartes"]["encabezados_repetidos"] == 1
+    assert r["filas_salida"] == 3 and df["placa_norm"].tolist() == ["T2N841", "AOX941", None]
+    assert df["placa_texto"].tolist() == ["T2N-841", "AOX 941", "SIN PLACA"] and r["calidad"]["placas_distintas"] == 2
+    assert df["traslada_gas"].tolist() == [True, False, False] and df["anio_fabricacion"].tolist() == [2015, 2016, 2016]
 
 
 # --- Ingesta de la entrega a Bronze -------------------------------------------

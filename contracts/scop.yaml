@@ -11,7 +11,7 @@ fuentes:
     archivo: '^1\. PEDIDOS GLP\.xlsx$'
     hojas: '^SCOPS GENERADOS$'
     fila_encabezado: 2
-    exigir: [nro_scop]
+    exigir: []
     columnas:
       FECHA: fecha
       SCOP CARGADO: nro_scop
@@ -40,4 +40,5 @@ columnas:
   - {nombre: fecha_en_placa, tipo: string, rol: atributo, regla: "fecha escrita junto a la placa facturada"}
   - {nombre: flag_placa_divergente, tipo: bool, rol: senal, regla: "ambas placas válidas y distintas (S1)"}
   - {nombre: factura, tipo: string, rol: atributo}
-  - {nombre: estado, tipo: string, rol: atributo, regla: "catálogo cerrado"}
+  - {nombre: estado, tipo: string, rol: atributo, regla: "texto original en mayúsculas"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

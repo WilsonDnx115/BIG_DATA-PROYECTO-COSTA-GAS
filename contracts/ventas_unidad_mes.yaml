@@ -46,6 +46,8 @@ fuentes:
       Cant balones/galones: balones_galones
 
 pendiente:
+  - "La llave del diccionario (unidad + mes + artículo + vendedor) no es única en la fuente: en 2020 la comparten 616 de 992 filas. Las filas se conservan y se marcan con llave_repetida; para analizar por unidad y mes hay que agregar."
+  - "VENTAS FLOTA 2021, hoja VENTAS: la lectura se corta en la fila 167 tras 3 000 filas vacías. Falta confirmar que no hay datos más abajo."
   - "Las hojas MAYO, JUNIO y Hoja3 de 2020 tienen la misma estructura que VENTAS. Falta confirmar con el diccionario si son subconjuntos o datos adicionales."
   - "Las hojas RESUMEN, GRANEL, DIRECTA e INDIRECTA son tablas dinámicas: no pasan a Silver."
 
@@ -67,3 +69,4 @@ columnas:
   - {nombre: vendedor_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal"}
   - {nombre: kg, tipo: double, rol: medida}
   - {nombre: balones_galones, tipo: double, rol: medida}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

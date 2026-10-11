@@ -62,6 +62,9 @@ def compras_glp(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o["kg_glp_g"] = _num(_col(df, "kg_glp_g"))
     suma = o[["kg_glp_e", "kg_glp_g"]].sum(axis=1, min_count=1)
     o["kg"] = _num(df["kg"]) if "kg" in df.columns else suma
+    if "kg" in df.columns:                                  # 2020: una sola cantidad y el producto en TIPO
+        o["kg_glp_e"] = o["kg"].where(o["tipo"] == "GLP-E")
+        o["kg_glp_g"] = o["kg"].where(o["tipo"] == "GLP-G")
     o["placa_norm"], _, o["centro_costo"] = _placas(_col(df, "placa"))
     o["guia"] = _texto(_col(df, "guia"))
     o["monto_usd"] = _num(_col(df, "monto_usd"))
@@ -70,7 +73,7 @@ def compras_glp(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o["monto_pagado"] = _num(_col(df, "monto_pagado"))
     o["precio_unitario"] = _num(_col(df, "precio_unitario"))
     o["total"] = _num(_col(df, "total"))
-    o["estado"] = _col(df, "estado").map(L.normalizar_estado)
+    o["estado"] = _texto(_col(df, "estado"), mayus=True)
     o["conductor_hash"] = _col(df, "conductor").map(lambda v: L.seudonimizar(a_texto(v)))
     con_tc = o["tipo_cambio"].notna()
     calidad = {
@@ -99,7 +102,7 @@ def scop(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     ambas = o["placa_cargada"].notna() & o["placa_facturada"].notna()
     o["flag_placa_divergente"] = (ambas & (o["placa_cargada"] != o["placa_facturada"])).astype("boolean")
     o["factura"] = _texto(df["factura"], mayus=True)
-    o["estado"] = df["estado"].map(L.normalizar_estado)
+    o["estado"] = _texto(df["estado"], mayus=True)
     calidad = {
         "ordenes_con_ambas_placas": int(ambas.sum()),
         "ordenes_con_placa_divergente": int(o["flag_placa_divergente"].sum()),
@@ -113,6 +116,7 @@ def unidades(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     empresa = _texto(_col(df, "empresa"), mayus=True)
     o["empresa"] = empresa.where(empresa.notna(), df["_empresa"])
     o["zonal"] = _texto(_col(df, "zonal"), mayus=True)
+    o["placa_texto"] = _texto(df["placa"], mayus=True)
     o["placa_norm"], _, _ = _placas(df["placa"])
     o["clase"] = _texto(_col(df, "clase"), mayus=True)
     o["marca"] = _texto(_col(df, "marca"), mayus=True)
@@ -127,9 +131,11 @@ def unidades(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         "placa_valida": _tasa(o["placa_norm"].notna()),
         "con_capacidad": int(o["capacidad_glp_kg"].notna().sum()),
         "traslada_gas_si": int(o["traslada_gas"].fillna(False).sum()),
+        "traslada_gas_si_con_placa_valida": int((o["traslada_gas"].fillna(False) & o["placa_norm"].notna()).sum()),
+        "placas_distintas": int(o["placa_norm"].nunique()),
         "traslada_gas_declarado": int(o["traslada_gas"].notna().sum()),
     }
-    return o[o["placa_norm"].notna()], calidad         # sin placa válida no hay vehículo que identificar
+    return o, calidad                                  # las filas sin placa válida se conservan con placa_norm nulo
 
 
 def ventas_unidad_mes(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -171,11 +177,15 @@ def ventas_detalle(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o["cantidad"] = _num(df["cantidad"])
     o["precio_unitario"] = _num(df["precio_unitario"])
     o["importe"] = _num(df["importe"])
-    registrado = _num(_col(df, "kg"))
-    derivado = pd.Series([L.a_kilos(u, c, a) for u, c, a in zip(o["unidad_medida"], o["cantidad"], o["articulo"])],
+    o["es_glp"] = o["articulo"].map(L.es_glp).astype("boolean")
+    glp = o["es_glp"].fillna(False).astype(bool)
+    registrado = _num(_col(df, "kg")).where(glp)
+    derivado = pd.Series([L.a_kilos(u, c, a) if g else None
+                          for u, c, a, g in zip(o["unidad_medida"], o["cantidad"], o["articulo"], glp)],
                          index=df.index, dtype="float64")
     o["kg"] = registrado.where(registrado.notna(), derivado)
-    o["kg_origen"] = "sin_conversion"
+    o["kg_origen"] = "no_glp"
+    o.loc[glp, "kg_origen"] = "sin_conversion"
     o.loc[derivado.notna(), "kg_origen"] = "derivado"
     o.loc[registrado.notna(), "kg_origen"] = "registrado"
     o["cliente_id"] = _col(df, "cliente_codigo").map(lambda v: L.seudonimizar(a_texto(v)))
@@ -184,7 +194,9 @@ def ventas_detalle(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o["vendedor_hash"] = df["vendedor"].map(lambda v: L.seudonimizar(a_texto(v)))
     calidad = {
         "fecha_valida": _tasa(o["fecha"].notna()),
-        "lineas_convertibles_a_kg": _tasa(o["kg"].notna()),
+        "lineas_glp": int(glp.sum()),
+        "lineas_no_glp": int((~glp).sum()),
+        "lineas_glp_convertibles_a_kg": _tasa(o.loc[glp, "kg"].notna()),
         "kg_registrado": int((o["kg_origen"] == "registrado").sum()),
         "kg_derivado": int((o["kg_origen"] == "derivado").sum()),
         "filas_con_placa": _tasa(o["placa_norm"].notna()),

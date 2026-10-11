@@ -62,13 +62,15 @@ columnas:
   - {nombre: linea, tipo: int, rol: atributo}
   - {nombre: articulo_codigo, tipo: string, rol: atributo}
   - {nombre: articulo, tipo: string, rol: atributo}
+  - {nombre: es_glp, tipo: bool, rol: dimension, regla: "el artículo es GLP; la planta también vende abarrotes"}
   - {nombre: unidad_medida, tipo: string, rol: atributo}
   - {nombre: cantidad, tipo: double, rol: medida}
   - {nombre: precio_unitario, tipo: double, rol: medida}
   - {nombre: importe, tipo: double, rol: medida}
-  - {nombre: kg, tipo: double, rol: medida, regla: "KILOS si viene; si no, unidades por presentación, galones por 2.04, litros por 0.54"}
-  - {nombre: kg_origen, tipo: string, rol: calidad, regla: "registrado, derivado o sin_conversion"}
+  - {nombre: kg, tipo: double, rol: medida, regla: "solo GLP: KILOS si viene; si no, unidades por presentación, galones por 2.04, litros por 0.54"}
+  - {nombre: kg_origen, tipo: string, rol: calidad, regla: "registrado, derivado, sin_conversion o no_glp"}
   - {nombre: cliente_id, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal del código de cliente"}
   - {nombre: indicador, tipo: string, rol: atributo}
   - {nombre: documento, tipo: string, rol: atributo}
   - {nombre: vendedor_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

@@ -31,8 +31,19 @@ class Lectura:
     cortada: bool                # se detuvo por el corte de filas vacías
 
 
+ERRORES_EXCEL = frozenset({"#VALUE!", "#N/A", "#REF!", "#DIV/0!", "#NAME?", "#NULL!", "#NUM!"})
+
+
 def _vacia(v) -> bool:
-    return v is None or (isinstance(v, float) and v != v) or (isinstance(v, str) and not v.strip())
+    """None, NaN, NaT, texto en blanco o un error de fórmula de Excel."""
+    if v is None:
+        return True
+    if isinstance(v, str):
+        return not v.strip() or v.strip().upper() in ERRORES_EXCEL
+    try:
+        return bool(v != v)                    # NaN y NaT son distintos de sí mismos
+    except (TypeError, ValueError):
+        return False
 
 
 def nombres_hojas(ruta: str) -> list[str]:

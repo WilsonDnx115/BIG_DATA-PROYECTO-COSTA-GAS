@@ -81,5 +81,6 @@ columnas:
   - {nombre: monto_pagado, tipo: double, rol: medida}
   - {nombre: precio_unitario, tipo: double, rol: medida}
   - {nombre: total, tipo: double, rol: medida}
-  - {nombre: estado, tipo: string, rol: atributo, regla: "catálogo cerrado"}
+  - {nombre: estado, tipo: string, rol: atributo, regla: "texto original en mayúsculas"}
   - {nombre: conductor_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal; el nombre no pasa a Silver"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}
