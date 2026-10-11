@@ -166,6 +166,15 @@ CONTRATOS: dict[str, Contrato] = {
 }
 
 
+CONTRATOS['fact_alerta_base'] = Contrato('fact_alerta_base', [
+    ('id_alerta', 'string'), ('senal', 'string'), ('tipo', 'string'), ('resolucion', 'string'),
+    ('fecha', 'date'), ('unidad_id', 'string'), ('rol', 'string'), ('factura_id', 'string'),
+    ('codigo_scop', 'string'), ('kg', 'double'), ('valor_soles', 'double'), ('puntaje', 'double'),
+    ('grado_evidencia', 'string'), ('estado_revision', 'string'), ('motivo', 'string'),
+    ('fuentes', 'string'), *_PART,
+])
+
+
 def columnas_destino(fuente: str) -> dict[str, str]:
     """Mapa nombre original → nombre destino para `DataFrame.rename`."""
     return {orig: dest for orig, (dest, _) in FUENTES[fuente].columnas.items()}
