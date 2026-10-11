@@ -160,7 +160,7 @@ Esta fase deja en el repositorio la evidencia que sostiene las cifras del capít
 - [ ] **1.1.1** Copiar el resumen a `README.md` (sección «Contexto»). Se reescribe al cierre con los resultados.
 
 ### 1.2 · La empresa y su contexto
-- [ ] **1.2.1 Fuentes de contexto.** Guardar en `docs/fuentes_contexto.md` los enlaces de Gestión, Infomercado, Panamericana, ProActivo y Facilito con fecha de consulta. No se copian artículos completos (derechos de autor).
+- [x] **1.2.1 Fuentes de contexto.** Guardar en `docs/fuentes_contexto.md` los enlaces de Gestión, Infomercado, Panamericana, ProActivo y Facilito con fecha de consulta. No se copian artículos completos (derechos de autor).
 
 ### 1.3 · Definición del problema de negocio
 - [x] **1.3.1 Hipótesis como código.** `src/common/hipotesis.py` con las cinco hipótesis (H1 a H5) y, para cada una, qué señal o variable la contrasta. Las señales y el EDA las referencian por código.
