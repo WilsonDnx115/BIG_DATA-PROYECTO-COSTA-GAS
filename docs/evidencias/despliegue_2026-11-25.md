@@ -22,7 +22,7 @@
 | Regla `costagas-glue-fallido` | ENABLED. Envía al tema de operación |
 | Cola `costagas-eventos-fallidos` | Creada (14 días, cifrado administrado) |
 | Alarmas `costagas-error-limpieza` y `costagas-eventos-fallidos` | Estado OK |
-| Temas SNS | `costagas-alertas-operacion`: 2 suscripciones confirmadas y 2 pendientes; `costagas-alertas-negocio`: 1 pendiente |
+| Temas SNS | Al desplegar: `costagas-alertas-operacion` con 2 suscripciones confirmadas y 2 pendientes, y `costagas-alertas-negocio` con 1 pendiente. A las 17:40 había 3 confirmadas en operación, y se reenvió la confirmación a la pendiente y a la de negocio |
 | Portal | CloudFront `d1zqoo9nh9fg5e.cloudfront.net` **Deployed**; grupo de usuarios de Cognito `costagas-portal` |
 | CI/CD | Proveedor OIDC `token.actions.githubusercontent.com` y rol `costagas-github-deploy` |
 | Bucket del lago | Notificaciones a EventBridge activas; la notificación a la Lambda de limpieza se mantiene |
