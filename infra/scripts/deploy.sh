@@ -78,6 +78,7 @@ with zipfile.ZipFile(build / "costagas_src.zip", "w", zipfile.ZIP_DEFLATED) as z
 PY
 aws s3 cp "$BUILD/costagas_src.zip" "s3://${CODE_BUCKET}/_code/costagas_src.zip" --sse AES256 --only-show-errors
 aws s3 cp src/silver_to_gold/conciliacion.py "s3://${CODE_BUCKET}/_code/glue_conciliacion.py" --sse AES256 --only-show-errors
+aws s3 cp src/glue/externos_job.py "s3://${CODE_BUCKET}/_code/glue_externos.py" --sse AES256 --only-show-errors
 
 echo ">> Desplegando stack ${STACK}"
 aws cloudformation deploy --stack-name "$STACK" --template-file "$PLANTILLA" \
