@@ -6,8 +6,9 @@ import pytest
 
 from src.common import config
 
-NUEVAS = ("MERMA_TECNICA_PCT", "MERMA_TECNICA_FUENTE", "MADUREZ_DIAS", "VENTANA_MEDIANA_DIAS", "PSI_UMBRAL",
-          "PSI_MIN_OBS", "FALSAS_ALARMAS_ANIO", "TOL_PRECIO_PAGO", "RECALL_MIN_RETADOR")
+NUEVAS = ("MERMA_TECNICA_PCT", "MERMA_TECNICA_FUENTE", "MERMA_TECNICA_ES_SUPUESTO", "MADUREZ_DIAS",
+          "VENTANA_MEDIANA_DIAS", "PSI_UMBRAL", "PSI_MIN_OBS", "FALSAS_ALARMAS_ANIO", "TOL_PRECIO_PAGO",
+          "RECALL_MIN_RETADOR")
 
 
 @pytest.fixture
@@ -26,29 +27,19 @@ def recargar(monkeypatch):
     importlib.reload(config)   # deja el módulo como lo usan las demás pruebas
 
 
-def test_opcional_sin_variable_es_none(monkeypatch):
-    monkeypatch.delenv("PARAM_DE_PRUEBA", raising=False)
-    assert config._env_float_opcional("PARAM_DE_PRUEBA") is None
-
-
-def test_opcional_vacia_es_none(monkeypatch):
-    monkeypatch.setenv("PARAM_DE_PRUEBA", "  ")
-    assert config._env_float_opcional("PARAM_DE_PRUEBA") is None
-
-
-def test_opcional_con_valor(monkeypatch):
-    monkeypatch.setenv("PARAM_DE_PRUEBA", "0.01")
-    assert config._env_float_opcional("PARAM_DE_PRUEBA") == 0.01
-
-
-def test_merma_sin_valor_queda_nula(recargar):
+def test_merma_tiene_valor_supuesto_por_defecto(recargar):
     c = recargar()
-    assert c.MERMA_TECNICA_PCT is None
-    assert c.MERMA_TECNICA_FUENTE == ""
+    assert c.MERMA_TECNICA_PCT == 0.005
+    assert c.MERMA_TECNICA_ES_SUPUESTO is True
+    assert "supuesto" in c.MERMA_TECNICA_FUENTE.lower()
 
 
-def test_merma_con_valor(recargar):
-    assert recargar(MERMA_TECNICA_PCT="0.01").MERMA_TECNICA_PCT == 0.01
+def test_merma_de_la_empresa_reemplaza_el_supuesto(recargar):
+    c = recargar(MERMA_TECNICA_PCT="0.008", MERMA_TECNICA_FUENTE="Tolerancia de la empresa",
+                 MERMA_TECNICA_ES_SUPUESTO="no")
+    assert c.MERMA_TECNICA_PCT == 0.008
+    assert c.MERMA_TECNICA_ES_SUPUESTO is False
+    assert c.MERMA_TECNICA_FUENTE == "Tolerancia de la empresa"
 
 
 def test_valores_por_defecto(recargar):
@@ -62,8 +53,16 @@ def test_valores_por_defecto(recargar):
     assert c.RECALL_MIN_RETADOR == 0.50
 
 
+def test_ningun_parametro_queda_vacio(recargar):
+    """Todo parámetro tiene un valor: los que no vienen de la empresa son supuestos declarados."""
+    c = recargar()
+    for nombre in NUEVAS:
+        valor = getattr(c, nombre)
+        assert valor is not None and valor != "", nombre
+
+
 def test_env_example_declara_los_parametros():
     texto = (config.RAIZ_REPO / ".env.example").read_text(encoding="utf-8")
-    for linea in ("MERMA_TECNICA_PCT=", "MADUREZ_DIAS=30", "PSI_UMBRAL=0.2", "FALSAS_ALARMAS_ANIO=12",
-                  "TOL_PRECIO_PAGO=0.05"):
+    for linea in ("MERMA_TECNICA_PCT=0.005", "MERMA_TECNICA_ES_SUPUESTO=si", "MADUREZ_DIAS=30",
+                  "PSI_UMBRAL=0.2", "FALSAS_ALARMAS_ANIO=12", "TOL_PRECIO_PAGO=0.05"):
         assert linea in texto

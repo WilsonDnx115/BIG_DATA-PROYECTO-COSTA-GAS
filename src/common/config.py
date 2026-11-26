@@ -41,11 +41,6 @@ def _env_float(nombre: str, defecto: float) -> float:
     return float(_env(nombre, str(defecto)))
 
 
-def _env_float_opcional(nombre: str) -> float | None:
-    """Parámetro sin valor por defecto: si no está en `.env` o está vacío, queda en None (no se inventa)."""
-    valor = os.environ.get(nombre, "").strip()
-    return float(valor) if valor else None
-
 
 # --- Alcance (1.6) -----------------------------------------------------------
 PLANTA = _env("PLANTA", "TRUJILLO")
@@ -85,16 +80,20 @@ KG_POR_LITRO = _env_float("KG_POR_LITRO", 0.54)
 UMBRAL_Z_MAD = _env_float("UMBRAL_Z_MAD", 3.5)
 TOP_K = _env_int("TOP_K", 20)
 TOL_PRECIO_S10 = _env_float("TOL_PRECIO_S10", 0.10)   # 10 % bajo la mediana del canal
-MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # solo para generar la muestra sintética
+MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # merma que se simula al generar la muestra sintética
 UMBRAL_KPI_DIF = _env_float("UMBRAL_KPI_DIF", 0.02)    # umbral de referencia del KPI 1 (2 %)
 SEMILLA = _env_int("SEMILLA", 42)
 PRECIO_REF_KG = _env_float("PRECIO_REF_KG", 2.10)      # S/ por kg; se reemplaza por referencia pública
 
 # --- KPI 1 · balance de planta (H5) ------------------------------------------
-# La empresa no ha fijado la merma técnica: sin valor por defecto. Mientras falte,
-# el KPI 1 es la diferencia bruta y el tablero lo muestra «sin merma fijada».
-MERMA_TECNICA_PCT = _env_float_opcional("MERMA_TECNICA_PCT")
-MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE", "")  # tolerancia de la empresa o norma de peso de cilindros
+# La empresa no ha fijado su merma técnica. Para que el KPI 1 se calcule y quede
+# evidencia, el equipo asume 0.5 % de lo comprado como SUPUESTO DE TRABAJO, no como
+# dato de la empresa. El tablero muestra el KPI con y sin la merma, y la etiqueta
+# «supuesto» mientras MERMA_TECNICA_ES_SUPUESTO sea verdadero. Si la empresa entrega
+# su tolerancia, se cambian el valor, la fuente y la marca en .env, sin tocar código.
+MERMA_TECNICA_PCT = _env_float("MERMA_TECNICA_PCT", 0.005)
+MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE", "Supuesto de trabajo del equipo: 0.5 % de lo comprado")
+MERMA_TECNICA_ES_SUPUESTO = _env("MERMA_TECNICA_ES_SUPUESTO", "si").strip().lower() in ("si", "sí", "true", "1")
 
 # --- Modelo S12 y su operación (4.3) -----------------------------------------
 MADUREZ_DIAS = _env_int("MADUREZ_DIAS", 30)                  # la etiqueta madura 30 días después del vencimiento
