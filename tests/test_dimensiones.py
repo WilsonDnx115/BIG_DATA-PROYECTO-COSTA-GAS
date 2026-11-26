@@ -119,13 +119,27 @@ def test_dim_producto_separa_envasado_de_granel(spark, fuentes):
 
 
 def test_dim_senal_trae_las_doce_senales(spark):
+    """Tabla 4.9: descripcion, resolucion, ventana, estado y grado de evidencia."""
     d = dim.dim_senal(spark)
 
     assert d.count() == 12
-    assert d.columns == ["id_senal", "descripcion", "grado_evidencia"]
-    primera = d.take(1)[0]
-    assert primera["id_senal"] == "S1"
-    assert primera["grado_evidencia"] == "indicio"
+    assert d.columns == ["id_senal", "descripcion", "resolucion",
+                         "ventana", "estado", "grado_evidencia"]
+    filas = {f.id_senal: f for f in d.take(12)}
+    assert filas["S1"]["grado_evidencia"] == "indicio"
+    assert filas["S8"]["estado"] == "no_resoluble"       # sin ventana comun
+    assert filas["S12"]["resolucion"] == "factura"
+    assert all(f["ventana"] for f in filas.values())
+
+
+def test_dim_senal_deja_nulos_los_campos_del_catalogo_ausente(spark, tmp_path):
+    """Sin el YAML no se inventa nada: resolucion, ventana y estado quedan nulas."""
+    d = dim.dim_senal(spark, ruta_catalogo=tmp_path / "no_existe.yaml")
+
+    filas = d.take(12)
+    assert len(filas) == 12
+    assert all(f["descripcion"] for f in filas)          # eso viene del catalogo de Frank
+    assert all(f["estado"] is None for f in filas)
 
 
 def test_construir_y_escribir_deja_las_seis_en_iceberg(spark_iceberg, fuentes_iceberg):

@@ -1,4 +1,4 @@
-"""Dimensiones del modelo estrella de Gold (W08, informe Tabla 4.10).
+"""Dimensiones del modelo estrella de Gold (W08, informe Tabla 4.9).
 
 Seis dimensiones, todas en Iceberg y sin datos personales: de las personas y de
 las contrapartes solo viaja el hash que ya trae Silver, nunca el nombre, el DNI
@@ -8,6 +8,8 @@ Ninguna dimension se particiona: son tablas chicas y el particionado solo
 tendria sentido en los hechos.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 from src.common import config, limpieza
 from src.glue import iceberg, senales_spark
@@ -146,13 +148,41 @@ def dim_contraparte(maestro):
     return maestro.select(*columnas).filter(F.col("documento_hash").isNotNull()).distinct()
 
 
-def dim_senal(spark):
-    """Catalogo S1-S12 de Frank: codigo, descripcion y grado de evidencia (Tabla 4.3)."""
-    filas = [(codigo, descripcion, grado)
-             for codigo, (descripcion, grado) in sorted(senales_spark.CATALOGO.items(),
-                                                        key=lambda kv: int(kv[0][1:]))]
-    return spark.createDataFrame(
-        filas, "id_senal string, descripcion string, grado_evidencia string")
+CATALOGO_YAML = Path(__file__).resolve().parents[1] / "signals" / "catalogo.yaml"
+ESQUEMA_SENAL = ("id_senal string, descripcion string, resolucion string, "
+                 "ventana string, estado string, grado_evidencia string")
+
+
+def _catalogo_yaml(ruta: Path | None = None) -> dict:
+    """Resolucion, ventana y estado de cada senal, del catalogo S1-S12.
+
+    La Tabla 4.9 pide esos tres campos en `dim_senal` y solo viven en el
+    catalogo YAML; si falta el archivo quedan nulos, nunca inventados.
+    """
+    import yaml  # noqa: PLC0415
+
+    archivo = ruta or CATALOGO_YAML
+    if not archivo.exists():
+        return {}
+    datos = yaml.safe_load(archivo.read_text(encoding="utf-8")) or {}
+    return datos.get("senales", {})
+
+
+def dim_senal(spark, ruta_catalogo: Path | None = None):
+    """Catalogo S1-S12: descripcion, resolucion, ventana, estado y evidencia (Tabla 4.9).
+
+    La descripcion y el grado de evidencia salen del catalogo de Frank
+    (`senales_spark.CATALOGO`), que es el que usa el detector; la resolucion, la
+    ventana y el estado salen del YAML, que es donde se declaran.
+    """
+    detalle = _catalogo_yaml(ruta_catalogo)
+    filas = []
+    for codigo, (descripcion, grado) in sorted(senales_spark.CATALOGO.items(),
+                                               key=lambda kv: int(kv[0][1:])):
+        d = detalle.get(codigo, {})
+        filas.append((codigo, descripcion, d.get("resolucion"), d.get("ventana"),
+                      d.get("estado"), grado))
+    return spark.createDataFrame(filas, ESQUEMA_SENAL)
 
 
 def construir(spark, fuentes: dict) -> dict:
