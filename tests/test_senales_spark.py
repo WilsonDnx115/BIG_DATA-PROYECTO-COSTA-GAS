@@ -131,6 +131,66 @@ def test_s6_tipo_de_cambio(spark):
     assert _docs(a) == {"A F1-1", "A F1-2", "A F1-5"}
 
 
+# --- F04 · S9, S11 y S12 ------------------------------------------------------
+def test_s9_combustible_sin_venta_y_fuera_de_su_rol(spark):
+    from src.glue import senales_spark
+
+    filas = [(f"REP{i:03d}", 2020, 5, "reparto", 10_000.0, 500.0 + 10 * i) for i in range(10)]   # ≈ S/ 50 por t
+    filas += [("REP900", 2020, 5, "reparto", 10_000.0, 5_000.0),     # S/ 500 por t: fuera de su rol
+              ("REP901", 2020, 5, "reparto", 0.0, 300.0),            # combustible sin venta
+              ("REP902", 2020, 5, "reparto", None, 200.0),           # kg nulo con combustible
+              ("REP903", 2020, 5, "reparto", 0.0, 0.0)]              # parada: sin combustible ni venta
+    filas += [(f"CIS{i:03d}", 2020, 5, "transporte", 100_000.0, 2_000.0 + 50 * i) for i in range(5)]
+    um = pd.DataFrame(filas, columns=["placa_norm", "anio", "mes", "rol", "kg", "combustible"])
+    a = senales_spark.s9(_a_spark(spark, um))
+    assert {r["placa_norm"] for r in a.select("placa_norm").take(100)} == {"REP900", "REP901", "REP902"}
+    assert _docs(a) >= {"REP900 2020-05"}
+
+
+def test_s11_cierre_sin_medicion_y_ajustes(spark):
+    from src.glue import senales_spark
+
+    oct18 = pd.date_range("2018-10-01", "2018-10-31")
+    prod = pd.DataFrame({"fecha": oct18.date, "anio": 2018, "mes": 10, "residuo_kg": 0.0, "ajuste_kg": None})
+    prod.loc[prod.index[-1], "ajuste_kg"] = -9095.0
+    nov18 = pd.DataFrame({"fecha": pd.date_range("2018-11-01", "2018-11-03").date, "anio": 2018, "mes": 11,
+                          "residuo_kg": [0.0, 12.5, -3.0], "ajuste_kg": None})
+    p = pd.concat([prod, nov18], ignore_index=True)
+    p["ajuste_kg"] = p["ajuste_kg"].astype("float64")
+    a = senales_spark.s11(_a_spark(spark, p))
+    assert _docs(a) == {"CIERRE 2018-10", "AJUSTE 2018-10-31"}
+    assert {r["kg"] for r in a.filter(a.documento == "AJUSTE 2018-10-31").take(1)} == {9095.0}
+
+
+def test_s12_cruce_tesoreria_logistica(spark):
+    from src.glue import senales_spark
+
+    logistica = _a_spark(spark, _compras([
+        ("PETROPERU", "F001", "00123", "1", "2022-03-01", 24_070.0, 1.0, 3.8, "ABC123", 2022, 3),   # coincide
+        ("PETROPERU", "F001", "124", "1", "2022-03-02", 24_070.0, 1.0, 3.8, "ABC123", 2022, 3),     # kg distinto
+        ("SOLGAS", "F002", "50", "1", "2022-03-03", 10_000.0, 1.0, 3.8, "XYZ789", 2022, 3),         # solo logística
+        ("SOLGAS", "F002", "51", "1", "2022-03-04", 10_000.0, 1.0, 3.8, "XYZ789", 2022, 3),         # kg desconocido
+    ]))
+    tes = pd.DataFrame({
+        "proveedor": ["petroperu ", "PETROPERU", "SOLGAS", "SOLGAS"],
+        "documento": ["F001-123", "F001-124", "F002-99", "F002-51"],
+        "kg": [24_070.5, 240_700.0, 8_000.0, None],
+        "fecha_pago": pd.to_datetime(["2022-03-10", "2022-03-11", "2022-04-02", "2022-03-12"]).date,
+        "fecha_vence": pd.to_datetime(["2022-03-31", "2022-04-01", "2022-04-30", "2022-04-03"]).date})
+    tesoreria = _a_spark(spark, tes)
+
+    cruce = senales_spark.cruce_s12(tesoreria, logistica)
+    clases = {r["documento"]: r["clase_s12"] for r in cruce.select("documento", "clase_s12").take(100)}
+    assert clases == {"PETROPERU F001-00123": "coincide", "PETROPERU F001-124": "kg_distinto",
+                      "SOLGAS F002-50": "solo_logistica", "SOLGAS F002-99": "solo_tesoreria",
+                      "SOLGAS F002-51": "kg_desconocido"}
+
+    a = senales_spark.s12(tesoreria, logistica)
+    assert _docs(a) == {"PETROPERU F001-124", "SOLGAS F002-50", "SOLGAS F002-99"}
+    fila = a.filter(a.documento == "SOLGAS F002-99").take(1)[0]
+    assert (fila["anio"], fila["mes"], fila["kg"]) == (2022, 4, 8000.0)   # solo tesorería: fecha de pago
+
+
 def test_id_alerta_deterministico(spark, silver):
     from src.glue import senales_spark
 

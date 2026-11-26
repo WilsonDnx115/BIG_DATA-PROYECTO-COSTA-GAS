@@ -21,7 +21,13 @@ serie, numero, nro_scop, fecha_factura, kg, monto_usd, tipo_cambio, placa_norm):
   S3  USD/kg sobre la mediana móvil del proveedor              ventana rangeBetween de días previos
   S6  tipo de cambio igual a 1 o lejos del oficial del día     join con broadcast(calendario BCRP)
 
-S9, S11 y S12 se agregan en el commit F04. Sin collect().
+S9, S11 y S12 (F04):
+
+  S9  combustible sin venta, o S/ por t con |z robusto| > UMBRAL_Z_MAD en su rol   unidad × mes
+  S11 cierre de planta sin medición física (residuo 0 todo el mes) y ajustes manuales   día y mes
+  S12 factura sin pareja o con kg distinto entre tesorería y logística   full_outer por documento
+
+Sin collect().
 """
 from __future__ import annotations
 
@@ -239,6 +245,149 @@ def s6(compras_glp, tc_oficial):
     es_uno = tc == F.lit(1.0)
     d = c.filter(F.coalesce(es_uno, F.lit(False)) | F.coalesce(desvio > F.lit(config.TOL_TIPO_CAMBIO), F.lit(False)))
     return _alertas(d, "S6", "placa_norm", puntaje=F.coalesce(desvio, F.lit(1.0)))
+
+
+# --- S9, S11 y S12 (F04) ------------------------------------------------------
+TOL_KG_S12 = 1.0   # kg: diferencias menores son redondeo entre tesorería y logística
+
+
+def _z_robusto_por_grupo(df, valor: str, grupo: str, salida: str):
+    """z robusto por grupo, igual que base_mad.z_robusto: 0.6745 × (x − mediana) / MAD.
+
+    Mediana y MAD exactas con percentile(…, 0.5), agregadas por grupo y unidas de vuelta.
+    Si el MAD es 0 se usa 1e-9, como en la versión pandas.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    med = df.filter(F.col(valor).isNotNull()).groupBy(grupo).agg(
+        F.expr(f"percentile({valor}, 0.5)").alias("_mediana"))
+    con_med = df.join(med, grupo, "left_outer")
+    mad = (con_med.filter(F.col(valor).isNotNull())
+           .withColumn("_desvio", F.abs(F.col(valor) - F.col("_mediana")))
+           .groupBy(grupo).agg(F.expr("percentile(_desvio, 0.5)").alias("_mad")))
+    mad_seguro = F.when(F.col("_mad") > 0, F.col("_mad")).otherwise(F.lit(1e-9))
+    return (con_med.join(mad, grupo, "left_outer")
+            .withColumn(salida, F.lit(0.6745) * (F.col(valor) - F.col("_mediana")) / mad_seguro)
+            .drop("_mediana", "_mad"))
+
+
+def _por_unidad_mes(df):
+    """Columnas de alerta para el grano unidad × mes: fecha = día 1 y documento = «PLACA AAAA-MM»."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    return (df.withColumn("fecha", F.make_date(F.col("anio"), F.col("mes"), F.lit(1)))
+            .withColumn("documento", F.concat_ws(" ", F.col("placa_norm"),
+                                                 F.format_string("%04d-%02d", F.col("anio"), F.col("mes")))))
+
+
+def s9(unidad_mes):
+    """Combustible sin venta, o combustible por tonelada fuera de lo normal para su rol.
+
+    Entrada: fact_unidad_mes con placa_norm, anio, mes, rol, kg y combustible (S/).
+    El S/ por t se calcula solo con kg > 0; con kg = 0 o nulo y combustible > 0 es
+    «combustible sin venta». El z robusto se calcula dentro de cada rol, porque una
+    cisterna y una unidad de reparto no son comparables.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    u = _por_unidad_mes(unidad_mes).withColumn(
+        "_soles_t", F.when(F.col("kg") > 0, F.col("combustible") / (F.col("kg") / F.lit(1000.0))))
+    u = _z_robusto_por_grupo(u, "_soles_t", "rol", "_z")
+    sin_venta = (F.coalesce(F.col("kg"), F.lit(0.0)) <= 0) & (F.col("combustible") > 0)
+    fuera = F.abs(F.col("_z")) > F.lit(config.UMBRAL_Z_MAD)
+    d = u.filter(sin_venta | F.coalesce(fuera, F.lit(False))).withColumn("kg", F.coalesce(F.col("kg"), F.lit(0.0)))
+    puntaje = F.when(sin_venta, F.lit(None).cast("double")).otherwise(F.abs(F.col("_z")))
+    return _alertas(d, "S9", "placa_norm", puntaje=F.coalesce(puntaje, F.lit(1.0)))
+
+
+def s11(produccion):
+    """Cierre de planta sin medición física.
+
+    Entrada: producción diaria con fecha, anio, mes, residuo_kg y ajuste_kg (contrato
+    de A08). Dispara:
+      * una alerta por mes cuando el residuo es exactamente 0 en todos los días del
+        mes (al menos 2 días): el cierre se cuadró sin medir;
+      * una alerta por día con un ajuste manual distinto de 0 (kg = |ajuste|).
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    p = produccion.withColumn("fecha", F.col("fecha").cast("date"))
+    meses = (p.groupBy("anio", "mes").agg(
+        F.count("*").alias("_dias"),
+        F.sum(F.when(F.col("residuo_kg") == 0, 1).otherwise(0)).alias("_dias_cero"),
+        F.max("fecha").alias("fecha"),
+        F.sum(F.abs(F.coalesce(F.col("ajuste_kg"), F.lit(0.0)))).alias("kg"))
+        .filter((F.col("_dias") >= 2) & (F.col("_dias_cero") == F.col("_dias")))
+        .withColumn("documento", F.format_string("CIERRE %04d-%02d", F.col("anio"), F.col("mes")))
+        .withColumn("placa_norm", F.lit(None).cast("string")))
+    ajustes = (p.filter(F.coalesce(F.col("ajuste_kg"), F.lit(0.0)) != 0)
+               .withColumn("kg", F.abs(F.col("ajuste_kg")))
+               .withColumn("documento", F.concat(F.lit("AJUSTE "), F.date_format("fecha", "yyyy-MM-dd")))
+               .withColumn("placa_norm", F.lit(None).cast("string")))
+    return _alertas(meses, "S11", "placa_norm").unionByName(_alertas(ajustes, "S11", "placa_norm"))
+
+
+def _llave_documento(proveedor, serie, numero):
+    """Llave común «PROVEEDOR|SERIE|NUMERO»: mayúsculas, sin espacios, número sin ceros a la izquierda."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    limpio = lambda c: F.regexp_replace(F.upper(F.trim(c)), r"\s+", "")  # noqa: E731
+    num = F.regexp_replace(limpio(numero), r"^0+(?=\d)", "")
+    return F.concat_ws("|", F.regexp_replace(F.upper(F.trim(proveedor)), r"\s+", " "), limpio(serie), num)
+
+
+def cruce_s12(tesoreria, compras_glp):
+    """Cruce full_outer entre tesorería y logística por documento, con la clase de cada par.
+
+    tesoreria: proveedor, documento («SERIE-NUMERO»), kg, fecha_pago, fecha_vence (A07).
+    compras_glp: la tabla de logística (F06), con serie y numero por separado.
+    Clases: coincide, kg_distinto (|Δkg| > TOL_KG_S12), solo_logistica, solo_tesoreria y
+    kg_desconocido (ambos registros existen pero a uno le faltan los kg: no se afirma que
+    coincidan ni que difieran, y no genera alerta).
+    Lo usan s12() y la tabla de modelado modelo_factura (F07) para la etiqueta y el KPI 3.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    t = tesoreria.select(
+        _llave_documento(F.col("proveedor"), F.split(F.col("documento"), "-").getItem(0),
+                         F.split(F.col("documento"), "-").getItem(1)).alias("llave"),
+        F.col("proveedor").alias("proveedor_t"), F.col("documento").alias("documento_t"),
+        F.col("kg").cast("double").alias("kg_tesoreria"),
+        F.col("fecha_pago").cast("date").alias("fecha_pago"),
+        F.col("fecha_vence").cast("date").alias("fecha_vence"))
+    lg = preparar_compras(compras_glp).select(
+        _llave_documento(F.col("proveedor"), F.col("serie"), F.col("numero")).alias("llave"),
+        F.col("documento").alias("documento_l"), "placa_norm", "fecha", "anio", "mes",
+        F.col("kg").cast("double").alias("kg_logistica"))
+    j = lg.join(t, "llave", "full_outer")
+    clase = (F.when(F.col("documento_t").isNull(), "solo_logistica")
+             .when(F.col("documento_l").isNull(), "solo_tesoreria")
+             .when(F.col("kg_logistica").isNull() | F.col("kg_tesoreria").isNull(), "kg_desconocido")
+             .when(F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) > F.lit(TOL_KG_S12), "kg_distinto")
+             .otherwise("coincide"))
+    fecha = F.coalesce(F.col("fecha"), F.col("fecha_pago"), F.col("fecha_vence"))
+    return (j.withColumn("clase_s12", clase)
+            .withColumn("documento", F.coalesce(F.col("documento_l"),
+                                                F.concat_ws(" ", F.col("proveedor_t"), F.col("documento_t"))))
+            .withColumn("fecha", fecha)
+            .withColumn("anio", F.coalesce(F.col("anio"), F.year(fecha)))
+            .withColumn("mes", F.coalesce(F.col("mes"), F.month(fecha))))
+
+
+def s12(tesoreria, compras_glp):
+    """Alertas S12: facturas solo en logística, solo en tesorería o con kg distinto.
+
+    El puntaje es la diferencia relativa de kg cuando hay pareja (|Δ| / máx) y 1.0
+    cuando falta el segundo registro.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    c = cruce_s12(tesoreria, compras_glp).filter(
+        F.col("clase_s12").isin("solo_logistica", "solo_tesoreria", "kg_distinto"))
+    kg = F.coalesce(F.col("kg_logistica"), F.col("kg_tesoreria"))
+    dif = F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) / F.greatest(F.col("kg_logistica"), F.col("kg_tesoreria"))
+    d = c.withColumn("kg", kg)
+    return _alertas(d, "S12", "placa_norm", puntaje=F.coalesce(dif, F.lit(1.0)))
 
 
 def calcular(compras, ventas, flota, maestro):
