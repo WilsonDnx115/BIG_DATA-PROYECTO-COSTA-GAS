@@ -84,12 +84,15 @@ aws cloudformation deploy --stack-name "$STACK" --template-file "$PLANTILLA" \
   --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset \
   --parameter-overrides Sufijo="$SUFIJO" Correo1="$C1" Correo2="$C2" Correo3="$C3" Correo4="$C4"
 
-# Si el stack ya existía, actualizar el código de la Lambda
-aws lambda update-function-code --function-name costagas-bronze-to-silver \
-  --s3-bucket "$CODE_BUCKET" --s3-key _code/costagas_src.zip > /dev/null
+# Si el stack ya existia, actualizar el codigo de las Lambdas
+for f in costagas-bronze-to-silver costagas-ingesta; do
+  aws lambda update-function-code --function-name "$f" \
+    --s3-bucket "$CODE_BUCKET" --s3-key _code/costagas_src.zip > /dev/null
+done
 
 echo ">> Creando prefijos de las capas (2.1.2)"
-for p in bronze/ silver/ gold/ _manifests/ scaletest/ athena-results/ sparkui/; do
+for p in landing/ landing/interno/ landing/externo/ bronze/ silver/ gold/ _manifests/ \
+         op/landing/ scaletest/ athena-results/ sparkui/; do
   aws s3api put-object --bucket "$LAGO" --key "$p" --server-side-encryption AES256 > /dev/null
 done
 

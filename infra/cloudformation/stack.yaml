@@ -68,7 +68,7 @@ Resources:
   # ---------------------------------------------------------------------------
   Lago:
     Type: AWS::S3::Bucket
-    DependsOn: PermisoS3InvocaLambda
+    DependsOn: [PermisoS3InvocaLambda, PermisoS3InvocaIngesta]
     Properties:
       BucketName: !Sub costagas-trujillo-lake-${Sufijo}
       VersioningConfiguration: { Status: Suspended }
@@ -96,6 +96,19 @@ Resources:
               S3Key:
                 Rules:
                   - { Name: prefix, Value: bronze/interno/ }
+          # W02/W03: la entrega llega a landing/ y la operacion mensual a op/landing/.
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt Ingesta.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: landing/ }
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt Ingesta.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: op/landing/ }
 
   # (3.8.3) Rechazo de peticiones sin TLS
   PoliticaLago:
@@ -178,6 +191,99 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
       SourceAccount: !Ref AWS::AccountId
+
+  # ---------------------------------------------------------------------------
+  # (2b) Ingesta de landing/ a Bronze (W02). Rol de minimo privilegio: lee solo
+  #      landing/, escribe solo bronze/, op/bronze/ y _manifests/. Sin costo.
+  # ---------------------------------------------------------------------------
+  RolIngesta:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-ingesta-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: landing-lectura-bronze-escritura
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/op/landing/*
+              - Effect: Allow                      # Bronze es inmutable: no hay DeleteObject
+                Action: s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/op/bronze/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/_manifests/*
+              - Effect: Allow                      # la huella ya cargada se busca listando claves
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                Condition:
+                  StringLike:
+                    s3:prefix: ["landing/*", "op/landing/*", "_manifests/*"]
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  # Costo: capa gratuita (400 000 GB-s/mes). 35 archivos x 300 s x 0.5 GB = 5 250 GB-s.
+  Ingesta:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-ingesta
+      Runtime: python3.12
+      Handler: src.ingest.lambda_ingesta.lambda_handler
+      Role: !GetAtt RolIngesta.Arn
+      MemorySize: 512
+      Timeout: 300
+      EphemeralStorage: { Size: 1024 }     # /tmp para la copia local: el Excel mas grande pesa 62 MB
+      Layers: [!Ref PandasLayerArn]        # openpyxl, para contar las filas en el manifiesto
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  PermisoS3InvocaIngesta:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Ingesta
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+      SourceAccount: !Ref AWS::AccountId
+
+  # Una extension fuera de _archivos.yaml levanta excepcion y el evento termina en la cola.
+  DestinoFallasIngesta:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref Ingesta
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 2
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  AlarmaErrorIngesta:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: costagas-error-ingesta
+      AlarmDescription: Errores de la Lambda costagas-ingesta
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref Ingesta }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TemaOperacion]
 
   # ---------------------------------------------------------------------------
   # (3) Rol de Glue: lee bronze/externo/* y silver/*; escribe silver/* y gold/*.
@@ -597,6 +703,7 @@ Outputs:
   LakeUri: { Value: !Sub "s3://costagas-trujillo-lake-${Sufijo}" }
   Workgroup: { Value: !Ref WorkgroupAthena }
   Lambda: { Value: !Ref BronzeToSilver }
+  LambdaIngesta: { Value: !Ref Ingesta }
   GlueJob: { Value: !Ref JobConciliacion }
   RolLambda: { Value: !GetAtt RolLambda.Arn }
   RolGlue: { Value: !GetAtt RolGlue.Arn }
