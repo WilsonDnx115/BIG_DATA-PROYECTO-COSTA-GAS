@@ -95,10 +95,19 @@ def test_lda_devuelve_k_temas(textos):
 
 
 def test_lda_quita_las_palabras_vacias_en_espanol(textos):
+    """Ningun tema se describe con palabras de la lista vacia en espanol de MLlib.
+
+    La lista se compara con la de Spark y no con una escrita a mano: la de Spark
+    trae las formas acentuadas («segun» no esta, «segun» con tilde si), y una
+    lista propia aqui probaria el texto de la prueba, no el pipeline.
+    """
+    from pyspark.ml.feature import StopWordsRemover
+
+    vacias = set(StopWordsRemover.loadDefaultStopWords("spanish"))
     _, temas, _ = ext.temas(textos, k=2)
 
     palabras = {p for f in temas.take(2) for p in f.palabras}
-    assert not palabras & {"que", "del", "los", "para", "sin", "segun"}
+    assert not palabras & vacias
     assert "gas" in palabras
 
 
