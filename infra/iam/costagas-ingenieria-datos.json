@@ -11,8 +11,10 @@
       "Sid": "ValidarYListarStacks",
       "Effect": "Allow",
       "Action": [
-        "cloudformation:ValidateTemplate", "cloudformation:ListStacks",
-        "cloudformation:GetTemplateSummary"
+        "cloudformation:ValidateTemplate",
+        "cloudformation:ListStacks",
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:DescribeStacks"
       ],
       "Resource": "*"
     },
@@ -21,8 +23,12 @@
       "Effect": "Allow",
       "Action": "s3:*",
       "Resource": [
-        "arn:aws:s3:::costagas-trujillo-lake-*", "arn:aws:s3:::costagas-trujillo-lake-*/*",
-        "arn:aws:s3:::costagas-code-*", "arn:aws:s3:::costagas-code-*/*"
+        "arn:aws:s3:::costagas-trujillo-lake-*",
+        "arn:aws:s3:::costagas-trujillo-lake-*/*",
+        "arn:aws:s3:::costagas-code-*",
+        "arn:aws:s3:::costagas-code-*/*",
+        "arn:aws:s3:::costagas-portal-*",
+        "arn:aws:s3:::costagas-portal-*/*"
       ]
     },
     {
@@ -41,7 +47,9 @@
       "Sid": "CapasYListado",
       "Effect": "Allow",
       "Action": [
-        "lambda:GetLayerVersion", "lambda:ListFunctions", "lambda:ListLayers"
+        "lambda:GetLayerVersion",
+        "lambda:ListFunctions",
+        "lambda:ListLayers"
       ],
       "Resource": "*"
     },
@@ -61,8 +69,12 @@
       "Sid": "ListarAthena",
       "Effect": "Allow",
       "Action": [
-        "athena:ListWorkGroups", "athena:ListDataCatalogs", "athena:GetDataCatalog",
-        "athena:ListDatabases", "athena:GetDatabase", "athena:ListTableMetadata",
+        "athena:ListWorkGroups",
+        "athena:ListDataCatalogs",
+        "athena:GetDataCatalog",
+        "athena:ListDatabases",
+        "athena:GetDatabase",
+        "athena:ListTableMetadata",
         "athena:GetTableMetadata"
       ],
       "Resource": "*"
@@ -71,7 +83,10 @@
       "Sid": "SalDeSeudonimizacion",
       "Effect": "Allow",
       "Action": [
-        "ssm:GetParameter", "ssm:GetParameters", "ssm:PutParameter", "ssm:DeleteParameter",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:PutParameter",
+        "ssm:DeleteParameter",
         "ssm:AddTagsToResource"
       ],
       "Resource": "arn:aws:ssm:us-east-2:*:parameter/costagas/*"
@@ -86,15 +101,23 @@
       "Sid": "RolesDeServicioDelProyecto",
       "Effect": "Allow",
       "Action": [
-        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:TagRole",
-        "iam:UpdateAssumeRolePolicy", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
-        "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies"
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:TagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies"
       ],
       "Resource": "arn:aws:iam::*:role/costagas-*"
     },
     {
-      "Sid": "EntregarRolesSoloALambdaYGlue",
+      "Sid": "EntregarRolesSoloASusServicios",
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::*:role/costagas-*",
@@ -102,7 +125,9 @@
         "StringEquals": {
           "iam:PassedToService": [
             "lambda.amazonaws.com",
-            "glue.amazonaws.com"
+            "glue.amazonaws.com",
+            "events.amazonaws.com",
+            "scheduler.amazonaws.com"
           ]
         }
       }
@@ -111,7 +136,9 @@
       "Sid": "PresupuestoYCostos",
       "Effect": "Allow",
       "Action": [
-        "budgets:*", "ce:Get*", "ce:Describe*"
+        "budgets:*",
+        "ce:Get*",
+        "ce:Describe*"
       ],
       "Resource": "*"
     },
@@ -119,8 +146,98 @@
       "Sid": "LeerLogs",
       "Effect": "Allow",
       "Action": [
-        "logs:DescribeLogGroups", "logs:DescribeLogStreams", "logs:GetLogEvents",
-        "logs:FilterLogEvents", "logs:StartQuery", "logs:GetQueryResults"
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents",
+        "logs:StartQuery",
+        "logs:GetQueryResults"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EventosYProgramas",
+      "Effect": "Allow",
+      "Action": [
+        "events:*",
+        "scheduler:*"
+      ],
+      "Resource": [
+        "arn:aws:events:us-east-2:*:rule/costagas-*",
+        "arn:aws:scheduler:us-east-2:*:schedule/default/costagas-*",
+        "arn:aws:scheduler:us-east-2:*:schedule-group/default"
+      ]
+    },
+    {
+      "Sid": "AvisosYColas",
+      "Effect": "Allow",
+      "Action": [
+        "sns:*",
+        "sqs:*"
+      ],
+      "Resource": [
+        "arn:aws:sns:us-east-2:*:costagas-*",
+        "arn:aws:sqs:us-east-2:*:costagas-*"
+      ]
+    },
+    {
+      "Sid": "Alarmas",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:TagResource",
+        "cloudwatch:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:cloudwatch:us-east-2:*:alarm:costagas-*"
+    },
+    {
+      "Sid": "PortalWeb",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:*",
+        "cloudfront:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ProveedorOidcGithub",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateOpenIDConnectProvider",
+        "iam:GetOpenIDConnectProvider",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:UpdateOpenIDConnectProviderThumbprint"
+      ],
+      "Resource": "arn:aws:iam::*:oidc-provider/token.actions.githubusercontent.com"
+    },
+    {
+      "Sid": "RegistrosDelProyecto",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
+      ],
+      "Resource": [
+        "arn:aws:logs:us-east-2:*:log-group:/aws/lambda/costagas-*",
+        "arn:aws:logs:us-east-2:*:log-group:/aws-glue/*"
+      ]
+    },
+    {
+      "Sid": "ListarServiciosDelProyecto",
+      "Effect": "Allow",
+      "Action": [
+        "events:ListRules",
+        "scheduler:ListSchedules",
+        "scheduler:ListScheduleGroups",
+        "sns:ListTopics",
+        "sqs:ListQueues",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics"
       ],
       "Resource": "*"
     }

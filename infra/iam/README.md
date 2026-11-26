@@ -11,11 +11,12 @@ Cada archivo `.json` de esta carpeta es la política tal como está creada en la
 | Política | Se adjunta a | Permite | No permite |
 |---|---|---|---|
 | `costagas-base` | Los cuatro usuarios de persona | Gestionar su propia contraseña, clave de acceso y MFA | Actuar fuera de `us-east-2`; EC2, NAT Gateway, QuickSight, KMS propio, crawlers, EMR Serverless, SageMaker, Redshift, RDS; crear usuarios o políticas; ACL públicas |
-| `costagas-ingenieria-datos` | Rol de ingeniería de datos | Desplegar el stack, todo el lago, Lambda, Glue, Athena, la sal en Parameter Store, roles `costagas-*` | Crear usuarios; entregar roles a servicios que no sean Lambda o Glue |
+| `costagas-ingenieria-datos` | Rol de ingeniería de datos | Desplegar el stack, todo el lago (incluido el bucket del portal), Lambda, Glue, Athena, la sal en Parameter Store, roles `costagas-*`; desde la v3 (25/11/2026) también reglas de EventBridge y programas de Scheduler `costagas-*`, temas SNS y colas SQS `costagas-*`, alarmas `costagas-*`, Cognito, CloudFront, el proveedor OIDC de GitHub y grupos de registros de `costagas-*` | Crear usuarios; entregar roles a servicios que no sean Lambda, Glue, EventBridge o Scheduler |
 | `costagas-analitica` | Rol de análisis y modelado | Leer `silver/` y `gold/`, consultar en el workgroup `costagas-wg`, lanzar jobs de Glue existentes | Leer `bronze/`; escribir en Silver o Gold |
-| `costagas-gobierno` | Coordinación; calidad y documentación | Leer `silver/` y `gold/`, Athena, costos, y ver IAM, CloudFormation, Lambda, Glue y logs | Modificar recursos; leer `bronze/` |
-| `costagas-powerbi-lectura` | Usuario técnico `svc-powerbi` (Semana 12) | Leer `gold/` y consultar en el workgroup | Todo lo demás |
-| `costagas-emr-opcional` | Nadie por ahora | Lanzar un clúster transitorio de EMR | EMR está bloqueado en el plan gratuito; no se ha creado en la cuenta |
+| `costagas-gobierno` | Coordinación; calidad y documentación | Leer `silver/` y `gold/`, Athena, costos, y ver IAM, CloudFormation, Lambda, Glue y logs; desde la v4 (25/11/2026) también ver EventBridge, Scheduler, SNS, SQS, CloudWatch, Cognito y CloudFront | Modificar recursos; leer `bronze/` |
+| `costagas-dashboard-lectura` | Usuario técnico `svc-dashboard` (Grafana Cloud) | Leer `gold/`, el catálogo `costagas_gold` y consultar en el workgroup | Ver Silver o Bronze; todo lo demás |
+
+`costagas-powerbi-lectura` se borró el 25/11/2026 (Power BI se reemplazó por Grafana Cloud) y `costagas-emr-opcional` nunca se creó en la cuenta; sus archivos se retiraron de esta carpeta.
 
 Las denegaciones de `costagas-base` son explícitas, así que prevalecen sobre cualquier permiso de las demás.
 
@@ -29,6 +30,7 @@ Un usuario de IAM por persona; ninguno compartido. Los permisos siguen a la func
 | `wilson.mirano` | `costagas-analitica` | `costagas-ingenieria-datos` |
 | `anghelo.alcantara` | `costagas-gobierno` | `costagas-gobierno` |
 | `bruno.ordonez` | `costagas-gobierno` | `costagas-gobierno` |
+| `svc-dashboard` (técnico, sin consola) | — | `costagas-dashboard-lectura` |
 
 Todos tienen además `costagas-base`. El titular de la cuenta entra con su AWS Builder ID y MFA, sin claves de acceso, y es el único que crea usuarios y adjunta políticas.
 
@@ -38,6 +40,8 @@ Todos tienen además `costagas-base`. El titular de la cuenta entra con su AWS B
 2. Ambos borran su clave de acceso y crean una nueva.
 3. Se repiten las pruebas de `docs/evidencias/seguridad/` con los perfiles nuevos.
 4. Se registra en un ADR con captura de los permisos antes y después.
+
+**Estado (25/11/2026):** el paso 1 lo aplicó el titular desde CloudShell; primero se adjuntó la política nueva y después se quitó la anterior, para no dejar a nadie sin permisos. Los pasos 2 y 3 los hace cada integrante con su perfil. Evidencia en `docs/evidencias/seguridad/iam_2026-11-25.md`.
 
 ## Roles de servicio
 
