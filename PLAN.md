@@ -213,7 +213,7 @@ Esta fase deja en el repositorio la evidencia que sostiene las cifras del capít
 
 ### 2.4 · Stack tecnológico y equivalencia entre rutas
 
-- [ ] **2.4.1 Entorno local reproducible.** `requirements.txt` con versiones fijas: `pandas 2.2`, `pyarrow`, `awswrangler 3.9`, `pyspark 3.5.*` (igual que Glue 5.0), `scikit-learn 1.5`, `openpyxl`, `pdfplumber 0.11`, `yt-dlp`, `boto3`, `pytest`. Python 3.11 para coincidir con Glue 5.0.
+- [ ] **2.4.1 Entorno local reproducible.** `requirements.txt` con versiones fijas: `pandas 2.2`, `pyarrow`, `awswrangler 3.9`, `pyspark 3.5.*` (igual que Glue 5.0), `scikit-learn 1.5`, `openpyxl`, `pdfplumber 0.11`, `boto3`, `pytest`. Python 3.11 para coincidir con Glue 5.0.
 - [ ] **2.4.2 Capas de Lambda.** Usar la capa gestionada **AWS SDK for pandas** para Python 3.12 (ARN publicado por AWS para us-east-2) y una capa propia pequeña con `openpyxl` para leer XLSX.
 - [ ] **2.4.3 Despliegue.** `infra/scripts/deploy.sh` que empaqueta el código, lo sube a `s3://…/_code/` y despliega el stack.
 - [ ] **2.4.4 Control de costo.** Verificar que el presupuesto de 2.1.1 existe y enviar una alerta de prueba. Activar Cost Explorer.
@@ -240,8 +240,8 @@ Cada extractor escribe en Bronze **sin transformar** (ELT) y registra un manifie
 - [ ] **3.2.4 PU-02 Tipo de cambio BCRP.** `src/ingest/bcrp.py`: consulta la API de BCRPData para las series PD04640PD (diaria) y PN01207PM (mensual) de 2016 a 2024 y guarda el JSON. Verificar el formato de fechas de la API antes de automatizar.
 - [ ] **3.2.5 PU-03 Órdenes SCOP propias.** Carga manual del Excel exportado por la empresa con `internos.py` (mismo flujo que 3.2.2).
 - [ ] **3.2.6 EN-01 Facilito.** `src/ingest/facilito.py`: guarda la tabla de plantas, estaciones y locales de la provincia de Trujillo como JSON con fecha de captura. Si la página exige reCAPTCHA, la captura es manual (guardar HTML desde el navegador) y el script solo convierte el HTML a JSON.
-- [ ] **3.2.7 NE-01 y NE-02 YouTube.** `src/ingest/youtube.sh` con `yt-dlp` (sin descargar video): `--skip-download --write-info-json --write-auto-subs --sub-langs es --write-comments --extractor-args "youtube:max_comments=200"`, para las cinco búsquedas de 200 y el canal de Osinergmin.
-- [ ] **3.2.8 NE-03 a NE-05 TikTok y Facebook.** Lista de URL en `src/ingest/urls_videos.txt` (recopilada con sesión iniciada) y `yt-dlp -a` con `--write-info-json`.
+- [ ] **3.2.7 NE-01 y NE-02 YouTube.** Lambda `costagas-extractor-youtube` con la **YouTube Data API v3** ([ADR 0015](docs/adr/0015-youtube-data-api.md)), programada semanalmente con EventBridge Scheduler: pide metadatos, descripciones y comentarios de videos **públicos** para las cinco búsquedas y el canal de Osinergmin, y escribe el JSON en `landing/externo/`. La clave es un `SecureString` en Parameter Store que solo lee esa función; nunca va al repositorio. **No se guarda ningún dato de quien comenta.**
+- ~~**3.2.8 NE-03 a NE-05 TikTok y Facebook.**~~ **Fuera del alcance corregido** (`CLAUDE.md`). Sus APIs de investigación exigen aprobación institucional y la descarga automatizada va contra las condiciones de uso ([ADR 0015](docs/adr/0015-youtube-data-api.md)).
 - [ ] **3.2.9 NE-06 Google Maps.** Plantilla CSV `data/raw/maps_resenas.csv` para la carga manual (marca, local, fecha, texto, estrellas). Sin nombres de usuarios.
 - [ ] **3.2.10 NE-07 Resoluciones de Osinergmin.** `src/ingest/resoluciones.py`: descarga los PDF de una lista de URL (`urls_resoluciones.txt`, armada con la búsqueda `site:cdn.www.gob.pe osinergmin GLP cilindros`), con pausa de 2 segundos entre descargas.
 - [ ] **3.2.11 NE-08 GDELT.** `src/ingest/gdelt.py`: DOC API (`mode=artlist`, `format=json`, `maxrecords=250`) con términos de GLP en Perú y 5 segundos de pausa entre consultas por el límite de peticiones. Para el histórico, una muestra de archivos de `masterfilelist.txt` de los meses con eventos.
