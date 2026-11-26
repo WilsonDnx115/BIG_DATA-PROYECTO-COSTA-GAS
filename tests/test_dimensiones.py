@@ -8,6 +8,15 @@ from src.glue import dimensiones as dim
 from src.glue import senales_spark
 
 PROHIBIDAS = ("nombre", "documento", "dni", "ruc", "razon", "apellido", "conductor", "vendedor")
+# `documento_hash` y `ruc_valido` son justo las formas seguras: un hash y un
+# booleano. Lo que no puede aparecer es la columna con el valor en claro.
+SEGURAS = ("_hash", "_valido")
+
+
+def _columnas_con_identificador(df) -> list[str]:
+    return [c for c in df.columns
+            if not c.lower().endswith(SEGURAS)
+            and any(p in c.lower() for p in PROHIBIDAS)]
 
 ESQUEMA_UNIDADES = ("placa_norm string, empresa string, clase string, uso string, "
                     "marca string, capacidad_glp_kg double, traslada_gas boolean")
@@ -55,7 +64,7 @@ def test_dim_persona_no_tiene_nombre_ni_documento(spark, fuentes):
     d = dim.dim_persona(fuentes["compras"], fuentes["ventas"])
 
     assert d.columns == ["persona_hash", "tipo"]
-    assert not [c for c in d.columns for p in PROHIBIDAS if p in c.lower()]
+    assert not _columnas_con_identificador(d)
     tipos = {(f.persona_hash, f.tipo) for f in d.take(10)}
     assert tipos == {("hash-conductor-1", "conductor"), ("hash-vendedor-1", "vendedor"),
                      ("hash-vendedor-2", "vendedor")}
@@ -63,7 +72,7 @@ def test_dim_persona_no_tiene_nombre_ni_documento(spark, fuentes):
 
 def test_ninguna_dimension_publica_datos_personales(spark, fuentes):
     for tabla, d in dim.construir(spark, fuentes).items():
-        malas = [c for c in d.columns for p in PROHIBIDAS if p in c.lower()]
+        malas = _columnas_con_identificador(d)
         assert not malas, f"{tabla} expone {malas}"
 
 
