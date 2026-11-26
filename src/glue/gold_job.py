@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 
-from src.common import config, spark as spark_comun
+from src.common import config
 from src.glue import dimensiones, iceberg, mapreduce_sql
 
 BASE_SILVER = "costagas_silver"
