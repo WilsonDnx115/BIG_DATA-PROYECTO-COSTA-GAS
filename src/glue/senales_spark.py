@@ -14,7 +14,14 @@ misma lógica, para que la conciliación por evento corra repartida en el clúst
   S8  venta sin compra que la respalde (circuito SCOP)   left_anti por codigo_scop
   S10 precio de venta bajo la mediana de su canal        ventana con percentile exacto
 
-S2, S3, S6, S9, S11 y S12 se agregan en los commits F03 y F04. Sin collect().
+S2, S3 y S6 leen la tabla Silver `compras_glp` (contrato de WP 0.2: proveedor,
+serie, numero, nro_scop, fecha_factura, kg, monto_usd, tipo_cambio, placa_norm):
+
+  S2  compra sin SCOP o con un SCOP repetido en otra factura   ventana por nro_scop
+  S3  USD/kg sobre la mediana móvil del proveedor              ventana rangeBetween de días previos
+  S6  tipo de cambio igual a 1 o lejos del oficial del día     join con broadcast(calendario BCRP)
+
+S9, S11 y S12 se agregan en el commit F04. Sin collect().
 """
 from __future__ import annotations
 
@@ -129,6 +136,109 @@ def s10(ventas):
          .withColumn("mediana", F.expr("percentile(precio, 0.5)").over(w)))
     d = v.filter(F.col("precio") < F.col("mediana") * F.lit(1 - config.TOL_PRECIO_S10))
     return _alertas(d, "S10", "placa_norm", puntaje=F.lit(1.0) - F.col("precio") / F.col("mediana"))
+
+
+# --- Señales sobre compras_glp (F03) -----------------------------------------
+def preparar_compras(compras_glp):
+    """Agrega a compras_glp las columnas comunes de las alertas: fecha, documento y usd_kg.
+
+    documento = «PROVEEDOR SERIE-NUMERO», que es la llave natural de la tabla (los
+    proveedores son empresas, no personas naturales). usd_kg queda nulo si falta el
+    monto o los kg, o si los kg no son positivos: no se inventa un precio.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    return (compras_glp
+            .withColumn("fecha", F.col("fecha_factura").cast("date"))
+            .withColumn("documento", F.concat_ws(" ", F.col("proveedor"),
+                                                 F.concat_ws("-", F.col("serie"), F.col("numero"))))
+            .withColumn("usd_kg", F.when(F.col("kg") > 0, F.col("monto_usd") / F.col("kg"))))
+
+
+def s2(compras_glp):
+    """Factura sin código SCOP, o con un SCOP que aparece en más de una factura.
+
+    Solo se usa el código de la propia factura: las órdenes SCOP (F05) cubren
+    ene-jul 2023 y un left_anti contra ellas marcaría como «sin SCOP» todo lo demás.
+    """
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    c = preparar_compras(compras_glp)
+    scop = F.trim(F.col("nro_scop"))
+    sin_scop = scop.isNull() | (scop == "")
+    w = Window.partitionBy("nro_scop")
+    c = c.withColumn("_facturas_scop", F.when(~sin_scop, F.size(F.collect_set("documento").over(w))))
+    d = c.filter(sin_scop | (F.col("_facturas_scop") > 1))
+    puntaje = F.when(sin_scop, F.lit(1.0)).otherwise(F.col("_facturas_scop").cast("double"))
+    return _alertas(d, "S2", "placa_norm", puntaje=puntaje)
+
+
+def s3(compras_glp, precios_pactados=None):
+    """USD/kg más de TOL_PRECIO_PAGO sobre la mediana móvil del proveedor, o sobre el precio pactado.
+
+    La mediana usa solo las facturas de los VENTANA_MEDIANA_DIAS días anteriores
+    (sin el mismo día ni los siguientes), así no hay fuga de información hacia el pasado.
+    `precios_pactados` es opcional: columnas proveedor, anio, mes y usd_kg_pactado (F08).
+    """
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+    from pyspark.sql.functions import broadcast  # noqa: PLC0415
+
+    c = preparar_compras(compras_glp).withColumn("_dia", F.datediff(F.col("fecha"), F.lit("1970-01-01")))
+    w = (Window.partitionBy("proveedor").orderBy("_dia")
+         .rangeBetween(-config.VENTANA_MEDIANA_DIAS, -1))
+    c = c.withColumn("_mediana", F.expr("percentile(usd_kg, 0.5)").over(w))
+    tope = F.lit(1 + config.TOL_PRECIO_PAGO)
+    sobre_mediana = F.col("usd_kg") > F.col("_mediana") * tope
+    if precios_pactados is not None:
+        pactos = precios_pactados.select("proveedor", "anio", "mes", "usd_kg_pactado")
+        c = c.join(broadcast(pactos), ["proveedor", "anio", "mes"], "left_outer")
+        sobre_pacto = F.col("usd_kg") > F.col("usd_kg_pactado") * tope
+        dispara = F.coalesce(sobre_mediana, F.lit(False)) | F.coalesce(sobre_pacto, F.lit(False))
+        referencia = F.coalesce(F.col("usd_kg_pactado"), F.col("_mediana"))
+    else:
+        dispara = F.coalesce(sobre_mediana, F.lit(False))
+        referencia = F.col("_mediana")
+    d = c.filter(dispara)
+    return _alertas(d, "S3", "placa_norm", puntaje=F.col("usd_kg") / referencia - F.lit(1.0))
+
+
+def calendario_tc(tc_oficial):
+    """Tipo de cambio oficial (BCRP, venta) para cada día calendario.
+
+    Los días sin publicación (fines de semana y feriados) toman el último valor
+    hábil anterior. La tabla es pequeña (un valor por día), así que la ventana sin
+    partición no es un problema y el resultado se une con broadcast().
+    Columnas de entrada: fecha y tc_venta (contrato entorno_bcrp, A09).
+    """
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    tc = tc_oficial.select(F.col("fecha").cast("date").alias("fecha"), F.col("tc_venta").cast("double"))
+    dias = (tc.agg(F.min("fecha").alias("ini"), F.max("fecha").alias("fin"))
+            .select(F.explode(F.sequence("ini", "fin")).alias("fecha")))
+    w = Window.orderBy("fecha").rowsBetween(Window.unboundedPreceding, 0)
+    return (dias.join(tc, "fecha", "left_outer")
+            .withColumn("tc_oficial", F.last("tc_venta", ignorenulls=True).over(w))
+            .select("fecha", "tc_oficial"))
+
+
+def s6(compras_glp, tc_oficial):
+    """Tipo de cambio registrado igual a 1, o que se aleja más de TOL_TIPO_CAMBIO del oficial del día.
+
+    Si no hay valor oficial para la fecha, la comparación queda nula y no dispara
+    (no se inventa el tipo de cambio). Un T.C. igual a 1 dispara siempre.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+    from pyspark.sql.functions import broadcast  # noqa: PLC0415
+
+    c = preparar_compras(compras_glp).join(broadcast(calendario_tc(tc_oficial)), "fecha", "left_outer")
+    tc = F.col("tipo_cambio")
+    desvio = F.abs(tc - F.col("tc_oficial")) / F.col("tc_oficial")
+    es_uno = tc == F.lit(1.0)
+    d = c.filter(F.coalesce(es_uno, F.lit(False)) | F.coalesce(desvio > F.lit(config.TOL_TIPO_CAMBIO), F.lit(False)))
+    return _alertas(d, "S6", "placa_norm", puntaje=F.coalesce(desvio, F.lit(1.0)))
 
 
 def calcular(compras, ventas, flota, maestro):
