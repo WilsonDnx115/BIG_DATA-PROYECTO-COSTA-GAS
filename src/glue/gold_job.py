@@ -19,15 +19,15 @@ from __future__ import annotations
 import argparse
 
 from src.common import config, spark as spark_comun
-from src.glue import iceberg
+from src.glue import iceberg, mapreduce_sql
 
 BASE_SILVER = "costagas_silver"
 MODOS = ("evento", "entrenar", "operacion")
 
 # Pasos que llenan los commits siguientes, en el orden en que corren.
 PENDIENTES = {
-    "evento": ["mapreduce_balance (W05)", "fact_balance_planta (W06)",
-               "fact_unidad_mes (W07)", "dimensiones (W08)", "fact_alerta (W12)"],
+    "evento": ["fact_balance_planta (W06)", "fact_unidad_mes (W07)",
+               "fact_alerta (W12)"],
     "entrenar": ["tabla de modelado (F-ML)", "entrenamiento S12", "registro del modelo (W13)"],
     "operacion": ["entregas mensuales (W18)", "fact_operacion"],
 }
@@ -78,9 +78,18 @@ def _pendiente(modo: str) -> dict:
     return {"modo": modo, "escrito": [], "pendientes": list(PENDIENTES[modo])}
 
 
+def paso_mapreduce(spark, args) -> str:
+    """W05: balance por producto y mes con el patron MapReduce, hacia gold/mr/."""
+    balance = mapreduce_sql.construir(spark, leer_silver(spark, "compras_glp"),
+                                      leer_silver(spark, "ventas_detalle"))
+    return mapreduce_sql.escribir(balance, args.lake_uri)
+
+
 def modo_evento(spark, args) -> dict:
-    """Corrida normal por evento. La llenan W05-W08, W12 y W14."""
-    return _pendiente("evento")
+    """Corrida normal por evento. Falta lo que llenan W06, W07, W12 y W14."""
+    resumen = _pendiente("evento")
+    resumen["escrito"].append(paso_mapreduce(spark, args))
+    return resumen
 
 
 def modo_entrenar(spark, args) -> dict:

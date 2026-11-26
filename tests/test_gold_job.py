@@ -41,11 +41,16 @@ def test_leer_silver_usa_el_catalogo():
 
 def test_cada_modo_tiene_su_funcion_y_sus_pendientes():
     assert set(gold_job.DESPACHO) == set(gold_job.MODOS)
-    for modo in gold_job.MODOS:
+    for modo in ("entrenar", "operacion"):       # «evento» ya escribe: necesita Spark
         resumen = gold_job.DESPACHO[modo](None, gold_job.argumentos(["--modo", modo]))
         assert resumen["modo"] == modo
-        assert resumen["escrito"] == []          # el esqueleto todavía no escribe
-        assert resumen["pendientes"]             # los llenan W05-W08, W12 y W14
+        assert resumen["escrito"] == []
+        assert resumen["pendientes"]
+
+
+def test_el_modo_evento_ya_no_tiene_pendiente_el_mapreduce():
+    assert not [p for p in gold_job.PENDIENTES["evento"] if "W05" in p]
+    assert [p for p in gold_job.PENDIENTES["evento"] if "W06" in p]
 
 
 def test_nombre_califica_la_tabla():
