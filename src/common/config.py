@@ -41,6 +41,7 @@ def _env_float(nombre: str, defecto: float) -> float:
     return float(_env(nombre, str(defecto)))
 
 
+
 # --- Alcance (1.6) -----------------------------------------------------------
 PLANTA = _env("PLANTA", "TRUJILLO")
 ANIO_INI = _env_int("ANIO_INI", 2016)
@@ -86,10 +87,43 @@ META_RECUPERACION_CASOS = _env_float("META_RECUPERACION_CASOS", 0.70)
 META_KG_CUBIERTOS = _env_float("META_KG_CUBIERTOS", 0.50)
 META_ALERTAS_MES = _env_int("META_ALERTAS_MES", 20)
 TOL_PRECIO_S10 = _env_float("TOL_PRECIO_S10", 0.10)   # 10 % bajo la mediana del canal
-MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # a confirmar con la empresa (H5)
-UMBRAL_KPI_DIF = _env_float("UMBRAL_KPI_DIF", 0.02)
+MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # merma que se simula al generar la muestra sintética
+UMBRAL_KPI_DIF = _env_float("UMBRAL_KPI_DIF", 0.02)    # umbral de referencia del KPI 1 (2 %)
 SEMILLA = _env_int("SEMILLA", 42)
 PRECIO_REF_KG = _env_float("PRECIO_REF_KG", 2.10)      # S/ por kg; se reemplaza por referencia pública
+
+# --- KPI 1 · balance de planta (H5) ------------------------------------------
+# La empresa no ha fijado su merma técnica. Para que el KPI 1 se calcule y quede
+# evidencia, el equipo asume 0.5 % de lo comprado como SUPUESTO DE TRABAJO, no como
+# dato de la empresa. El tablero muestra el KPI con y sin la merma, y la etiqueta
+# «supuesto» mientras MERMA_TECNICA_ES_SUPUESTO sea verdadero. Si la empresa entrega
+# su tolerancia, se cambian el valor, la fuente y la marca en .env, sin tocar código.
+MERMA_TECNICA_PCT = _env_float("MERMA_TECNICA_PCT", 0.005)
+MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE", "Supuesto de trabajo del equipo: 0.5 % de lo comprado")
+MERMA_TECNICA_ES_SUPUESTO = _env("MERMA_TECNICA_ES_SUPUESTO", "si").strip().lower() in ("si", "sí", "true", "1")
+
+# --- Modelo S12 y su operación (4.3) -----------------------------------------
+MADUREZ_DIAS = _env_int("MADUREZ_DIAS", 30)                  # la etiqueta madura 30 días después del vencimiento
+VENTANA_MEDIANA_DIAS = _env_int("VENTANA_MEDIANA_DIAS", 90)  # mediana móvil de USD/kg a la fecha de la factura
+INICIO_EVAL_ADELANTE = _env("INICIO_EVAL_ADELANTE", "2022-08")  # evaluación hacia adelante, mes a mes
+META_PRECISION = _env_float("META_PRECISION", 0.70)          # precisión de la clase positiva
+META_AUC = _env_float("META_AUC", 0.70)
+RECALL_MIN_RETADOR = _env_float("RECALL_MIN_RETADOR", 0.50)  # el retador no reemplaza al vigente por debajo
+REVISIONES_REENTRENO = _env_int("REVISIONES_REENTRENO", 20)  # revisiones nuevas que adelantan el reentrenamiento
+RF_ARBOLES = _env_int("RF_ARBOLES", 100)
+RF_PROFUNDIDAD = _env_int("RF_PROFUNDIDAD", 6)
+BOOTSTRAP_REMUESTREOS = _env_int("BOOTSTRAP_REMUESTREOS", 1000)
+PSI_UMBRAL = _env_float("PSI_UMBRAL", 0.2)                   # un PSI mayor adelanta el reentrenamiento
+PSI_MIN_OBS = _env_int("PSI_MIN_OBS", 100)                   # con menos facturas el PSI salta por ruido
+PSI_BINS = _env_int("PSI_BINS", 10)                          # deciles fijados en el entrenamiento
+
+# --- Detector de desvíos persistentes (4.3, Tabla 4.8h) ----------------------
+FALSAS_ALARMAS_ANIO = _env_int("FALSAS_ALARMAS_ANIO", 12)    # en todo el sistema y en cada granularidad
+SEMILLAS_DETECTOR = _env_int("SEMILLAS_DETECTOR", 100)
+LOTE_SEMILLAS = _env_int("LOTE_SEMILLAS", 10)
+
+# --- Controles preventivos (Tabla 4.8i) --------------------------------------
+TOL_PRECIO_PAGO = _env_float("TOL_PRECIO_PAGO", 0.05)        # USD/kg sobre la mediana móvil del proveedor
 
 
 @dataclass(frozen=True)
