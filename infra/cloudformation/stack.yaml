@@ -698,6 +698,251 @@ Resources:
         - !Sub arn:aws:iam::${AWS::AccountId}:policy/costagas-ingenieria-datos
         - !Sub arn:aws:iam::${AWS::AccountId}:policy/costagas-base
 
+  # ---------------------------------------------------------------------------
+  # (10) Extractores de fuentes externas (W20, informe seccion 2.4 y Tabla 2.5).
+  #      Cinco funciones que dejan el crudo en landing/externo/<fuente>/. Ese
+  #      prefijo lo ignora la Lambda de ingesta: no es la entrega interna y no
+  #      va a Bronze interno.
+  #      Costo: capa gratuita. Las cuatro programadas suman unas 70 invocaciones
+  #      al mes de pocos segundos; la de GDELT se invoca a mano una sola vez.
+  #      Las fallas van a costagas-eventos-fallidos, que ya tiene su alarma
+  #      (AlarmaEventosFallidos), asi que no se agrega una alarma por funcion.
+  # ---------------------------------------------------------------------------
+  RolExtractores:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-extractores-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: solo-escritura-en-landing-externo
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow                      # no leen nada del lago: solo depositan
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/externo/*
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  # La clave de YouTube se lee de SSM en cada invocacion y nunca se versiona;
+  # por eso esta funcion tiene su propio rol: es la unica con ssm:GetParameter.
+  RolExtractorYoutube:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-extractor-youtube-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: landing-externo-y-clave-de-youtube
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/externo/youtube/*
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/costagas/youtube/api_key
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  ExtractorBcrp:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-bcrp
+      Runtime: python3.12
+      Handler: src.extractores.bcrp.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 256
+      Timeout: 60
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  ExtractorFacilito:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-facilito
+      Runtime: python3.12
+      Handler: src.extractores.facilito.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 256
+      Timeout: 120
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  ExtractorYoutube:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-youtube
+      Runtime: python3.12
+      Handler: src.extractores.youtube.lambda_handler
+      Role: !GetAtt RolExtractorYoutube.Arn
+      MemorySize: 256
+      Timeout: 120
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          SSM_PARAM_YOUTUBE: /costagas/youtube/api_key
+
+  # Carga historica de 2020: ~35 000 zip de pocos KB que salen en bloques gzip
+  # de ~128 MB. Sin programa: se invoca a mano por ano (evento {"anio": 2020}).
+  ExtractorGdelt:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-gdelt
+      Runtime: python3.12
+      Handler: src.extractores.gdelt.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 2048                     # el bloque se arma en memoria antes de comprimirlo
+      Timeout: 900
+      EphemeralStorage: { Size: 1024 }
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          TAMANO_OBJETIVO_MB: "128"
+
+  ExtractorResoluciones:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-resoluciones
+      Runtime: python3.12
+      Handler: src.extractores.resoluciones.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 512
+      Timeout: 300
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  FallasExtractorBcrp:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorBcrp
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  FallasExtractorFacilito:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorFacilito
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  FallasExtractorYoutube:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorYoutube
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  FallasExtractorResoluciones:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorResoluciones
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  # El BCRP publica con un dia de rezago: a las 11:00 UTC (06:00 en Peru) la
+  # serie del dia anterior ya esta.
+  ProgramaBcrpDiario:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: costagas-bcrp-diario
+      Description: Tipo de cambio oficial del BCRP, una vez al dia
+      ScheduleExpression: cron(0 11 * * ? *)
+      State: ENABLED
+      Targets: [{ Id: extractor-bcrp, Arn: !GetAtt ExtractorBcrp.Arn }]
+
+  ProgramaFacilitoSemanal:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: costagas-facilito-semanal
+      Description: Precios de GLP de Facilito, los lunes
+      ScheduleExpression: cron(30 11 ? * MON *)
+      State: ENABLED
+      Targets: [{ Id: extractor-facilito, Arn: !GetAtt ExtractorFacilito.Arn }]
+
+  ProgramaYoutubeSemanal:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: costagas-youtube-semanal
+      Description: Texto publico de YouTube, los lunes (fuente opcional)
+      ScheduleExpression: cron(45 11 ? * MON *)
+      State: ENABLED
+      Targets: [{ Id: extractor-youtube, Arn: !GetAtt ExtractorYoutube.Arn }]
+
+  ProgramaResolucionesMensual:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: costagas-resoluciones-mensual
+      Description: Resoluciones de Osinergmin en PDF, el dia 1 de cada mes
+      ScheduleExpression: cron(0 12 1 * ? *)
+      State: ENABLED
+      Targets: [{ Id: extractor-resoluciones, Arn: !GetAtt ExtractorResoluciones.Arn }]
+
+  PermisoProgramaBcrp:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ExtractorBcrp
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ProgramaBcrpDiario.Arn
+
+  PermisoProgramaFacilito:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ExtractorFacilito
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ProgramaFacilitoSemanal.Arn
+
+  PermisoProgramaYoutube:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ExtractorYoutube
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ProgramaYoutubeSemanal.Arn
+
+  PermisoProgramaResoluciones:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ExtractorResoluciones
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ProgramaResolucionesMensual.Arn
 Outputs:
   Bucket: { Value: !Ref Lago }
   LakeUri: { Value: !Sub "s3://costagas-trujillo-lake-${Sufijo}" }
@@ -716,3 +961,8 @@ Outputs:
   CognitoUserPoolId: { Value: !Ref GrupoUsuariosPortal }
   CognitoClientId: { Value: !Ref ClientePortal }
   RolDespliegueGithub: { Value: !GetAtt RolDespliegueGithub.Arn }
+  ExtractorBcrp: { Value: !Ref ExtractorBcrp }
+  ExtractorFacilito: { Value: !Ref ExtractorFacilito }
+  ExtractorYoutube: { Value: !Ref ExtractorYoutube }
+  ExtractorGdelt: { Value: !Ref ExtractorGdelt }
+  ExtractorResoluciones: { Value: !Ref ExtractorResoluciones }

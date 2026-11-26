@@ -85,7 +85,10 @@ aws cloudformation deploy --stack-name "$STACK" --template-file "$PLANTILLA" \
   --parameter-overrides Sufijo="$SUFIJO" Correo1="$C1" Correo2="$C2" Correo3="$C3" Correo4="$C4"
 
 # Si el stack ya existia, actualizar el codigo de las Lambdas
-for f in costagas-bronze-to-silver costagas-ingesta; do
+for f in costagas-bronze-to-silver costagas-ingesta \
+         costagas-extractor-bcrp costagas-extractor-facilito \
+         costagas-extractor-youtube costagas-extractor-gdelt \
+         costagas-extractor-resoluciones; do
   aws lambda update-function-code --function-name "$f" \
     --s3-bucket "$CODE_BUCKET" --s3-key _code/costagas_src.zip > /dev/null
 done
