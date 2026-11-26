@@ -335,7 +335,8 @@ Resources:
     Type: AWS::SNS::Topic
     Properties: { TopicName: costagas-alertas-negocio, DisplayName: CostaGas negocio }
 
-  # Solo CloudWatch, EventBridge y Budgets publican en operacion; el rol de Glue publica en negocio por su politica.
+  # Solo CloudWatch y EventBridge publican en operacion; el rol de Glue publica en negocio por su politica.
+  # Budgets avisa por correo directo a los cuatro integrantes (informe v16, Tabla 2.11).
   PoliticaTemaOperacion:
     Type: AWS::SNS::TopicPolicy
     Properties:
@@ -345,7 +346,7 @@ Resources:
         Statement:
           - Sid: ServiciosQuePublican
             Effect: Allow
-            Principal: { Service: [cloudwatch.amazonaws.com, events.amazonaws.com, budgets.amazonaws.com] }
+            Principal: { Service: [cloudwatch.amazonaws.com, events.amazonaws.com] }
             Action: sns:Publish
             Resource: !Ref TemaOperacion
             Condition: { StringEquals: { aws:SourceAccount: !Ref AWS::AccountId } }

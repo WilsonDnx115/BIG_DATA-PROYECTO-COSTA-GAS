@@ -1,6 +1,6 @@
 # Plan de implementación del código · lo que falta para que el repositorio sea el informe v15
 
-**Fecha:** 25/11/2026 · **Informe de referencia:** `Informe_BigData_CostaGas_Trujillo_v15` · **Último commit:** `ca17f42` (bases de AWS).
+**Fecha:** 25/11/2026 · **Informe de referencia:** `Informe_BigData_CostaGas_Trujillo_v16` (v15 más las tres correcciones de la implementación) · **Último commit:** `ca17f42` (bases de AWS).
 **Regla:** el informe es la fuente de verdad. Cada archivo de este plan existe porque una tabla o una figura del informe lo describe; se indica cuál.
 
 Leyenda de la columna «Quién»:
@@ -30,7 +30,7 @@ Es lo indispensable para mostrar «una carga llega sola al tablero» y el modelo
 | 1.1 | **Lambda de ingesta:** `landing/` → `bronze/`, huella SHA-256, manifiesto, rechazo de duplicados, dominio según `_archivos.yaml` | `src/ingest/lambda_ingesta.py` (reutiliza `entrega.py` y `manifest.py`); `tests/test_lambda_ingesta.py` | Lambda, S3 (notificación en `landing/` y `op/landing/`), SQS de fallas | M1; Tabla 2.7c (fila de ingesta) | Claude |
 | 1.2 | **Recursos de ingesta en el stack:** función `costagas-ingesta` (512 MB), rol `costagas-ingesta-role`, notificación de S3, alarma `costagas-error-ingesta` y destino de fallas | `infra/cloudformation/stack.yaml` | CloudFormation | Tablas 2.7c, 2.7d y 2.11 | Claude |
 | 1.3 | **Job de Gold:** lectura de Silver por catálogo; patrón MapReduce con Spark SQL hacia `gold/mr/`; `fact_balance_planta` (KPI 1 como diferencia bruta); `fact_unidad_mes`; señales S1-S12 en Spark; `calidad_silver`; escritura Iceberg; cubo; marcadores; argumento `--modo` | `src/glue/gold_job.py` (nuevo script del job, en lugar de `conciliacion.py`); `src/glue/senales_spark.py`; `tests/test_gold_job.py` con PySpark local sobre `data/sample` | Glue 5.0, Spark SQL, Iceberg, catálogo de Glue | 3.3, 3.5, 4.2 y 4.4; Tablas 3.6b, 4.3, 4.9 y 4.10; Anexo C.2 | Claude |
-| 1.4 | **DDL de Gold en Iceberg y vistas:** `fact_balance_planta`, `fact_unidad_mes`, `fact_alerta`, `revision_alerta`, `fact_serie`, `fact_operacion`, `modelo_factura`, `mercado_mes`, `calidad_silver` y 6 dimensiones, todas con `vacuum_max_snapshot_age_seconds`; vistas `v_alerta`, `v_kpi_1` a `v_kpi_5`, `v_cubo_unidad` y `v_semaforo_unidades` | `sql/athena/ddl/gold_*.sql`, `sql/athena/vistas/*.sql`; `sql/athena/crear_tablas.py` (actualizado) | Athena, Iceberg | Tablas 4.9 y 4.10; 3.5 | Claude |
+| 1.4 | **DDL de Gold en Iceberg y vistas** (las 5 tablas de Silver ya están en el catálogo desde el 26/11): `fact_balance_planta`, `fact_unidad_mes`, `fact_alerta`, `revision_alerta`, `fact_serie`, `fact_operacion`, `modelo_factura`, `mercado_mes`, `calidad_silver` y 6 dimensiones, todas con `vacuum_max_snapshot_age_seconds`; vistas `v_alerta`, `v_kpi_1` a `v_kpi_5`, `v_cubo_unidad` y `v_semaforo_unidades` | `sql/athena/ddl/gold_*.sql`, `sql/athena/vistas/*.sql`; `sql/athena/crear_tablas.py` (actualizado: no debe ejecutar `01_silver_movimientos` ni los `02`/`03` de Gold, que son antiguos) | Athena, Iceberg | Tablas 4.9 y 4.10; 3.5 | Claude |
 | 1.5 | **Carga inicial:** subir los 35 archivos a `landing/interno/` con la regla de Gold desactivada | Comando `aws s3 cp` (Claude lo prepara) | S3 | X2 del v15 | **Titular**, porque son los datos reales |
 | 1.6 | **Primera corrida de Gold y activación de la regla:** una corrida manual en FLEX y luego `EstadoReglaGold=ENABLED` | Comandos en CloudShell | Glue, EventBridge | Tabla 2.7a | Claude, con aprobación |
 | 1.7 | **Tablero en Grafana:** 6 páginas (Resumen, Balance y unidades, Bandeja, Mercado, Semáforo, Revisión ciega) exportadas a JSON | `dashboards/grafana/*.json` | Grafana Cloud y Athena | Tablas 1.6c y 4.11 | Claude arma los JSON; **el titular** crea la cuenta y la clave de `svc-dashboard` (guía en `docs/guias/`) |
@@ -93,9 +93,11 @@ Es lo indispensable para mostrar «una carga llega sola al tablero» y el modelo
 
 ## 7. Correcciones al informe que salen de la implementación
 
-1. **Glue con cola de corridas exige `MaxRetries = 0`.** Afecta a las Tablas 2.7c, 2.11 y 2.9 y a la nota de recuperación. La corrida fallida avisa por SNS y la siguiente retoma lo pendiente con los marcadores.
-2. **La Lambda de limpieza tiene 3 008 MB** (un Excel pesa 62 MB). El informe dice 1 024 MB. Afecta a las Tablas 2.2c y 2.7c.
-3. **Tablas de resultados.** Cuando corra el código, se llenan con cifras reales las Tablas 3.10, 3.11, 4.4, 4.7, 4.8e y 4.8h y la columna «Estado» de la 6.1b.
+Las tres primeras ya están en el **informe v16** (26/11/2026, `herramientas_informe/editar_v16.py` y `figuras_v16.py`):
+1. ✔ **Glue con cola de corridas: `MaxRetries` = 0.** Tablas 2.7c, 2.11 y 2.9, el texto de 2.5 y la Figura 2.5. La corrida fallida avisa por `costagas-glue-fallido` y la siguiente retoma lo pendiente con los marcadores.
+2. ✔ **La Lambda de limpieza tiene 3 008 MB.** Tablas 2.2c, 2.7 (180 000 GB-s, todavía gratis) y 2.7c, y la prueba de escalabilidad de 1×.
+3. ✔ **Budgets avisa por correo directo.** Tabla 2.11 y Figura 2.5. En `stack.yaml` se quitó `budgets.amazonaws.com` de la política del tema de operación; ese cambio sale con el próximo despliegue del stack.
+4. **Tablas de resultados.** Cuando corra el código, se llenan con cifras reales las Tablas 3.10, 3.11, 4.4, 4.7, 4.8e y 4.8h y la columna «Estado» de la 6.1b.
 
 ## 8. Cifras que **Frank** confirma con el código
 

@@ -32,4 +32,4 @@ Capturas en `capturas/2026-11-25_stack/`, del 01 al 07.
 ## Cambios que esto pide en el informe
 
 1. **El job de Glue:** «MaxRetries = 1» pasa a **«MaxRetries = 0, porque con la cola de corridas activa Glue no admite reintentos automáticos»**. La recuperación de una corrida fallida queda así: aviso por SNS (`costagas-glue-fallido`) y la siguiente corrida retoma lo pendiente con los marcadores de trabajo. Afecta a las Tablas 2.7c y 2.11 y a la prueba de recuperación de la Tabla 2.9.
-2. **La Lambda de limpieza:** está desplegada con 3 008 MB, porque un Excel pesa 62 MB. El informe dice 1 024 MB. Hay que corregir el informe.
+2. **La Lambda de limpieza:** este despliegue la dejó con 1 024 MB, porque conservó el valor anterior del parámetro. El 26/11 se subió a 3 008 MB (ver `ajustes_aws_2026-11-26.md`), así que el informe debe decir 3 008 MB.
