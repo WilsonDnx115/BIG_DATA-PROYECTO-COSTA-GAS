@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from src.common import rutas
 from src.glue import mapreduce_sql as mr
 
 ESQUEMA_COMPRAS = ("anio int, mes int, kg_glp_e double, kg_glp_g double, "
@@ -71,9 +72,10 @@ def test_sql_y_rdd_dan_los_mismos_totales(spark, datos):
 
 
 def test_escribe_particionado_por_anio_y_mes(spark, datos, lago):
-    destino = mr.escribir(mr.construir(spark, *datos))
+    mr.escribir(mr.construir(spark, *datos))
 
-    raiz = Path(destino.replace("file:///", ""))
+    # La ruta en disco, sin el esquema file:// que usa Spark (difiere en Windows).
+    raiz = Path(rutas.ruta(*mr.DESTINO))
     assert sorted(p.name for p in raiz.glob("anio=*")) == ["anio=2020"]
     assert sorted(p.name for p in (raiz / "anio=2020").glob("mes=*")) == ["mes=1", "mes=2"]
     assert not list(raiz.glob("producto=*"))        # nunca se particiona por producto
