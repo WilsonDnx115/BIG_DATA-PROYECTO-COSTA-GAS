@@ -4,7 +4,7 @@ Son funciones puras: reciben DataFrames de Silver y devuelven alertas con el
 contrato `fact_alerta`. El job `src/glue/gold_job.py` (Wilson) las llama; este
 módulo no lee ni escribe en el lago.
 
-Esta versión porta a Spark las señales de `src/signals/senales.py` (pandas) con la
+Esta versión porta a Spark las señales de `src/signals/senales_fixture.py` (pandas) con la
 misma lógica, para que la conciliación por evento corra repartida en el clúster:
 
   S1  placa cargada distinta de la facturada            filtro
