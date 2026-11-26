@@ -39,7 +39,7 @@ DESTINO_TEXTO = ("silver", "entorno", "textos")
 DESTINO_TEMAS = ("silver", "entorno", "temas")
 DESTINO_EVENTOS = ("silver", "entorno", "gdelt")
 TABLA_MERCADO = "mercado_mes"
-LLAVE_MERCADO = ("anio", "mes")
+LLAVE_MERCADO = ["anio", "mes"]
 K_TEMAS = int(os.environ.get("LDA_K_TEMAS", "5"))
 PALABRAS_MINIMAS = 2
 
@@ -239,9 +239,11 @@ def temas(textos, k: int = K_TEMAS):
         print(f"[externos] menos de {k} textos utiles: LDA no corre")
         return None, None, None
     modelo = pipeline_temas(k).fit(utiles)
-    lda, vectorizador = modelo.stages[-1], modelo.stages[-2]
-    palabras = F.udf(lambda idx: [vectorizador.vocabulary[i] for i in idx],
-                     "array<string>")
+    lda = modelo.stages[-1]
+    # El UDF se queda con el vocabulario (una lista de str), nunca con el modelo
+    # del vectorizador: ese lleva un candado y Spark no lo puede serializar.
+    vocabulario = list(modelo.stages[-2].vocabulary)
+    palabras = F.udf(lambda idx: [vocabulario[i] for i in idx], "array<string>")
     descripcion = (lda.describeTopics(10)
                    .withColumn("palabras", palabras(F.col("termIndices")))
                    .select(F.col("topic").alias("tema"), "palabras",
