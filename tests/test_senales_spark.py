@@ -5,7 +5,7 @@ import pytest
 from src.bronze_to_silver import handler
 from src.common import lake_io, muestra, rutas, schemas
 from src.ingest import internos
-from src.signals import senales
+from src.signals import senales_fixture as senales   # versión pandas de S1, S4, S5, S7, S8 y S10 (WP 0.8)
 
 SENALES = ("S1", "S4", "S5", "S7", "S8", "S10")
 
