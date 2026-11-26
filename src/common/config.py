@@ -41,11 +41,6 @@ def _env_float(nombre: str, defecto: float) -> float:
     return float(_env(nombre, str(defecto)))
 
 
-def _env_float_opcional(nombre: str) -> float | None:
-    """Parámetro sin valor por defecto: si no está en `.env` o está vacío, queda en None (no se inventa)."""
-    valor = os.environ.get(nombre, "").strip()
-    return float(valor) if valor else None
-
 
 # --- Alcance (1.6) -----------------------------------------------------------
 PLANTA = _env("PLANTA", "TRUJILLO")
@@ -73,6 +68,7 @@ META_PLACA_VALIDA = _env_float("META_PLACA_VALIDA", 0.98)
 META_KG_EN_RANGO = _env_float("META_KG_EN_RANGO", 0.99)
 META_SCOP_COMPRAS = _env_float("META_SCOP_COMPRAS", 0.95)
 TOL_TIPO_CAMBIO = _env_float("TOL_TIPO_CAMBIO", 0.01)
+TOL_RESIDUO_STOCK = _env_float("TOL_RESIDUO_STOCK", 1e-6)
 PRECIO_PCT_INF = _env_float("PRECIO_PCT_INF", 0.01)
 PRECIO_PCT_SUP = _env_float("PRECIO_PCT_SUP", 0.99)
 TC_MIN = _env_float("TC_MIN", 3.2)                 # rango válido del tipo de cambio (Tabla 3.7 del v6)
@@ -84,17 +80,27 @@ KG_POR_LITRO = _env_float("KG_POR_LITRO", 0.54)
 # --- Señales y modelos (4.2, 4.3) -------------------------------------------
 UMBRAL_Z_MAD = _env_float("UMBRAL_Z_MAD", 3.5)
 TOP_K = _env_int("TOP_K", 20)
+MUESTRA_REVISION_ALEATORIA = _env_int("MUESTRA_REVISION_ALEATORIA", 10)
+TOL_PRECIO_COMPRA = _env_float("TOL_PRECIO_COMPRA", 0.05)
+META_PRECISION_DOCUMENTAL = _env_float("META_PRECISION_DOCUMENTAL", 0.40)
+META_RECUPERACION_CASOS = _env_float("META_RECUPERACION_CASOS", 0.70)
+META_KG_CUBIERTOS = _env_float("META_KG_CUBIERTOS", 0.50)
+META_ALERTAS_MES = _env_int("META_ALERTAS_MES", 20)
 TOL_PRECIO_S10 = _env_float("TOL_PRECIO_S10", 0.10)   # 10 % bajo la mediana del canal
-MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # solo para generar la muestra sintética
+MERMA_TECNICA = _env_float("MERMA_TECNICA", 0.005)     # merma que se simula al generar la muestra sintética
 UMBRAL_KPI_DIF = _env_float("UMBRAL_KPI_DIF", 0.02)    # umbral de referencia del KPI 1 (2 %)
 SEMILLA = _env_int("SEMILLA", 42)
 PRECIO_REF_KG = _env_float("PRECIO_REF_KG", 2.10)      # S/ por kg; se reemplaza por referencia pública
 
 # --- KPI 1 · balance de planta (H5) ------------------------------------------
-# La empresa no ha fijado la merma técnica: sin valor por defecto. Mientras falte,
-# el KPI 1 es la diferencia bruta y el tablero lo muestra «sin merma fijada».
-MERMA_TECNICA_PCT = _env_float_opcional("MERMA_TECNICA_PCT")
-MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE", "")  # tolerancia de la empresa o norma de peso de cilindros
+# La empresa no ha fijado su merma técnica. Para que el KPI 1 se calcule y quede
+# evidencia, el equipo asume 0.5 % de lo comprado como SUPUESTO DE TRABAJO, no como
+# dato de la empresa. El tablero muestra el KPI con y sin la merma, y la etiqueta
+# «supuesto» mientras MERMA_TECNICA_ES_SUPUESTO sea verdadero. Si la empresa entrega
+# su tolerancia, se cambian el valor, la fuente y la marca en .env, sin tocar código.
+MERMA_TECNICA_PCT = _env_float("MERMA_TECNICA_PCT", 0.005)
+MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE", "Supuesto de trabajo del equipo: 0.5 % de lo comprado")
+MERMA_TECNICA_ES_SUPUESTO = _env("MERMA_TECNICA_ES_SUPUESTO", "si").strip().lower() in ("si", "sí", "true", "1")
 
 # --- Modelo S12 y su operación (4.3) -----------------------------------------
 MADUREZ_DIAS = _env_int("MADUREZ_DIAS", 30)                  # la etiqueta madura 30 días después del vencimiento

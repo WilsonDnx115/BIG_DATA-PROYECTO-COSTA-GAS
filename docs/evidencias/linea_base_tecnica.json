@@ -1,8 +1,34 @@
 {
-  "precision@20": 0.25,
-  "pct_kg_cubiertos": 0.425,
-  "alertas_por_mes_media": 2.24,
-  "alertas_por_mes_max": 3,
-  "alertas_total": 235,
-  "etiqueta": "debil (S1/S8 evidencia alta) hasta validación de gerencia"
+    "paquete": "WP 0.8",
+    "estado": "pendiente_datos_reales_y_validacion_documental",
+    "tipo_datos": null,
+    "metricas": {
+        "precision@20_documental": null,
+        "tasa_base_control_aleatorio": null,
+        "recuperacion_casos_conocidos": null,
+        "pct_kg_cubiertos": null,
+        "alertas_por_mes": null
+    },
+    "modelo": {
+        "variable": "log(S/ combustible por tonelada), por rol",
+        "unidad_mes_evaluadas": null,
+        "alertas_mad": null
+    },
+    "bloqueos": [
+        "silver/compras_glp",
+        "silver/unidades",
+        "gold/fact_unidad_mes",
+        "silver/produccion_diaria",
+        "contraste documental por revisor distinto del autor",
+        "catálogo documentado de casos conocidos",
+        "diferencias de kg atribuibles y trazables"
+    ],
+    "referencias_informe_v6_no_resultados": {
+        "unidad_mes_2020": 82,
+        "alertas_mad_2020": 0,
+        "sobrecobros_F08": 10,
+        "SCOP_corregidos_F04": 4,
+        "casos_S12_WP_0_11": 77
+    },
+    "nota": "Plantilla de estado, no resultado medido. Las tablas sintéticas v2 no sustituyen las fuentes reales. Las pruebas generan resultados únicamente en temporales."
 }

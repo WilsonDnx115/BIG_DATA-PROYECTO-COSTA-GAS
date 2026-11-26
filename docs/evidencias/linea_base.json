@@ -1,50 +1,310 @@
 {
-  "registros_scop": 10122,
-  "pct_compras_con_scop": 0.9688,
-  "incidencias_por_regla": {
-    "aba_02.placa_valida": 0,
-    "aba_02.kg_en_rango": 42,
-    "aba_02.fecha_coherente": 5,
-    "aba_02.unicidad": 0,
-    "com_19.placa_valida": 0,
-    "com_19.kg_en_rango": 2,
-    "com_19.fecha_coherente": 0,
-    "com_19.unicidad": 183,
-    "com_19.precio_en_rango": 3163,
-    "dis_01.placa_valida": 0,
-    "red_02.ruc_valido": 0,
-    "red_02.unicidad": 0
-  },
-  "pct_maestro_documento_invalido_o_vacio": 0.24,
-  "clases_documento_maestro": {
-    "RUC": 0.536,
-    "DNI": 0.224,
-    "VACIO": 0.136,
-    "INVALIDO": 0.104
-  },
-  "precio_b10_por_canal": {
-    "DIRECTO": {
-      "min": 14.57,
-      "max": 30.36,
-      "p50": 25.9
+    "capa_origen": "bronze",
+    "tipo_datos": "sinteticos",
+    "lake_uri": "file://data/lake",
+    "alcance": {
+        "anio_ini": 2016,
+        "anio_fin": 2024,
+        "nota": "Se presupone entrega de Trujillo: los contratos actuales no tienen columna planta."
     },
-    "MAYORISTA": {
-      "min": 10.81,
-      "max": 22.26,
-      "p50": 18.91
+    "seleccion_entregas": "última versión por archivo lógico de cada fuente",
+    "cobertura": {
+        "aba_02": {
+            "archivos": 1,
+            "filas_bronze": 10453,
+            "fechas_carga": [
+                "2026-10-11"
+            ],
+            "estado": "disponible"
+        },
+        "com_19": {
+            "archivos": 1,
+            "filas_bronze": 36842,
+            "fechas_carga": [
+                "2026-10-11"
+            ],
+            "estado": "disponible"
+        },
+        "red_02": {
+            "archivos": 1,
+            "filas_bronze": 125,
+            "fechas_carga": [
+                "2026-10-11"
+            ],
+            "estado": "disponible"
+        },
+        "pro_01": {
+            "archivos": 0,
+            "filas_bronze": 0,
+            "fechas_carga": [],
+            "estado": "sin_archivos"
+        }
     },
-    "MINORISTA": {
-      "min": 13.12,
-      "max": 27.78,
-      "p50": 23.72
-    }
-  },
-  "referencia_informe": {
-    "registros_scop": 79,
-    "incidencias_campos_clave": 16,
-    "precio_b10_min": 17.45,
-    "precio_b10_max": 24.15
-  },
-  "nota": "Con data/sample (sintética) los valores no reproducen el informe; con data/raw sí deben.",
-  "lake_uri": "file://data/lake"
+    "stock": null,
+    "registros_scop": 10122,
+    "pct_compras_con_scop": 96.8798,
+    "documentos_maestro": {
+        "total": 125,
+        "informados": 108,
+        "vacios": 17,
+        "longitud_invalida": 28,
+        "formato_invalido_con_longitud_correcta": 0,
+        "ruc_digito_verificador_invalido": 13,
+        "pct_longitud_invalida": 22.4,
+        "pct_longitud_invalida_entre_informados": 25.9259,
+        "criterio": "8 o 11 caracteres, sin rellenar ceros; vacíos y dígito verificador se cuentan aparte",
+        "denominador_pct_longitud_invalida": "todas las filas del maestro en Bronze"
+    },
+    "incidencias": {
+        "por_campo": {
+            "aba_02": {
+                "codigo_scop": 326,
+                "fecha": 5,
+                "placa_cargada_raw": 0,
+                "placa_facturada_raw": 0,
+                "id_producto": 0,
+                "kg": 42,
+                "tipo_cambio": 0,
+                "documento": 0,
+                "estado": 0,
+                "clave_unica": 0
+            },
+            "com_19": {
+                "documento": 0,
+                "linea": 0,
+                "fecha": 0,
+                "card_code": 0,
+                "codigo_scop": 1137,
+                "placa_raw": 0,
+                "id_producto": 0,
+                "kg": 2,
+                "precio": 0,
+                "canal": 0,
+                "clave_unica": 183
+            },
+            "red_02": {
+                "card_code": 0,
+                "documento_raw": 58,
+                "capacidad_kg": 0,
+                "estado": 0,
+                "canal": 0,
+                "clave_unica": 0
+            },
+            "pro_01": null
+        },
+        "total_ocurrencias": 1753,
+        "filas_afectadas_por_fuente": {
+            "aba_02": 373,
+            "com_19": 1316,
+            "red_02": 58,
+            "pro_01": null
+        },
+        "definicion": "Una ocurrencia por fila y control de campo, más duplicados por clave; una fila puede fallar varios controles.",
+        "limite": "No equivale al número de problemas catalogados en el informe ni a una validación externa de SCOP/SUNAT."
+    },
+    "precio_b10": {
+        "por_canal": {
+            "DIRECTO": {
+                "filas": 4860,
+                "min": 14.57,
+                "max": 30.36,
+                "p05": 23.5,
+                "p50": 25.9,
+                "p95": 28.35
+            },
+            "MAYORISTA": {
+                "filas": 8079,
+                "min": 10.81,
+                "max": 22.26,
+                "p05": 17.15,
+                "p50": 18.91,
+                "p95": 20.69
+            },
+            "MINORISTA": {
+                "filas": 9987,
+                "min": 13.12,
+                "max": 27.78,
+                "p05": 21.51,
+                "p50": 23.72,
+                "p95": 25.96
+            }
+        },
+        "global": {
+            "filas": 22926,
+            "min": 10.81,
+            "max": 30.36,
+            "p05": 17.59,
+            "p50": 23.01,
+            "p95": 27.16
+        },
+        "filas_precio_invalido": 0,
+        "filas_sin_canal": 0,
+        "unidad": "S/ por balón de 10 kg; Price del contrato com_19, sin convertir desde precio/kg",
+        "periodo": "2016–2024"
+    },
+    "precio_b10_2020": {
+        "por_canal": {
+            "DIRECTO": {
+                "filas": 396,
+                "min": 15.21,
+                "max": 28.11,
+                "p05": 24.69,
+                "p50": 25.95,
+                "p95": 27.22
+            },
+            "MAYORISTA": {
+                "filas": 693,
+                "min": 11.3,
+                "max": 20.87,
+                "p05": 17.86,
+                "p50": 18.87,
+                "p95": 19.82
+            },
+            "MINORISTA": {
+                "filas": 854,
+                "min": 14.69,
+                "max": 25.78,
+                "p05": 22.62,
+                "p50": 23.76,
+                "p95": 24.89
+            }
+        },
+        "global": {
+            "filas": 1943,
+            "min": 11.3,
+            "max": 28.11,
+            "p05": 18.14,
+            "p50": 23.43,
+            "p95": 26.54
+        },
+        "filas_precio_invalido": 0,
+        "filas_sin_canal": 0,
+        "unidad": "S/ por balón de 10 kg; Price del contrato com_19, sin convertir desde precio/kg",
+        "periodo": "2020"
+    },
+    "referencia_plan": {
+        "dias_produccion": 22,
+        "dias_residuo_cero": 22,
+        "registros_scop": 79,
+        "incidencias_campos_clave": 16,
+        "precio_b10_min": 17.45,
+        "precio_b10_max": 24.15
+    },
+    "referencia_informe_v6": {
+        "documento": "Proyecto_BigData_CostaGas_Trujillo_final_v6.docx",
+        "tabla": "1.5",
+        "stock_octubre_2018": {
+            "dias": 31,
+            "dias_residuo_cero": 31,
+            "cierres_medidos_fisicamente": 0
+        },
+        "ordenes_scop_enero_julio_2023": 29,
+        "problemas_calidad_catalogados": 23,
+        "precio_b10_2020": {
+            "p05": 19.11,
+            "p95": 29.91,
+            "p50": 21.44
+        },
+        "documentos_grupo_longitud_invalida": 23,
+        "documentos_grupo_vacios": 85,
+        "nota_documentos": "Sección 3.3; el porcentaje requiere el denominador del maestro del grupo."
+    },
+    "comparacion": [{
+            "referencia": "PLAN.md",
+            "indicador": "dias_residuo_cero",
+            "calculado": null,
+            "esperado": 22,
+            "estado": "no_disponible",
+            "diferencia": null
+        },
+        {
+            "referencia": "PLAN.md",
+            "indicador": "registros_scop",
+            "calculado": 10122,
+            "esperado": 79,
+            "estado": "difiere",
+            "diferencia": 10043
+        },
+        {
+            "referencia": "PLAN.md",
+            "indicador": "precio_b10_min",
+            "calculado": 10.81,
+            "esperado": 17.45,
+            "estado": "difiere",
+            "diferencia": -6.64
+        },
+        {
+            "referencia": "PLAN.md",
+            "indicador": "precio_b10_max",
+            "calculado": 30.36,
+            "esperado": 24.15,
+            "estado": "difiere",
+            "diferencia": 6.21
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "dias_octubre_2018",
+            "calculado": null,
+            "esperado": 31,
+            "estado": "no_disponible",
+            "diferencia": null
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "dias_residuo_cero_octubre_2018",
+            "calculado": null,
+            "esperado": 31,
+            "estado": "no_disponible",
+            "diferencia": null
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "precio_b10_2020_p05",
+            "calculado": 18.14,
+            "esperado": 19.11,
+            "estado": "difiere",
+            "diferencia": -0.97
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "precio_b10_2020_p95",
+            "calculado": 26.54,
+            "esperado": 29.91,
+            "estado": "difiere",
+            "diferencia": -3.37
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "precio_b10_2020_p50",
+            "calculado": 23.43,
+            "esperado": 21.44,
+            "estado": "difiere",
+            "diferencia": 1.99
+        },
+        {
+            "referencia": "PLAN.md",
+            "indicador": "incidencias_campos_clave",
+            "calculado": 1753,
+            "esperado": 16,
+            "estado": "no_comparable",
+            "motivo": "Ocurrencias fila/control frente a problemas catalogados; falta el catálogo original para igualar definiciones."
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "incidencias_campos_clave",
+            "calculado": 1753,
+            "esperado": 23,
+            "estado": "no_comparable",
+            "motivo": "Ocurrencias fila/control frente a problemas catalogados; falta el catálogo original para igualar definiciones."
+        },
+        {
+            "referencia": "informe_v6",
+            "indicador": "ordenes_scop_enero_julio_2023",
+            "calculado": null,
+            "esperado": 29,
+            "estado": "no_comparable",
+            "motivo": "aba_02 es el contrato sintético v2; F05 y sus encabezados v3 no están declarados en este checkout."
+        }
+    ],
+    "nota": "Las coincidencias numéricas no prueban reproducción del informe: verificar tipo de datos, período, fuente y definición. Las fuentes ausentes se declaran null."
 }

@@ -97,6 +97,25 @@ FUENTES: dict[str, FuenteInterna] = {
 
 
 # --- Contratos de Silver y Gold -----------------------------------------------
+# Contrato de entrada exclusivo de línea base; no se incorpora a los handlers
+# de Silver. Representa los conceptos de F36 del informe v6, no encabezados
+# reales verificados. Adaptar aquí tras validar un inventario autorizado.
+FUENTES_LINEA_BASE = {c: FUENTES[c] for c in ("aba_02", "com_19", "red_02")}
+FUENTES_LINEA_BASE["pro_01"] = FuenteInterna(
+    codigo="pro_01", proceso="produccion", dominio="produccion", tabla="produccion_diaria",
+    descripcion="Contrato local de producción diaria; conceptos de F36 (informe v6)",
+    columnas={
+        "FECHA": ("fecha", "date"),
+        "Stock inicial": ("stock_inicial", "double"),
+        "Producción": ("produccion", "double"),
+        "Ventas": ("ventas", "double"),
+        "Bonificaciones": ("bonificaciones", "double"),
+        "Stock final": ("stock_final", "double"),
+    },
+    clave_unica=("fecha",),
+)
+
+
 @dataclass(frozen=True)
 class Contrato:
     nombre: str
@@ -145,6 +164,15 @@ CONTRATOS: dict[str, Contrato] = {
         ("kg", "double"), ("valor_soles", "double"), ("puntaje", "double"),
         ("grado_evidencia", "string"), ("estado_revision", "string"), *_PART]),
 }
+
+
+CONTRATOS['fact_alerta_base'] = Contrato('fact_alerta_base', [
+    ('id_alerta', 'string'), ('senal', 'string'), ('tipo', 'string'), ('resolucion', 'string'),
+    ('fecha', 'date'), ('unidad_id', 'string'), ('rol', 'string'), ('factura_id', 'string'),
+    ('codigo_scop', 'string'), ('kg', 'double'), ('valor_soles', 'double'), ('puntaje', 'double'),
+    ('grado_evidencia', 'string'), ('estado_revision', 'string'), ('motivo', 'string'),
+    ('fuentes', 'string'), *_PART,
+])
 
 
 def columnas_destino(fuente: str) -> dict[str, str]:
