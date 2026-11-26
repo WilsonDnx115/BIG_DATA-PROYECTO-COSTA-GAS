@@ -290,13 +290,11 @@ def s9(unidad_mes):
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    u = _por_unidad_mes(unidad_mes).withColumn(
-        "_soles_t", F.when(F.col("kg") > 0, F.col("combustible") / (F.col("kg") / F.lit(1000.0))))
-    u = _z_robusto_por_grupo(u, "_soles_t", "rol", "_z")
+    u = kpi4(_por_unidad_mes(unidad_mes))
     sin_venta = (F.coalesce(F.col("kg"), F.lit(0.0)) <= 0) & (F.col("combustible") > 0)
-    fuera = F.abs(F.col("_z")) > F.lit(config.UMBRAL_Z_MAD)
+    fuera = F.abs(F.col("z_soles_por_t")) > F.lit(config.UMBRAL_Z_MAD)
     d = u.filter(sin_venta | F.coalesce(fuera, F.lit(False))).withColumn("kg", F.coalesce(F.col("kg"), F.lit(0.0)))
-    puntaje = F.when(sin_venta, F.lit(None).cast("double")).otherwise(F.abs(F.col("_z")))
+    puntaje = F.when(sin_venta, F.lit(None).cast("double")).otherwise(F.abs(F.col("z_soles_por_t")))
     return _alertas(d, "S9", "placa_norm", puntaje=F.coalesce(puntaje, F.lit(1.0)))
 
 
@@ -388,6 +386,41 @@ def s12(tesoreria, compras_glp):
     dif = F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) / F.greatest(F.col("kg_logistica"), F.col("kg_tesoreria"))
     d = c.withColumn("kg", kg)
     return _alertas(d, "S12", "placa_norm", puntaje=F.coalesce(dif, F.lit(1.0)))
+
+
+# --- Integración con fact_unidad_mes (F05) ------------------------------------
+def kpi4(fact_unidad_mes):
+    """KPI 4: combustible por tonelada (S/ por t) y su z robusto dentro de cada rol.
+
+    soles_por_t = combustible ÷ (kg ÷ 1 000), nulo si los kg son 0 o nulos (nunca
+    infinito). z_soles_por_t compara cada unidad-mes con su rol (transporte o reparto);
+    queda nulo donde soles_por_t es nulo. Lo usan S9 y el job de Gold (W07).
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    u = fact_unidad_mes.withColumn(
+        "soles_por_t", F.when(F.col("kg") > 0, F.col("combustible") / (F.col("kg") / F.lit(1000.0))))
+    return _z_robusto_por_grupo(u, "soles_por_t", "rol", "z_soles_por_t").withColumn(
+        "z_soles_por_t", F.when(F.col("soles_por_t").isNotNull(), F.col("z_soles_por_t")))
+
+
+def agregar_senales(fact_unidad_mes, alertas):
+    """Agrega a cada unidad-mes las señales que dispararon sobre ella.
+
+    senales: arreglo sin repetidos y ordenado como texto (por ejemplo ["S10", "S4", "S9"]);
+    n_senales: cuántas señales distintas. Una unidad-mes
+    sin alertas queda con un arreglo vacío y 0. Las alertas sin placa (S11, S12 solo en
+    tesorería) no se asignan a ninguna unidad. Lo llama el job de Gold (W07).
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    llave = ["placa_norm", "anio", "mes"]
+    por_unidad = (alertas.filter(F.col("placa_norm").isNotNull())
+                  .groupBy(*llave).agg(F.array_sort(F.collect_set("senal")).alias("senales")))
+    vacio = F.array().cast("array<string>")
+    return (fact_unidad_mes.join(por_unidad, llave, "left_outer")
+            .withColumn("senales", F.coalesce(F.col("senales"), vacio))
+            .withColumn("n_senales", F.size("senales")))
 
 
 def calcular(compras, ventas, flota, maestro):

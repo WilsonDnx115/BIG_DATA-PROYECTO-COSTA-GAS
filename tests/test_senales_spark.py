@@ -191,6 +191,43 @@ def test_s12_cruce_tesoreria_logistica(spark):
     assert (fila["anio"], fila["mes"], fila["kg"]) == (2022, 4, 8000.0)   # solo tesorería: fecha de pago
 
 
+# --- F05 · señales y KPI 4 en fact_unidad_mes ---------------------------------
+def _unidad_mes():
+    return pd.DataFrame([
+        ("ABC123", 2020, 5, "reparto", 10_000.0, 550.0),
+        ("ABC123", 2020, 6, "reparto", 0.0, 300.0),
+        ("XYZ789", 2020, 5, "reparto", 12_000.0, 600.0),
+        ("CIS001", 2020, 5, "transporte", 100_000.0, 2_000.0),
+        ("CIS002", 2020, 5, "transporte", None, 1_500.0),
+    ], columns=["placa_norm", "anio", "mes", "rol", "kg", "combustible"])
+
+
+def test_kpi4_soles_por_t_sin_infinitos(spark):
+    from src.glue import senales_spark
+
+    r = {(f["placa_norm"], f["mes"]): f for f in senales_spark.kpi4(_a_spark(spark, _unidad_mes())).take(10)}
+    assert r[("ABC123", 5)]["soles_por_t"] == pytest.approx(55.0)
+    assert r[("CIS001", 5)]["soles_por_t"] == pytest.approx(20.0)
+    for clave in (("ABC123", 6), ("CIS002", 5)):          # kg = 0 o nulo: nulo, nunca infinito
+        assert r[clave]["soles_por_t"] is None and r[clave]["z_soles_por_t"] is None
+    assert r[("ABC123", 5)]["z_soles_por_t"] is not None
+
+
+def test_agregar_senales_por_unidad_mes(spark):
+    from src.glue import senales_spark
+
+    um = _a_spark(spark, _unidad_mes())
+    alertas = senales_spark.s9(um)                                  # ABC123 jun: combustible sin venta
+    extra = pd.DataFrame({"senal": ["S4", "S4", "S10", "S11"], "placa_norm": ["ABC123", "ABC123", "ABC123", None],
+                          "anio": [2020] * 4, "mes": [6, 6, 6, 6]})
+    alertas = alertas.select("senal", "placa_norm", "anio", "mes").unionByName(_a_spark(spark, extra))
+    r = {(f["placa_norm"], f["mes"]): f for f in senales_spark.agregar_senales(um, alertas).take(10)}
+    assert r[("ABC123", 6)]["senales"] == ["S10", "S4", "S9"]
+    assert r[("ABC123", 6)]["n_senales"] == 3
+    assert r[("XYZ789", 5)]["senales"] == [] and r[("XYZ789", 5)]["n_senales"] == 0
+    assert len(r) == 5                                              # no agrega ni pierde unidades-mes
+
+
 def test_id_alerta_deterministico(spark, silver):
     from src.glue import senales_spark
 
