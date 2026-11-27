@@ -48,9 +48,10 @@ def test_cada_modo_tiene_su_funcion_y_sus_pendientes():
         assert resumen["pendientes"]
 
 
-def test_el_modo_evento_ya_no_tiene_pendiente_el_mapreduce():
-    assert not [p for p in gold_job.PENDIENTES["evento"] if "W05" in p]
-    assert [p for p in gold_job.PENDIENTES["evento"] if "W06" in p]
+def test_el_modo_evento_ya_no_tiene_pendiente_el_mapreduce_ni_el_balance():
+    for hecho in ("W05", "W06"):
+        assert not [p for p in gold_job.PENDIENTES["evento"] if hecho in p]
+    assert [p for p in gold_job.PENDIENTES["evento"] if "W07" in p]
 
 
 def test_nombre_califica_la_tabla():
