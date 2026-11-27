@@ -19,15 +19,15 @@ from __future__ import annotations
 import argparse
 
 from src.common import config
-from src.glue import dimensiones, iceberg, mapreduce_sql
+from src.glue import balance, dimensiones, iceberg, mapreduce_sql
 
 BASE_SILVER = "costagas_silver"
 MODOS = ("evento", "entrenar", "operacion")
 
 # Pasos que llenan los commits siguientes, en el orden en que corren.
 PENDIENTES = {
-    "evento": ["fact_balance_planta (W06)", "fact_unidad_mes (W07)",
-               "fact_alerta (W12)"],   # las dimensiones (W08) ya corren
+    # Las dimensiones (W08) y el balance de planta (W06) ya corren.
+    "evento": ["fact_unidad_mes (W07)", "fact_alerta (W12)"],
     "entrenar": ["tabla de modelado (F-ML)", "entrenamiento S12", "registro del modelo (W13)"],
     "operacion": ["entregas mensuales (W18)", "fact_operacion"],
 }
@@ -85,6 +85,16 @@ def paso_mapreduce(spark, args) -> str:
     return mapreduce_sql.escribir(balance, args.lake_uri)
 
 
+def paso_balance(spark, args) -> str:
+    """W06: `fact_balance_planta` por producto y mes, en Iceberg.
+
+    Sin fuente de produccion: `delta_stock_kg` queda nulo, que es lo que
+    corresponde mientras la entrega no traiga cierres fisicos.
+    """
+    return balance.construir_y_escribir(spark, leer_silver(spark, "compras_glp"),
+                                        leer_silver(spark, "ventas_detalle"))
+
+
 def paso_dimensiones(spark, args) -> list[str]:
     """W08: las seis dimensiones del modelo estrella, en Iceberg."""
     return dimensiones.construir_y_escribir(spark, {
@@ -95,10 +105,11 @@ def paso_dimensiones(spark, args) -> list[str]:
 
 
 def modo_evento(spark, args) -> dict:
-    """Corrida normal por evento. Falta lo que llenan W06, W07, W12 y W14."""
+    """Corrida normal por evento. Falta lo que llenan W07, W12 y W14."""
     resumen = _pendiente("evento")
     resumen["escrito"].append(paso_mapreduce(spark, args))
     resumen["escrito"].extend(paso_dimensiones(spark, args))
+    resumen["escrito"].append(paso_balance(spark, args))
     return resumen
 
 
