@@ -115,6 +115,9 @@ RECALL_MIN_RETADOR = _env_float("RECALL_MIN_RETADOR", 0.50)  # el retador no ree
 REVISIONES_REENTRENO = _env_int("REVISIONES_REENTRENO", 20)  # revisiones nuevas que adelantan el reentrenamiento
 RF_ARBOLES = _env_int("RF_ARBOLES", 100)
 RF_PROFUNDIDAD = _env_int("RF_PROFUNDIDAD", 6)
+# Árbol de decisión que explica las reglas a la gerencia (informe v16, 4.3): 3 niveles dan reglas
+# de hasta 3 condiciones, que se leen sin software; más profundo deja de ser legible.
+ARBOL_PROFUNDIDAD = _env_int("ARBOL_PROFUNDIDAD", 3)
 BOOTSTRAP_REMUESTREOS = _env_int("BOOTSTRAP_REMUESTREOS", 1000)
 PSI_UMBRAL = _env_float("PSI_UMBRAL", 0.2)                   # un PSI mayor adelanta el reentrenamiento
 PSI_MIN_OBS = _env_int("PSI_MIN_OBS", 100)                   # con menos facturas el PSI salta por ruido
