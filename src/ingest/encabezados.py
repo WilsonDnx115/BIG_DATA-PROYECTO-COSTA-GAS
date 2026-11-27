@@ -33,6 +33,18 @@ Uso:
 `--sin-nombres` publica solo el recuento y las letras de columna, sin un solo
 nombre: es la opción para cuando la salida va a un repositorio público.
 
+`--encabezado ARCHIVO:HOJA:FILA` es la salida para las hojas que quedan
+`encabezado_dudoso`. La primera barrera es una heurística, y una heurística se
+equivoca: hay hojas cuyo encabezado real está en otra fila, o cuyos nombres son
+tan cortos y numéricos que no puntúan como texto. Esta opción deja que una
+persona que sí abrió la hoja declare la fila, y entonces se publican sus
+nombres. Lo que NO se levanta es la segunda barrera: la fila declarada sigue
+pasando por `_valor_encabezado` celda por celda y por `parece_identificador`, de
+modo que si en esa fila hay un RUC, un DNI, una razón social o una placa, la
+hoja se sigue tratando como dudosa y no se publica nada. Cada hoja forzada queda
+marcada en la salida (`encabezado_forzado`) para que la evidencia diga cuál se
+declaró a mano y cuál la eligió el programa.
+
 La salida (JSON + Markdown) solo contiene metadatos. Los archivos de datos no.
 """
 from __future__ import annotations
@@ -201,6 +213,13 @@ def _letra_columna(pos: int) -> str:
 
 
 def _columnas(valores: list, dudoso: bool, sin_nombres: bool) -> list[dict]:
+    """Cada columna con su nombre publicable, o la razon por la que no lo lleva.
+
+    `omitido` significa dos cosas distintas y conviene no confundirlas en la
+    evidencia: en una hoja normal, que esa celda parece un dato; en una hoja sin
+    encabezado claro o con `--sin-nombres`, que no se publica ningun nombre de
+    la hoja entera. `a_markdown` lo dice con palabras diferentes.
+    """
     cols = []
     for i, v in enumerate(valores, start=1):
         if dudoso or sin_nombres:
@@ -229,11 +248,19 @@ def _avisos(cols: list[dict]) -> dict:
 
 
 def _hoja(nombre: str | None, filas: list[list], total_filas: int | None,
-          sin_nombres: bool, **extra) -> dict:
-    fila_enc, valores, dudoso = elegir_encabezado(filas)
-    motivo = "tipo_de_celda" if dudoso else None
+          sin_nombres: bool, fila_forzada: int | None = None, **extra) -> dict:
+    forzado = False
+    if fila_forzada is not None and 1 <= fila_forzada <= len(filas):
+        fila_enc = fila_forzada
+        valores = list(filas[fila_forzada - 1])
+        dudoso, forzado, motivo = False, True, None
+    else:
+        fila_enc, valores, dudoso = elegir_encabezado(filas)
+        motivo = "tipo_de_celda" if dudoso else None
+        if fila_forzada is not None:
+            dudoso, motivo = True, "fila_forzada_fuera_de_rango"
     if not dudoso and any(parece_identificador(_texto(v)) for v in valores):
-        dudoso, motivo = True, "identificador_en_la_fila"
+        dudoso, motivo, forzado = True, "identificador_en_la_fila", False
     cols = _columnas(valores, dudoso, sin_nombres)
     filas_datos = None
     if total_filas is not None and total_filas < FILAS_MAX_EXCEL - 10:
@@ -242,6 +269,7 @@ def _hoja(nombre: str | None, filas: list[list], total_filas: int | None,
         "hoja": nombre,
         "fila_encabezado": fila_enc,
         "encabezado_dudoso": dudoso,
+        "encabezado_forzado": forzado,
         "motivo_dudoso": motivo,
         "n_columnas": len(cols),
         "filas_datos": filas_datos,
@@ -249,6 +277,53 @@ def _hoja(nombre: str | None, filas: list[list], total_filas: int | None,
         **_avisos(cols),
         **extra,
     }
+
+
+# --- encabezados declarados a mano -------------------------------------------
+class EncabezadoMalFormado(ValueError):
+    """`--encabezado` no vino con la forma ARCHIVO:HOJA:FILA."""
+
+
+def parsear_encabezados(valores: list[str] | None) -> dict[tuple[str, str], int]:
+    """`["GASTOS 2020.xls:GASTOS FLOTA:4"]` -> `{("GASTOS 2020.XLS", "GASTOS FLOTA"): 4}`.
+
+    La hoja puede ir vacia (`archivo.csv::2`) para los CSV, que no tienen hojas.
+    Las claves se normalizan para que la tilde y las mayusculas no importen:
+    `PRODUCCION` y `produccion` son la misma hoja.
+    """
+    forzadas: dict[tuple[str, str], int] = {}
+    for crudo in valores or []:
+        partes = crudo.rsplit(":", 2)
+        if len(partes) != 3:
+            raise EncabezadoMalFormado(
+                f"'{crudo}' no tiene la forma ARCHIVO:HOJA:FILA, por ejemplo "
+                "'GASTOS 2020.xls:GASTOS FLOTA:4'. Para un CSV, deja la hoja vacia."
+            )
+        archivo, hoja, fila = partes
+        if not fila.strip().isdigit() or int(fila) < 1:
+            raise EncabezadoMalFormado(
+                f"'{crudo}': la fila debe ser un entero de 1 en adelante, no '{fila}'."
+            )
+        if int(fila) > FILAS_INSPECCION:
+            raise EncabezadoMalFormado(
+                f"'{crudo}': solo se inspeccionan las primeras {FILAS_INSPECCION} filas. "
+                "Si el encabezado esta mas abajo, sube FILAS_INSPECCION."
+            )
+        forzadas[(normalizar_nombre(archivo), normalizar_nombre(hoja))] = int(fila)
+    return forzadas
+
+
+def _forzadas_del_archivo(forzadas: dict[tuple[str, str], int] | None,
+                          rel: Path) -> dict[str, int]:
+    """Las entradas que aplican a este archivo, por su ruta o por su nombre suelto."""
+    if not forzadas:
+        return {}
+    claves = {normalizar_nombre(rel.as_posix()), normalizar_nombre(rel.name)}
+    return {hoja: fila for (archivo, hoja), fila in forzadas.items() if archivo in claves}
+
+
+def _fila_de(forzadas_archivo: dict[str, int], hoja: str | None) -> int | None:
+    return forzadas_archivo.get(normalizar_nombre(hoja or ""))
 
 
 def _primeras(iterable, n: int = FILAS_INSPECCION) -> list[list]:
@@ -306,17 +381,20 @@ def _contar_filas_csv(ruta: Path, codificacion: str) -> int | None:
         return sum(1 for linea in f if linea.strip())
 
 
-def leer_csv(ruta: Path, sin_nombres: bool = False) -> list[dict]:
+def leer_csv(ruta: Path, sin_nombres: bool = False,
+             forzadas: dict[str, int] | None = None) -> list[dict]:
     cod = detectar_codificacion(ruta)
     delim = detectar_delimitador(ruta, cod)
     with ruta.open("r", encoding=cod, errors="replace", newline="") as f:
         filas = _primeras(csv.reader(f, delimiter=delim))
     return [_hoja(None, filas, _contar_filas_csv(ruta, cod), sin_nombres,
+                  fila_forzada=_fila_de(forzadas or {}, None),
                   codificacion=cod, delimitador="\\t" if delim == "\t" else delim)]
 
 
 # --- Excel --------------------------------------------------------------------
-def _hojas_de_libro(fuente, sin_nombres: bool) -> list[dict]:
+def _hojas_de_libro(fuente, sin_nombres: bool,
+                    forzadas: dict[str, int] | None = None) -> list[dict]:
     """`fuente` es una ruta o un archivo binario abierto.
 
     openpyxl rechaza un libro por su extensión, no por su contenido, así que un
@@ -332,22 +410,25 @@ def _hojas_de_libro(fuente, sin_nombres: bool) -> list[dict]:
                 ws.iter_rows(min_row=1, max_row=FILAS_INSPECCION, values_only=True)
             )
             hojas.append(_hoja(ws.title, filas, ws.max_row, sin_nombres,
+                               fila_forzada=_fila_de(forzadas or {}, ws.title),
                                codificacion=None, delimitador=None))
         return hojas
     finally:
         wb.close()
 
 
-def leer_xlsx(ruta: Path, sin_nombres: bool = False) -> list[dict]:
-    return _hojas_de_libro(ruta, sin_nombres)
+def leer_xlsx(ruta: Path, sin_nombres: bool = False,
+              forzadas: dict[str, int] | None = None) -> list[dict]:
+    return _hojas_de_libro(ruta, sin_nombres, forzadas)
 
 
-def leer_xls(ruta: Path, sin_nombres: bool = False) -> list[dict]:
+def leer_xls(ruta: Path, sin_nombres: bool = False,
+             forzadas: dict[str, int] | None = None) -> list[dict]:
     """`.xls` BIFF con xlrd, y rescate de los archivos con extensión equivocada."""
     cabeza = ruta.open("rb").read(16)
     if cabeza[:2] == b"PK":                              # es un .xlsx mal nombrado
         with ruta.open("rb") as fh:
-            return _hojas_de_libro(fh, sin_nombres)
+            return _hojas_de_libro(fh, sin_nombres, forzadas)
     if cabeza.lstrip()[:1] == b"<":                      # HTML/XML de exportación
         raise RuntimeError(
             "es HTML con extensión .xls (exportación del ERP), no un Excel binario. "
@@ -368,6 +449,7 @@ def leer_xls(ruta: Path, sin_nombres: bool = False) -> list[dict]:
             ws = wb.sheet_by_name(nombre)
             filas = [ws.row_values(i) for i in range(min(ws.nrows, FILAS_INSPECCION))]
             hojas.append(_hoja(nombre, filas, ws.nrows, sin_nombres,
+                               fila_forzada=_fila_de(forzadas or {}, nombre),
                                codificacion=None, delimitador=None))
         return hojas
     finally:
@@ -433,7 +515,8 @@ def contrastar(codigo: str | None, hojas: list[dict]) -> dict | None:
 
 
 # --- recorrido ----------------------------------------------------------------
-def inventariar(origen: Path, sin_nombres: bool = False) -> dict:
+def inventariar(origen: Path, sin_nombres: bool = False,
+                forzadas: dict[tuple[str, str], int] | None = None) -> dict:
     origen = Path(origen)
     if not origen.exists():
         raise FileNotFoundError(
@@ -462,7 +545,8 @@ def inventariar(origen: Path, sin_nombres: bool = False) -> dict:
             "hojas": [],
         }
         try:
-            ficha["hojas"] = LECTORES[ext](f, sin_nombres)
+            ficha["hojas"] = LECTORES[ext](f, sin_nombres,
+                                           _forzadas_del_archivo(forzadas, rel))
         except Exception as e:                           # ningún archivo detiene el inventario
             ficha["legible"] = False
             ficha["motivo"] = f"{type(e).__name__}: {e}"
@@ -476,16 +560,29 @@ def inventariar(origen: Path, sin_nombres: bool = False) -> dict:
          "motivo": h["motivo_dudoso"]}
         for a in archivos for h in a["hojas"] if h["encabezado_dudoso"]
     ]
+    aplicadas = {
+        (normalizar_nombre(Path(a["ruta"]).name), normalizar_nombre(h["hoja"] or ""))
+        for a in archivos for h in a["hojas"] if h["encabezado_forzado"]
+    }
+    # Un nombre de archivo o de hoja mal escrito no debe pasar inadvertido: la
+    # corrida pareceria haber funcionado y la hoja seguiria sin nombres.
+    sin_usar = [
+        {"archivo": arch, "hoja": hoja, "fila": fila}
+        for (arch, hoja), fila in (forzadas or {}).items()
+        if (normalizar_nombre(Path(arch).name), hoja) not in aplicadas
+    ]
     con_esquema = sum(1 for a in archivos if a["contraste_esquema"] is not None)
     return {
         "generado_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "origen": Path(origen).as_posix(),
         "sin_nombres": sin_nombres,
+        "encabezados_forzados_sin_usar": sin_usar,
         "resumen": {
             "archivos": len(archivos),
             "hojas": sum(len(a["hojas"]) for a in archivos),
             "ilegibles": sum(1 for a in archivos if not a["legible"]),
             "hojas_sin_encabezado_claro": len(revisar),
+            "hojas_con_encabezado_forzado": len(aplicadas),
             "con_esquema_declarado": con_esquema,
             "sin_esquema_declarado": len(archivos) - con_esquema,
             "fuentes_declaradas_en_schemas": len(schemas.FUENTES),
@@ -506,6 +603,8 @@ def a_markdown(inv: dict) -> str:
         (f"- Archivos: **{r['archivos']}** ({r['ilegibles']} ilegibles) · "
          f"hojas: **{r['hojas']}**"),
         f"- Hojas sin encabezado claro (sin nombres publicados): **{r['hojas_sin_encabezado_claro']}**",
+        (f"- Hojas con el encabezado declarado a mano (`--encabezado`): "
+         f"**{r.get('hojas_con_encabezado_forzado', 0)}**"),
         (f"- Con esquema declarado en `schemas.FUENTES`: **{r['con_esquema_declarado']}** · "
          f"sin declarar: **{r['sin_esquema_declarado']}**"),
         "",
@@ -529,12 +628,18 @@ def a_markdown(inv: dict) -> str:
             avisos = []
             if h["encabezado_dudoso"]:
                 avisos.append("**sin encabezado claro**")
+            if h.get("encabezado_forzado"):
+                avisos.append("encabezado declarado a mano")
             if h["duplicadas"]:
                 avisos.append(f"duplicadas: {', '.join(h['duplicadas'])}")
             if h["sin_nombre"]:
                 avisos.append(f"sin nombre: {', '.join(h['sin_nombre'])}")
             if h["omitidas"]:
-                avisos.append(f"omitidas por parecer dato: {', '.join(h['omitidas'])}")
+                # En una hoja dudosa `omitidas` son todas las celdas con algo: no
+                # se publica ningun nombre de la hoja, no es que parezcan dato.
+                etiqueta = ("no publicadas (hoja sin encabezado claro)"
+                            if h["encabezado_dudoso"] else "omitidas por parecer dato")
+                avisos.append(f"{etiqueta}: {', '.join(h['omitidas'])}")
             if h["fila_encabezado"] > 1:
                 avisos.append(f"{h['fila_encabezado'] - 1} fila(s) de título")
             if h["delimitador"] and h["delimitador"] != ",":
@@ -553,7 +658,10 @@ def a_markdown(inv: dict) -> str:
             "",
             ("Ninguna fila de estas hojas parece un encabezado, así que no se publica "
              "ningún nombre. Hay que abrirlas y decir en qué fila empieza la tabla "
-             "(o descartarlas si son cuadros de totales)."),
+             "(o descartarlas si son cuadros de totales). Quien tenga el rol de "
+             "ingeniería y pueda abrir `data/raw/` declara la fila y vuelve a correr el "
+             "inventario con `--encabezado ARCHIVO:HOJA:FILA`; la barrera que descarta "
+             "documentos, razones sociales y placas celda por celda sigue puesta."),
             "",
             "| Archivo | Hoja | Cols. | Por qué |",
             "|---|---|---|---|",
@@ -582,12 +690,27 @@ def a_markdown(inv: dict) -> str:
                        f"`{h['delimitador']}`, encabezado en la fila {h['fila_encabezado']}")
             lineas += [cab, ""]
             if h["encabezado_dudoso"]:
+                extra = ""
+                if h.get("motivo_dudoso") == "fila_forzada_fuera_de_rango":
+                    extra = (" La fila declarada con `--encabezado` no existe en la hoja, "
+                             "así que se ignoró.")
+                if h.get("motivo_dudoso") == "identificador_en_la_fila":
+                    extra = (" La fila traía un documento, una razón social o una placa, "
+                             "así que la hoja se trata como dudosa aunque se declarara la "
+                             "fila a mano.")
                 lineas += [
                     (f"Sin encabezado claro: {h['n_columnas']} columnas "
-                     f"(`A`-`{_letra_columna(h['n_columnas'])}`), nombres no publicados."),
+                     f"(`A`-`{_letra_columna(h['n_columnas'])}`), nombres no publicados."
+                     + extra),
                     "",
                 ]
                 continue
+            if h.get("encabezado_forzado"):
+                lineas += [
+                    ("Fila de encabezado **declarada a mano**; los nombres salen de ella, "
+                     "con la misma criba de datos personales que el resto."),
+                    "",
+                ]
             lineas += ["| # | Col | Nombre de la columna |", "|---|---|---|"]
             for c in h["columnas"]:
                 if c["omitido"]:
@@ -610,6 +733,52 @@ def a_markdown(inv: dict) -> str:
             )
             lineas.append("")
     return "\n".join(lineas) + "\n"
+
+
+MOTIVOS_DUDOSO = {
+    "tipo_de_celda": (
+        "ninguna de las primeras filas puntúa como encabezado: son todas del mismo "
+        "tipo que los datos"
+    ),
+    "identificador_en_la_fila": (
+        "la fila que mejor puntúa trae un documento, una razón social o una placa, "
+        "así que es una fila de datos: la hoja no tiene encabezado"
+    ),
+    "fila_forzada_fuera_de_rango": (
+        "la fila declarada con `--encabezado` no existe en la hoja"
+    ),
+}
+
+
+def informe_dudosas(inv: dict) -> str:
+    """Tabla de las hojas sin encabezado claro, con la razón de cada una.
+
+    Se arma desde un inventario ya generado, así que se puede volver a producir
+    sin acceso a `data/raw/`: el JSON de la corrida está versionado y no
+    contiene ningún valor de celda de datos. Es lo que necesita quien escribe un
+    contrato para saber si la hoja tiene nombres que alguien no publicó o si
+    simplemente no los tiene.
+    """
+    dudosas = [(a, h) for a in inv["archivos"] for h in a["hojas"]
+               if h.get("encabezado_dudoso")]
+    por_motivo: dict[str, int] = {}
+    for _, h in dudosas:
+        clave = h.get("motivo_dudoso") or "sin_motivo"
+        por_motivo[clave] = por_motivo.get(clave, 0) + 1
+
+    lineas = [
+        "| Archivo | Hoja | Fila | Cols. | Filas | Por qué no hay nombres |",
+        "|---|---|---|---|---|---|",
+    ]
+    for a, h in dudosas:
+        motivo = MOTIVOS_DUDOSO.get(h.get("motivo_dudoso"), h.get("motivo_dudoso") or "—")
+        lineas.append(
+            f"| `{a['ruta']}` | {h['hoja'] or '—'} | {h['fila_encabezado']} | "
+            f"{h['n_columnas']} | {'?' if h['filas_datos'] is None else h['filas_datos']} | "
+            f"{motivo} |"
+        )
+    conteo = " · ".join(f"{k}: {v}" for k, v in sorted(por_motivo.items()))
+    return "\n".join([f"Hojas sin encabezado claro: {len(dudosas)} ({conteo})", ""] + lineas) + "\n"
 
 
 def _resolver(destino: str | Path) -> Path:
@@ -635,11 +804,27 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--salida-md", default=SALIDA_MD)
     ap.add_argument("--sin-nombres", action="store_true",
                     help="Publicar solo recuentos y letras de columna, ningún nombre.")
+    ap.add_argument("--encabezado", action="append", metavar="ARCHIVO:HOJA:FILA",
+                    help="Declarar la fila de encabezado de una hoja que quedó sin "
+                         "encabezado claro. Repetible. Para un CSV, deja la hoja vacía.")
+    ap.add_argument("--dudosas", type=Path, metavar="INVENTARIO.JSON",
+                    help="No inventaría nada: lee un JSON ya generado y lista las hojas "
+                         "sin encabezado claro con la razón de cada una. Sirve sin "
+                         "acceso a data/raw/.")
     ap.add_argument("--imprimir", action="store_true",
                     help="Volcar el Markdown completo a la consola.")
     a = ap.parse_args(argv)
 
-    inv = inventariar(a.origen, a.sin_nombres)
+    if a.dudosas:
+        print(informe_dudosas(json.loads(a.dudosas.read_text(encoding="utf-8"))))
+        return 0
+
+    try:
+        forzadas = parsear_encabezados(a.encabezado)
+    except EncabezadoMalFormado as e:
+        print(f"ERROR en --encabezado: {e}")
+        return 2
+    inv = inventariar(a.origen, a.sin_nombres, forzadas)
     pj, pm = guardar(inv, a.salida, a.salida_md)
     r = inv["resumen"]
 
@@ -649,6 +834,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Archivos: {r['archivos']} ({r['ilegibles']} ilegibles) · hojas: {r['hojas']}")
     print(f"Hojas sin encabezado claro: {r['hojas_sin_encabezado_claro']}")
+    if r.get("hojas_con_encabezado_forzado"):
+        print(f"Hojas con encabezado declarado a mano: {r['hojas_con_encabezado_forzado']}")
+    for f_sin in inv["encabezados_forzados_sin_usar"]:
+        print(f"  AVISO  --encabezado '{f_sin['archivo']}:{f_sin['hoja']}:{f_sin['fila']}' "
+              "no se aplicó a ninguna hoja: revisa el nombre del archivo y de la hoja.")
     print(f"Con esquema declarado: {r['con_esquema_declarado']} · "
           f"sin declarar: {r['sin_esquema_declarado']}")
     for arch in inv["archivos"]:
