@@ -1,100 +1,136 @@
 """Señales determinísticas en Spark para el job de Gold (informe v16, 4.2 y Tabla 4.3).
 
-Son funciones puras: reciben DataFrames de Silver y devuelven alertas con el
-contrato `fact_alerta`. El job `src/glue/gold_job.py` (Wilson) las llama; este
-módulo no lee ni escribe en el lago.
+Son funciones puras: reciben DataFrames y devuelven alertas con el contrato
+`fact_alerta_base`, el mismo de las señales en pandas del WP 0.8. El job
+`src/glue/gold_job.py` (Wilson) las llama; este módulo no lee ni escribe en el lago.
 
-Esta versión porta a Spark las señales de `src/signals/senales_fixture.py` (pandas) con la
-misma lógica, para que la conciliación por evento corra repartida en el clúster:
+Un solo esquema por tabla (CLAUDE.md). Este módulo no declara contratos propios:
+  * el catálogo, el grado de evidencia y las ventanas salen de `src/signals/common.py`
+    y `src/signals/catalogo.yaml`;
+  * las entradas usan las interfaces del WP 0.8 (`src/signals/contratos.py`):
+    `compras` (factura_id, fecha, proveedor_id, codigo_scop, kg, precio_usd_kg,
+    tipo_cambio), `unidad_mes`, `unidades`, `produccion` y `tc`. `normalizar_compras`
+    arma `compras` desde la tabla Silver `compras_glp`;
+  * las alertas no valorizan kg: `valor_soles` queda nulo, porque unos kg señalados no
+    son una pérdida medida.
 
-  S1  placa cargada distinta de la facturada            filtro
-  S4  carga superior a la capacidad autorizada           join con broadcast(flota)
-  S5  volumen a un cliente superior a su capacidad       join con broadcast(maestro)
-  S7  operación de una unidad no habilitada para GLP     left_anti con broadcast(flota habilitada)
-  S8  venta sin compra que la respalde (circuito SCOP)   left_anti por codigo_scop
-  S10 precio de venta bajo la mediana de su canal        ventana con percentile exacto
+  S1  placa cargada distinta de la facturada            filtro                       (fixture)
+  S2  compra sin SCOP o con SCOP repetido               ventana por codigo_scop
+  S3  USD/kg sobre la mediana móvil del proveedor       ventana rangeBetween de días previos
+  S4  carga superior a la capacidad autorizada          join con broadcast(flota)    (fixture)
+  S5  volumen a un cliente sobre su capacidad           join con broadcast(maestro)  (fixture)
+  S6  tipo de cambio igual a 1 o lejos del oficial      join con broadcast(calendario)
+  S7  actividad en una unidad no habilitada             join con broadcast(unidades)
+  S8  venta sin compra que la respalde (SCOP)           left_anti                    (fixture)
+  S9  combustible sin volumen o atípico para su rol     z robusto del log, por rol (base_mad)
+  S10 precio de venta bajo la mediana de su canal       ventana con percentile exacto (fixture)
+  S11 cierre de planta calculado sin medición física    por día
+  S12 factura sin pareja o con kg distinto              full_outer tesorería × logística
 
-S2, S3 y S6 leen la tabla Silver `compras_glp` (contrato de WP 0.2: proveedor,
-serie, numero, nro_scop, fecha_factura, kg, monto_usd, tipo_cambio, placa_norm):
-
-  S2  compra sin SCOP o con un SCOP repetido en otra factura   ventana por nro_scop
-  S3  USD/kg sobre la mediana móvil del proveedor              ventana rangeBetween de días previos
-  S6  tipo de cambio igual a 1 o lejos del oficial del día     join con broadcast(calendario BCRP)
-
-S9, S11 y S12 (F04):
-
-  S9  combustible sin venta, o S/ por t con |z robusto| > UMBRAL_Z_MAD en su rol   unidad × mes
-  S11 cierre de planta sin medición física (residuo 0 todo el mes) y ajustes manuales   día y mes
-  S12 factura sin pareja o con kg distinto entre tesorería y logística   full_outer por documento
-
-Sin collect().
+Las marcadas «fixture» leen las tablas de la muestra sintética antigua
+(`src/signals/senales_fixture.py`) y se prueban contra ella. Sin collect().
 """
 from __future__ import annotations
 
 from src.common import config, schemas
+from src.signals.common import (ANIO_VENTANA, VENTANAS_FECHA, cargar_catalogo, grado_alerta,
+                                grado_evidencia)
+
+REGLAS: dict[str, dict] = cargar_catalogo()
+
+# Descripción y grado de cada señal (dim_senal, W08), desde el catálogo único.
+CATALOGO: dict[str, tuple[str, str]] = {
+    codigo: (regla["descripcion"], grado_evidencia(regla))
+    for codigo, regla in sorted(REGLAS.items(), key=lambda kv: int(kv[0][1:]))}
+
+COLUMNAS_ALERTA = schemas.CONTRATOS["fact_alerta_base"].columnas()
+TOL_KG_S12 = 1.0   # kg: diferencias menores son redondeo entre tesorería y logística
 
 
-def grado_evidencia(regla: dict) -> str:
-    """Grado de evidencia de una señal según el catálogo: «indicio», «alta» o «media».
-
-    Las señales con muestra mínima (S1, S4 y S7: de 2 a 9 casos; informe v16,
-    Tablas 4.3 y 5.3) son «indicio» aunque su fuente sea fuerte. Las demás toman la
-    evidencia del catálogo; «alta_si_existe_…» cuenta como alta (S8).
-    """
-    if regla.get("muestra_minima"):
-        return "indicio"
-    return "alta" if str(regla["evidencia"]).startswith("alta") else "media"
-
-
-def _catalogo() -> dict[str, tuple[str, str]]:
-    """Descripción y grado de cada señal desde `src/signals/catalogo.yaml`, el único catálogo S1-S12.
-
-    Lo comparten las señales en pandas (WP 0.8), las de Spark y la dimensión
-    dim_senal (W08), así no hay dos versiones del catálogo.
-    """
-    from src.signals.common import cargar_catalogo  # noqa: PLC0415
-
-    return {codigo: (regla["descripcion"], grado_evidencia(regla))
-            for codigo, regla in sorted(cargar_catalogo().items(), key=lambda kv: int(kv[0][1:]))}
-
-
-CATALOGO: dict[str, tuple[str, str]] = _catalogo()
-
-COLUMNAS_ALERTA = schemas.CONTRATOS["fact_alerta"].columnas()
-
-
-def _alertas(df, senal: str, placa: str, kg: str = "kg", puntaje=None):
-    """Lleva las filas que disparan una señal al contrato `fact_alerta`."""
+# --- Piezas comunes -----------------------------------------------------------
+def en_ventana(senal: str, fecha: str = "fecha", anio: str = "anio"):
+    """Condición de ventana de la señal, la misma que `common._ventana` en pandas."""
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    puntaje = F.lit(1.0) if puntaje is None else puntaje
+    if senal in VENTANAS_FECHA:
+        condicion = F.lit(False)
+        for ini, fin in VENTANAS_FECHA[senal]:
+            condicion = condicion | F.col(fecha).between(F.lit(ini).cast("date"), F.lit(fin).cast("date"))
+        return condicion
+    return F.col(anio) == F.lit(ANIO_VENTANA)
+
+
+def _texto(valor):
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    if valor is None:
+        return F.lit(None).cast("string")
+    return F.lit(valor) if isinstance(valor, str) else valor.cast("string")
+
+
+def _alertas(df, senal: str, motivo, *, kg, puntaje=None, tipo="regla", unidad=None, rol=None,
+             factura=None, scop=None):
+    """Lleva las filas que disparan una señal al contrato `fact_alerta_base`.
+
+    El id es determinístico (SHA-256 de señal, tipo, resolución, fecha, unidad, factura y
+    motivo, 24 caracteres), así la misma alerta en otra corrida tiene el mismo id y el
+    MERGE en Iceberg no la duplica.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    regla = REGLAS[senal]
     out = df.select(
         F.lit(senal).alias("senal"),
-        F.lit("regla").alias("tipo"),
+        _texto(tipo).alias("tipo"),
+        F.lit(regla["resolucion"]).alias("resolucion"),
         F.col("fecha").cast("date").alias("fecha"),
-        F.col(placa).cast("string").alias("placa_norm"),
-        F.col("documento").cast("string").alias("documento"),
-        F.col(kg).cast("double").alias("kg"),
-        (F.col(kg).cast("double") * F.lit(config.PRECIO_REF_KG)).alias("valor_soles"),
-        puntaje.cast("double").alias("puntaje"),
-        F.lit(CATALOGO[senal][1]).alias("grado_evidencia"),
+        _texto(unidad).alias("unidad_id"),
+        _texto(rol).alias("rol"),
+        _texto(factura).alias("factura_id"),
+        _texto(scop).alias("codigo_scop"),
+        kg.cast("double").alias("kg"),
+        F.lit(None).cast("double").alias("valor_soles"),
+        (F.lit(1.0) if puntaje is None else puntaje).cast("double").alias("puntaje"),
+        F.lit(grado_alerta(regla)).alias("grado_evidencia"),
         F.lit("pendiente").alias("estado_revision"),
-        F.col("anio").cast("int").alias("anio"),
-        F.col("mes").cast("int").alias("mes"),
+        _texto(motivo).alias("motivo"),
+        F.lit(",".join(regla["fuentes"])).alias("fuentes"),
     )
-    # Identificador determinístico: la misma alerta en otra corrida tiene el mismo id (MERGE idempotente).
-    clave = F.concat_ws("|", F.col("senal"), F.coalesce(F.col("documento"), F.lit("")),
-                        F.coalesce(F.col("placa_norm"), F.lit("")))
-    out = out.withColumn("id_alerta", F.substring(F.md5(clave), 1, 12))
-    return out.select(*COLUMNAS_ALERTA)
+    out = out.withColumn("anio", F.year("fecha")).withColumn("mes", F.month("fecha"))
+    clave = F.concat_ws("|", *[F.coalesce(F.col(c).cast("string"), F.lit(""))
+                               for c in ("senal", "tipo", "resolucion", "fecha", "unidad_id",
+                                         "factura_id", "motivo")])
+    return out.withColumn("id_alerta", F.substring(F.sha2(clave, 256), 1, 24)).select(*COLUMNAS_ALERTA)
 
 
+def _z_robusto_por_grupo(df, valor: str, grupo: str, salida: str):
+    """z robusto por grupo, igual que base_mad.z_robusto: 0.6745 × (x − mediana) / MAD.
+
+    Mediana y MAD exactas con percentile(…, 0.5). Si el MAD del grupo es 0, el z queda
+    nulo: el grupo no es evaluable (CLAUDE.md), no se reemplaza por un número chico.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    med = df.filter(F.col(valor).isNotNull()).groupBy(grupo).agg(
+        F.expr(f"percentile({valor}, 0.5)").alias("_mediana"))
+    con_med = df.join(med, grupo, "left_outer")
+    mad = (con_med.filter(F.col(valor).isNotNull())
+           .withColumn("_desvio", F.abs(F.col(valor) - F.col("_mediana")))
+           .groupBy(grupo).agg(F.expr("percentile(_desvio, 0.5)").alias("_mad")))
+    return (con_med.join(mad, grupo, "left_outer")
+            .withColumn(salida, F.when(F.col("_mad") > 0,
+                                       F.lit(0.6745) * (F.col(valor) - F.col("_mediana")) / F.col("_mad")))
+            .drop("_mediana", "_mad"))
+
+
+# --- Señales sobre la muestra sintética antigua (fixture) ---------------------
 def s1(compras):
     """Placa cargada distinta de la facturada en la misma orden."""
     from pyspark.sql import functions as F  # noqa: PLC0415
 
     d = compras.filter(F.coalesce(F.col("flag_placa_divergente"), F.lit(False)))
-    return _alertas(d, "S1", "placa_cargada")
+    return _alertas(d, "S1", "placa_cargada_distinta_de_la_facturada", kg=F.col("kg"),
+                    unidad=F.col("placa_cargada"), factura=F.col("documento"), scop=F.col("codigo_scop"))
 
 
 def s4(compras, flota):
@@ -105,7 +141,9 @@ def s4(compras, flota):
     cap = flota.select(F.col("placa_norm").alias("_placa_flota"), "capacidad_kg")
     d = (compras.join(broadcast(cap), compras["placa_cargada"] == cap["_placa_flota"], "inner")
          .filter(F.col("kg") > F.col("capacidad_kg")))
-    return _alertas(d, "S4", "placa_cargada", puntaje=F.col("kg") / F.col("capacidad_kg"))
+    return _alertas(d, "S4", "carga_sobre_capacidad_autorizada", kg=F.col("kg"),
+                    puntaje=F.col("kg") / F.col("capacidad_kg"), unidad=F.col("placa_cargada"),
+                    factura=F.col("documento"), scop=F.col("codigo_scop"))
 
 
 def s5(ventas, maestro):
@@ -116,29 +154,20 @@ def s5(ventas, maestro):
     cap = maestro.select("card_code", F.col("capacidad_kg").alias("cap_local"))
     d = (ventas.join(broadcast(cap), "card_code", "inner")
          .filter(F.col("cap_local").isNotNull() & (F.col("kg") > F.col("cap_local"))))
-    return _alertas(d, "S5", "placa_norm", puntaje=F.col("kg") / F.col("cap_local"))
-
-
-def s7(compras, flota):
-    """Compras cargadas en una unidad que no está habilitada para trasladar GLP."""
-    from pyspark.sql import functions as F  # noqa: PLC0415
-    from pyspark.sql.functions import broadcast  # noqa: PLC0415
-
-    habilitadas = (flota.filter(F.coalesce(F.col("habilitada"), F.lit(False)))
-                   .select(F.col("placa_norm").alias("_placa_hab")).dropna().distinct())
-    c = compras.withColumn("_placa", F.col("placa_cargada"))
-    d = c.join(broadcast(habilitadas), c["_placa"] == habilitadas["_placa_hab"], "left_anti")
-    return _alertas(d, "S7", "_placa")
+    return _alertas(d, "S5", "venta_sobre_capacidad_del_cliente", kg=F.col("kg"),
+                    puntaje=F.col("kg") / F.col("cap_local"), unidad=F.col("placa_norm"),
+                    factura=F.col("documento"), scop=F.col("codigo_scop"))
 
 
 def s8(ventas, compras):
-    """Venta con código SCOP que no cierra con ninguna compra."""
+    """Venta con código SCOP que no cierra con ninguna compra (S8 es no resoluble con datos reales)."""
     from pyspark.sql import functions as F  # noqa: PLC0415
 
     con_scop = ventas.filter(F.col("codigo_scop").isNotNull())
     claves = compras.select("codigo_scop").dropna().distinct()
     d = con_scop.join(claves, "codigo_scop", "left_anti")
-    return _alertas(d, "S8", "placa_norm")
+    return _alertas(d, "S8", "venta_sin_compra_scop", kg=F.col("kg"), unidad=F.col("placa_norm"),
+                    factura=F.col("documento"), scop=F.col("codigo_scop"))
 
 
 def s10(ventas):
@@ -151,27 +180,57 @@ def s10(ventas):
     v = (ventas.filter(F.col("precio").isNotNull())
          .withColumn("mediana", F.expr("percentile(precio, 0.5)").over(w)))
     d = v.filter(F.col("precio") < F.col("mediana") * F.lit(1 - config.TOL_PRECIO_S10))
-    return _alertas(d, "S10", "placa_norm", puntaje=F.lit(1.0) - F.col("precio") / F.col("mediana"))
+    return _alertas(d, "S10", "precio_bajo_mediana_del_canal", kg=F.col("kg"),
+                    puntaje=F.lit(1.0) - F.col("precio") / F.col("mediana"), unidad=F.col("placa_norm"),
+                    factura=F.col("documento"), scop=F.col("codigo_scop"))
 
 
-# --- Señales sobre compras_glp (F03) -----------------------------------------
-def preparar_compras(compras_glp):
-    """Agrega a compras_glp las columnas comunes de las alertas: fecha, documento y usd_kg.
+def calcular(compras, ventas, flota, maestro):
+    """Alertas de las señales que leen la muestra sintética antigua."""
+    from functools import reduce  # noqa: PLC0415
 
-    documento = «PROVEEDOR SERIE-NUMERO», que es la llave natural de la tabla (los
-    proveedores son empresas, no personas naturales). usd_kg queda nulo si falta el
-    monto o los kg, o si los kg no son positivos: no se inventa un precio.
+    partes = [s1(compras), s4(compras, flota), s5(ventas, maestro), s8(ventas, compras), s10(ventas)]
+    return reduce(lambda a, b: a.unionByName(b), partes)
+
+
+# --- Interfaz `compras` del WP 0.8 desde Silver --------------------------------
+def llave_factura(proveedor, serie, numero):
+    """Llave «PROVEEDOR|SERIE|NUMERO»: mayúsculas, sin espacios, número sin ceros a la izquierda.
+
+    La misma llave en logística (compras_glp) y en tesorería (pedidos_proveedor).
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    return (compras_glp
-            .withColumn("fecha", F.col("fecha_factura").cast("date"))
-            .withColumn("documento", F.concat_ws(" ", F.col("proveedor"),
-                                                 F.concat_ws("-", F.col("serie"), F.col("numero"))))
-            .withColumn("usd_kg", F.when(F.col("kg") > 0, F.col("monto_usd") / F.col("kg"))))
+    limpio = lambda c: F.regexp_replace(F.upper(F.trim(c)), r"\s+", "")  # noqa: E731
+    num = F.regexp_replace(limpio(numero), r"^0+(?=\d)", "")
+    return F.concat_ws("|", F.regexp_replace(F.upper(F.trim(proveedor)), r"\s+", " "), limpio(serie), num)
 
 
-def s2(compras_glp):
+def normalizar_compras(compras_glp):
+    """Silver `compras_glp` → interfaz `compras` del WP 0.8, más `unidad_id`.
+
+    factura_id es la llave del documento; proveedor_id el proveedor en mayúsculas (son
+    empresas, no personas naturales); codigo_scop vacío pasa a nulo; precio_usd_kg queda
+    nulo si faltan el monto o los kg, o si los kg no son positivos (no se inventa un precio).
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    scop = F.trim(F.col("nro_scop"))
+    return compras_glp.select(
+        llave_factura(F.col("proveedor"), F.col("serie"), F.col("numero")).alias("factura_id"),
+        F.col("fecha_factura").cast("date").alias("fecha"),
+        F.regexp_replace(F.upper(F.trim(F.col("proveedor"))), r"\s+", " ").alias("proveedor_id"),
+        F.when(scop != "", scop).alias("codigo_scop"),
+        F.col("kg").cast("double").alias("kg"),
+        F.when(F.col("kg") > 0, F.col("monto_usd") / F.col("kg")).alias("precio_usd_kg"),
+        F.col("tipo_cambio").cast("double").alias("tipo_cambio"),
+        F.col("placa_norm").alias("unidad_id"),
+        F.year(F.col("fecha_factura")).alias("anio"),
+        F.month(F.col("fecha_factura")).alias("mes"),
+    )
+
+
+def s2(compras, aplicar_ventana: bool = True):
     """Factura sin código SCOP, o con un SCOP que aparece en más de una factura.
 
     Solo se usa el código de la propia factura: las órdenes SCOP (F05) cubren
@@ -180,252 +239,160 @@ def s2(compras_glp):
     from pyspark.sql import Window  # noqa: PLC0415
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    c = preparar_compras(compras_glp)
-    scop = F.trim(F.col("nro_scop"))
+    c = compras.filter(en_ventana("S2")) if aplicar_ventana else compras
+    scop = F.trim(F.col("codigo_scop"))
     sin_scop = scop.isNull() | (scop == "")
-    w = Window.partitionBy("nro_scop")
-    c = c.withColumn("_facturas_scop", F.when(~sin_scop, F.size(F.collect_set("documento").over(w))))
-    d = c.filter(sin_scop | (F.col("_facturas_scop") > 1))
+    w = Window.partitionBy("codigo_scop")
+    c = c.withColumn("_facturas_scop", F.when(~sin_scop, F.size(F.collect_set("factura_id").over(w))))
+    d = c.filter(sin_scop | (F.col("_facturas_scop") > 1)).withColumn(
+        "_motivo", F.when(sin_scop, "compra_sin_scop").otherwise("scop_repetido"))
     puntaje = F.when(sin_scop, F.lit(1.0)).otherwise(F.col("_facturas_scop").cast("double"))
-    return _alertas(d, "S2", "placa_norm", puntaje=puntaje)
+    return _alertas(d, "S2", F.col("_motivo"), kg=F.col("kg"), puntaje=puntaje, unidad=F.col("unidad_id"),
+                    factura=F.col("factura_id"), scop=F.col("codigo_scop"))
 
 
-def s3(compras_glp, precios_pactados=None):
-    """USD/kg más de TOL_PRECIO_PAGO sobre la mediana móvil del proveedor, o sobre el precio pactado.
+def s3(compras, aplicar_ventana: bool = True):
+    """USD/kg más de TOL_PRECIO_COMPRA sobre el precio pactado, o sobre la mediana móvil del proveedor.
 
-    La mediana usa solo las facturas de los VENTANA_MEDIANA_DIAS días anteriores
-    (sin el mismo día ni los siguientes), así no hay fuga de información hacia el pasado.
-    `precios_pactados` es opcional: columnas proveedor, anio, mes y usd_kg_pactado (F08).
-    """
-    from pyspark.sql import Window  # noqa: PLC0415
-    from pyspark.sql import functions as F  # noqa: PLC0415
-    from pyspark.sql.functions import broadcast  # noqa: PLC0415
-
-    c = preparar_compras(compras_glp).withColumn("_dia", F.datediff(F.col("fecha"), F.lit("1970-01-01")))
-    w = (Window.partitionBy("proveedor").orderBy("_dia")
-         .rangeBetween(-config.VENTANA_MEDIANA_DIAS, -1))
-    c = c.withColumn("_mediana", F.expr("percentile(usd_kg, 0.5)").over(w))
-    tope = F.lit(1 + config.TOL_PRECIO_PAGO)
-    sobre_mediana = F.col("usd_kg") > F.col("_mediana") * tope
-    if precios_pactados is not None:
-        pactos = precios_pactados.select("proveedor", "anio", "mes", "usd_kg_pactado")
-        c = c.join(broadcast(pactos), ["proveedor", "anio", "mes"], "left_outer")
-        sobre_pacto = F.col("usd_kg") > F.col("usd_kg_pactado") * tope
-        dispara = F.coalesce(sobre_mediana, F.lit(False)) | F.coalesce(sobre_pacto, F.lit(False))
-        referencia = F.coalesce(F.col("usd_kg_pactado"), F.col("_mediana"))
-    else:
-        dispara = F.coalesce(sobre_mediana, F.lit(False))
-        referencia = F.col("_mediana")
-    d = c.filter(dispara)
-    return _alertas(d, "S3", "placa_norm", puntaje=F.col("usd_kg") / referencia - F.lit(1.0))
-
-
-def calendario_tc(tc_oficial):
-    """Tipo de cambio oficial (BCRP, venta) para cada día calendario.
-
-    Los días sin publicación (fines de semana y feriados) toman el último valor
-    hábil anterior. La tabla es pequeña (un valor por día), así que la ventana sin
-    partición no es un problema y el resultado se une con broadcast().
-    Columnas de entrada: fecha y tc_venta (contrato entorno_bcrp, A09).
+    La mediana usa solo las facturas de los VENTANA_MEDIANA_DIAS días anteriores (sin
+    el mismo día ni los siguientes), así no hay fuga de información (informe v16,
+    controles). Si la compra trae `precio_pactado_usd_kg` (opcional en la interfaz del
+    WP 0.8), se compara contra él.
     """
     from pyspark.sql import Window  # noqa: PLC0415
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    tc = tc_oficial.select(F.col("fecha").cast("date").alias("fecha"), F.col("tc_venta").cast("double"))
-    dias = (tc.agg(F.min("fecha").alias("ini"), F.max("fecha").alias("fin"))
+    c = compras.filter(en_ventana("S3")) if aplicar_ventana else compras
+    c = c.withColumn("_dia", F.datediff(F.col("fecha"), F.lit("1970-01-01")))
+    w = Window.partitionBy("proveedor_id").orderBy("_dia").rangeBetween(-config.VENTANA_MEDIANA_DIAS, -1)
+    c = c.withColumn("_mediana", F.expr("percentile(precio_usd_kg, 0.5)").over(w))
+    pactado = (F.when(F.col("precio_pactado_usd_kg") > 0, F.col("precio_pactado_usd_kg"))
+               if "precio_pactado_usd_kg" in c.columns else F.lit(None).cast("double"))
+    c = c.withColumn("_base", F.coalesce(pactado, F.col("_mediana"))).withColumn(
+        "_motivo", F.when(pactado.isNotNull(), "precio_fuera_de_lo_pactado")
+                    .otherwise("precio_sobre_mediana_movil_proveedor"))
+    d = c.filter(F.coalesce(F.col("precio_usd_kg") > F.col("_base") * F.lit(1 + config.TOL_PRECIO_COMPRA),
+                            F.lit(False)))
+    return _alertas(d, "S3", F.col("_motivo"), kg=F.col("kg"),
+                    puntaje=F.col("precio_usd_kg") / F.col("_base") - F.lit(1.0),
+                    unidad=F.col("unidad_id"), factura=F.col("factura_id"), scop=F.col("codigo_scop"))
+
+
+def calendario_tc(tc):
+    """Tipo de cambio oficial (interfaz `tc` del WP 0.8: fecha, tc_oficial) para cada día.
+
+    Los días sin publicación (fines de semana y feriados) toman el último valor hábil
+    anterior. La tabla es pequeña, así que la ventana sin partición no es un problema y
+    el resultado se une con broadcast().
+    """
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    t = tc.select(F.col("fecha").cast("date").alias("fecha"), F.col("tc_oficial").cast("double").alias("_tc"))
+    dias = (t.agg(F.min("fecha").alias("ini"), F.max("fecha").alias("fin"))
             .select(F.explode(F.sequence("ini", "fin")).alias("fecha")))
     w = Window.orderBy("fecha").rowsBetween(Window.unboundedPreceding, 0)
-    return (dias.join(tc, "fecha", "left_outer")
-            .withColumn("tc_oficial", F.last("tc_venta", ignorenulls=True).over(w))
+    return (dias.join(t, "fecha", "left_outer")
+            .withColumn("tc_oficial", F.last("_tc", ignorenulls=True).over(w))
             .select("fecha", "tc_oficial"))
 
 
-def s6(compras_glp, tc_oficial):
-    """Tipo de cambio registrado igual a 1, o que se aleja más de TOL_TIPO_CAMBIO del oficial del día.
+def s6(compras, tc, aplicar_ventana: bool = True):
+    """Tipo de cambio igual a 1, o que se aleja más de TOL_TIPO_CAMBIO del oficial del día.
 
-    Si no hay valor oficial para la fecha, la comparación queda nula y no dispara
-    (no se inventa el tipo de cambio). Un T.C. igual a 1 dispara siempre.
+    Sin valor oficial para la fecha, la comparación queda nula y no dispara (no se
+    inventa el tipo de cambio); un T.C. igual a 1 dispara siempre.
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
     from pyspark.sql.functions import broadcast  # noqa: PLC0415
 
-    c = preparar_compras(compras_glp).join(broadcast(calendario_tc(tc_oficial)), "fecha", "left_outer")
-    tc = F.col("tipo_cambio")
-    desvio = F.abs(tc - F.col("tc_oficial")) / F.col("tc_oficial")
-    es_uno = tc == F.lit(1.0)
-    d = c.filter(F.coalesce(es_uno, F.lit(False)) | F.coalesce(desvio > F.lit(config.TOL_TIPO_CAMBIO), F.lit(False)))
-    return _alertas(d, "S6", "placa_norm", puntaje=F.coalesce(desvio, F.lit(1.0)))
+    c = compras.filter(en_ventana("S6")) if aplicar_ventana else compras
+    c = c.join(broadcast(calendario_tc(tc)), "fecha", "left_outer")
+    registrado = F.col("tipo_cambio")
+    desvio = F.abs(registrado - F.col("tc_oficial")) / F.when(F.col("tc_oficial") > 0, F.col("tc_oficial"))
+    es_uno = registrado == F.lit(1.0)
+    d = c.filter(F.coalesce(es_uno, F.lit(False))
+                 | F.coalesce((desvio > F.lit(config.TOL_TIPO_CAMBIO)) & (registrado > 0), F.lit(False)))
+    motivo = F.when(es_uno, "tipo_cambio_igual_a_1").otherwise("tipo_cambio_difiere_del_oficial")
+    return _alertas(d, "S6", motivo, kg=F.col("kg"), puntaje=F.coalesce(desvio, F.lit(1.0)),
+                    unidad=F.col("unidad_id"), factura=F.col("factura_id"), scop=F.col("codigo_scop"))
 
 
-# --- S9, S11 y S12 (F04) ------------------------------------------------------
-TOL_KG_S12 = 1.0   # kg: diferencias menores son redondeo entre tesorería y logística
+# --- Unidad × mes: KPI 4, S7 y S9 ----------------------------------------------
+def kpi4(unidad_mes):
+    """KPI 4 y modelo base por unidad-mes, igual que `base_mad.puntuar` (interfaz `unidad_mes`).
 
-
-def _z_robusto_por_grupo(df, valor: str, grupo: str, salida: str):
-    """z robusto por grupo, igual que base_mad.z_robusto: 0.6745 × (x − mediana) / MAD.
-
-    Mediana y MAD exactas con percentile(…, 0.5), agregadas por grupo y unidas de vuelta.
-    Si el MAD es 0 se usa 1e-9, como en la versión pandas.
+    kg_base_rol: kg vendidos en reparto y kg transportados en transporte (no se cruzan
+    roles). soles_comb_por_t = gasto_combustible ÷ (kg_base_rol ÷ 1 000), solo con volumen
+    y gasto positivos. z: z robusto del log de ese cociente dentro del rol. puntaje = |z|;
+    alerta_base si supera UMBRAL_Z_MAD. estado_puntaje dice por qué una fila no es evaluable.
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    med = df.filter(F.col(valor).isNotNull()).groupBy(grupo).agg(
-        F.expr(f"percentile({valor}, 0.5)").alias("_mediana"))
-    con_med = df.join(med, grupo, "left_outer")
-    mad = (con_med.filter(F.col(valor).isNotNull())
-           .withColumn("_desvio", F.abs(F.col(valor) - F.col("_mediana")))
-           .groupBy(grupo).agg(F.expr("percentile(_desvio, 0.5)").alias("_mad")))
-    mad_seguro = F.when(F.col("_mad") > 0, F.col("_mad")).otherwise(F.lit(1e-9))
-    return (con_med.join(mad, grupo, "left_outer")
-            .withColumn(salida, F.lit(0.6745) * (F.col(valor) - F.col("_mediana")) / mad_seguro)
-            .drop("_mediana", "_mad"))
+    volumen = F.when(F.col("rol") == "reparto", F.col("kg_vendidos")).otherwise(F.col("kg_transportados"))
+    gasto = F.col("gasto_combustible").cast("double")
+    u = unidad_mes.withColumn("kg_base_rol", volumen.cast("double"))
+    validos = (F.col("kg_base_rol") > 0) & (gasto > 0)
+    u = (u.withColumn("soles_comb_por_t", F.when(validos, gasto / (F.col("kg_base_rol") / F.lit(1000.0))))
+         .withColumn("log_combustible_por_t", F.log(F.col("soles_comb_por_t"))))
+    u = _z_robusto_por_grupo(u, "log_combustible_por_t", "rol", "z")
+    return (u.withColumn("puntaje", F.abs(F.col("z")))
+            .withColumn("alerta_base", F.coalesce(F.col("puntaje") > F.lit(config.UMBRAL_Z_MAD), F.lit(False)))
+            .withColumn("estado_puntaje",
+                        F.when(F.col("soles_comb_por_t").isNull(), "sin_combustible_o_volumen_positivo")
+                         .when(F.col("z").isNull(), "mad_cero_o_sin_grupo_evaluable")
+                         .otherwise("evaluable")))
 
 
-def _por_unidad_mes(df):
-    """Columnas de alerta para el grano unidad × mes: fecha = día 1 y documento = «PLACA AAAA-MM»."""
+def _primer_dia(df):
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    return (df.withColumn("fecha", F.make_date(F.col("anio"), F.col("mes"), F.lit(1)))
-            .withColumn("documento", F.concat_ws(" ", F.col("placa_norm"),
-                                                 F.format_string("%04d-%02d", F.col("anio"), F.col("mes")))))
+    return df.withColumn("fecha", F.make_date(F.col("anio"), F.col("mes"), F.lit(1)))
 
 
-def s9(unidad_mes):
-    """Combustible sin venta, o combustible por tonelada fuera de lo normal para su rol.
+def s7(unidad_mes, unidades, aplicar_ventana: bool = True):
+    """Actividad (gasto o volumen) en una unidad declarada no habilitada para GLP."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+    from pyspark.sql.functions import broadcast  # noqa: PLC0415
 
-    Entrada: fact_unidad_mes con placa_norm, anio, mes, rol, kg y combustible (S/).
-    El S/ por t se calcula solo con kg > 0; con kg = 0 o nulo y combustible > 0 es
-    «combustible sin venta». El z robusto se calcula dentro de cada rol, porque una
-    cisterna y una unidad de reparto no son comparables.
-    """
+    um = unidad_mes.filter(en_ventana("S7")) if aplicar_ventana else unidad_mes
+    um = um.join(broadcast(unidades.select("unidad_id", "habilitada")), "unidad_id", "left_outer")
+    actividad = F.lit(False)
+    for c in ("gasto_total", "gasto_combustible", "kg_vendidos", "kg_transportados"):
+        actividad = actividad | F.coalesce(F.col(c) > 0, F.lit(False))
+    d = _primer_dia(um.filter((F.col("habilitada") == F.lit(False)) & actividad))
+    kg = F.when(F.col("rol") == "reparto", F.col("kg_vendidos")).otherwise(F.col("kg_transportados"))
+    return _alertas(d, "S7", "actividad_en_unidad_no_habilitada", kg=kg, unidad=F.col("unidad_id"),
+                    rol=F.col("rol"))
+
+
+def s9(unidad_mes, aplicar_ventana: bool = True):
+    """Combustible sin volumen del rol, o combustible por tonelada atípico (|z| > UMBRAL_Z_MAD)."""
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    u = kpi4(_por_unidad_mes(unidad_mes))
-    sin_venta = (F.coalesce(F.col("kg"), F.lit(0.0)) <= 0) & (F.col("combustible") > 0)
-    fuera = F.abs(F.col("z_soles_por_t")) > F.lit(config.UMBRAL_Z_MAD)
-    d = u.filter(sin_venta | F.coalesce(fuera, F.lit(False))).withColumn("kg", F.coalesce(F.col("kg"), F.lit(0.0)))
-    puntaje = F.when(sin_venta, F.lit(None).cast("double")).otherwise(F.abs(F.col("z_soles_por_t")))
-    return _alertas(d, "S9", "placa_norm", puntaje=F.coalesce(puntaje, F.lit(1.0)))
-
-
-def s11(produccion):
-    """Cierre de planta sin medición física.
-
-    Entrada: producción diaria con fecha, anio, mes, residuo_kg y ajuste_kg (contrato
-    de A08). Dispara:
-      * una alerta por mes cuando el residuo es exactamente 0 en todos los días del
-        mes (al menos 2 días): el cierre se cuadró sin medir;
-      * una alerta por día con un ajuste manual distinto de 0 (kg = |ajuste|).
-    """
-    from pyspark.sql import functions as F  # noqa: PLC0415
-
-    p = produccion.withColumn("fecha", F.col("fecha").cast("date"))
-    meses = (p.groupBy("anio", "mes").agg(
-        F.count("*").alias("_dias"),
-        F.sum(F.when(F.col("residuo_kg") == 0, 1).otherwise(0)).alias("_dias_cero"),
-        F.max("fecha").alias("fecha"),
-        F.sum(F.abs(F.coalesce(F.col("ajuste_kg"), F.lit(0.0)))).alias("kg"))
-        .filter((F.col("_dias") >= 2) & (F.col("_dias_cero") == F.col("_dias")))
-        .withColumn("documento", F.format_string("CIERRE %04d-%02d", F.col("anio"), F.col("mes")))
-        .withColumn("placa_norm", F.lit(None).cast("string")))
-    ajustes = (p.filter(F.coalesce(F.col("ajuste_kg"), F.lit(0.0)) != 0)
-               .withColumn("kg", F.abs(F.col("ajuste_kg")))
-               .withColumn("documento", F.concat(F.lit("AJUSTE "), F.date_format("fecha", "yyyy-MM-dd")))
-               .withColumn("placa_norm", F.lit(None).cast("string")))
-    return _alertas(meses, "S11", "placa_norm").unionByName(_alertas(ajustes, "S11", "placa_norm"))
-
-
-def _llave_documento(proveedor, serie, numero):
-    """Llave común «PROVEEDOR|SERIE|NUMERO»: mayúsculas, sin espacios, número sin ceros a la izquierda."""
-    from pyspark.sql import functions as F  # noqa: PLC0415
-
-    limpio = lambda c: F.regexp_replace(F.upper(F.trim(c)), r"\s+", "")  # noqa: E731
-    num = F.regexp_replace(limpio(numero), r"^0+(?=\d)", "")
-    return F.concat_ws("|", F.regexp_replace(F.upper(F.trim(proveedor)), r"\s+", " "), limpio(serie), num)
-
-
-def cruce_s12(tesoreria, compras_glp):
-    """Cruce full_outer entre tesorería y logística por documento, con la clase de cada par.
-
-    tesoreria: proveedor, documento («SERIE-NUMERO»), kg, fecha_pago, fecha_vence (A07).
-    compras_glp: la tabla de logística (F06), con serie y numero por separado.
-    Clases: coincide, kg_distinto (|Δkg| > TOL_KG_S12), solo_logistica, solo_tesoreria y
-    kg_desconocido (ambos registros existen pero a uno le faltan los kg: no se afirma que
-    coincidan ni que difieran, y no genera alerta).
-    Lo usan s12() y la tabla de modelado modelo_factura (F07) para la etiqueta y el KPI 3.
-    """
-    from pyspark.sql import functions as F  # noqa: PLC0415
-
-    t = tesoreria.select(
-        _llave_documento(F.col("proveedor"), F.split(F.col("documento"), "-").getItem(0),
-                         F.split(F.col("documento"), "-").getItem(1)).alias("llave"),
-        F.col("proveedor").alias("proveedor_t"), F.col("documento").alias("documento_t"),
-        F.col("kg").cast("double").alias("kg_tesoreria"),
-        F.col("fecha_pago").cast("date").alias("fecha_pago"),
-        F.col("fecha_vence").cast("date").alias("fecha_vence"))
-    lg = preparar_compras(compras_glp).select(
-        _llave_documento(F.col("proveedor"), F.col("serie"), F.col("numero")).alias("llave"),
-        F.col("documento").alias("documento_l"), "placa_norm", "fecha", "anio", "mes",
-        F.col("kg").cast("double").alias("kg_logistica"))
-    j = lg.join(t, "llave", "full_outer")
-    clase = (F.when(F.col("documento_t").isNull(), "solo_logistica")
-             .when(F.col("documento_l").isNull(), "solo_tesoreria")
-             .when(F.col("kg_logistica").isNull() | F.col("kg_tesoreria").isNull(), "kg_desconocido")
-             .when(F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) > F.lit(TOL_KG_S12), "kg_distinto")
-             .otherwise("coincide"))
-    fecha = F.coalesce(F.col("fecha"), F.col("fecha_pago"), F.col("fecha_vence"))
-    return (j.withColumn("clase_s12", clase)
-            .withColumn("documento", F.coalesce(F.col("documento_l"),
-                                                F.concat_ws(" ", F.col("proveedor_t"), F.col("documento_t"))))
-            .withColumn("fecha", fecha)
-            .withColumn("anio", F.coalesce(F.col("anio"), F.year(fecha)))
-            .withColumn("mes", F.coalesce(F.col("mes"), F.month(fecha))))
-
-
-def s12(tesoreria, compras_glp):
-    """Alertas S12: facturas solo en logística, solo en tesorería o con kg distinto.
-
-    El puntaje es la diferencia relativa de kg cuando hay pareja (|Δ| / máx) y 1.0
-    cuando falta el segundo registro.
-    """
-    from pyspark.sql import functions as F  # noqa: PLC0415
-
-    c = cruce_s12(tesoreria, compras_glp).filter(
-        F.col("clase_s12").isin("solo_logistica", "solo_tesoreria", "kg_distinto"))
-    kg = F.coalesce(F.col("kg_logistica"), F.col("kg_tesoreria"))
-    dif = F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) / F.greatest(F.col("kg_logistica"), F.col("kg_tesoreria"))
-    d = c.withColumn("kg", kg)
-    return _alertas(d, "S12", "placa_norm", puntaje=F.coalesce(dif, F.lit(1.0)))
-
-
-# --- Integración con fact_unidad_mes (F05) ------------------------------------
-def kpi4(fact_unidad_mes):
-    """KPI 4: combustible por tonelada (S/ por t) y su z robusto dentro de cada rol.
-
-    soles_por_t = combustible ÷ (kg ÷ 1 000), nulo si los kg son 0 o nulos (nunca
-    infinito). z_soles_por_t compara cada unidad-mes con su rol (transporte o reparto);
-    queda nulo donde soles_por_t es nulo. Lo usan S9 y el job de Gold (W07).
-    """
-    from pyspark.sql import functions as F  # noqa: PLC0415
-
-    u = fact_unidad_mes.withColumn(
-        "soles_por_t", F.when(F.col("kg") > 0, F.col("combustible") / (F.col("kg") / F.lit(1000.0))))
-    return _z_robusto_por_grupo(u, "soles_por_t", "rol", "z_soles_por_t").withColumn(
-        "z_soles_por_t", F.when(F.col("soles_por_t").isNotNull(), F.col("z_soles_por_t")))
+    um = unidad_mes.filter(en_ventana("S9")) if aplicar_ventana else unidad_mes
+    p = kpi4(um)
+    sin_volumen = (F.col("gasto_combustible") > 0) & (F.col("kg_base_rol") == 0)
+    raro = F.col("alerta_base")
+    d = _primer_dia(p.filter(F.coalesce(sin_volumen, F.lit(False)) | raro))
+    motivo = F.when(sin_volumen, "combustible_sin_volumen_del_rol").otherwise("combustible_por_tonelada_atipico")
+    return _alertas(d, "S9", motivo, kg=F.col("kg_base_rol"),
+                    puntaje=F.when(raro, F.col("puntaje")).otherwise(F.lit(1.0)),
+                    tipo=F.when(raro, "regla_y_modelo").otherwise("regla"),
+                    unidad=F.col("unidad_id"), rol=F.col("rol"))
 
 
 def agregar_senales(fact_unidad_mes, alertas):
-    """Agrega a cada unidad-mes las señales que dispararon sobre ella.
+    """Agrega a cada unidad-mes las señales que dispararon sobre ella (llave unidad_id, anio, mes).
 
     senales: arreglo sin repetidos y ordenado como texto (por ejemplo ["S10", "S4", "S9"]);
-    n_senales: cuántas señales distintas. Una unidad-mes
-    sin alertas queda con un arreglo vacío y 0. Las alertas sin placa (S11, S12 solo en
-    tesorería) no se asignan a ninguna unidad. Lo llama el job de Gold (W07).
+    n_senales: cuántas distintas. Una unidad-mes sin alertas queda con arreglo vacío y 0.
+    Las alertas sin unidad (S11, S12 solo en tesorería) no se asignan. Lo llama el job (W07).
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    llave = ["placa_norm", "anio", "mes"]
-    por_unidad = (alertas.filter(F.col("placa_norm").isNotNull())
+    llave = ["unidad_id", "anio", "mes"]
+    por_unidad = (alertas.filter(F.col("unidad_id").isNotNull())
                   .groupBy(*llave).agg(F.array_sort(F.collect_set("senal")).alias("senales")))
     vacio = F.array().cast("array<string>")
     return (fact_unidad_mes.join(por_unidad, llave, "left_outer")
@@ -433,10 +400,80 @@ def agregar_senales(fact_unidad_mes, alertas):
             .withColumn("n_senales", F.size("senales")))
 
 
-def calcular(compras, ventas, flota, maestro):
-    """Une las alertas de las señales de esta versión en un solo DataFrame."""
-    from functools import reduce  # noqa: PLC0415
+# --- S11: producción diaria ----------------------------------------------------
+def s11(produccion, aplicar_ventana: bool = True):
+    """Cierre diario calculado sin medición física independiente (interfaz `produccion`).
 
-    partes = [s1(compras), s4(compras, flota), s5(ventas, maestro),
-              s7(compras, flota), s8(ventas, compras), s10(ventas)]
-    return reduce(lambda a, b: a.unionByName(b), partes)
+    residuo = stock_inicial + produccion − ventas − bonificaciones − stock_final. Dispara
+    el día con residuo ≈ 0 (TOL_RESIDUO_STOCK), los cinco valores presentes y un stock
+    final calculado. Si la producción es negativa y cancela el stock inicial, el motivo es
+    «cierre_calculado_con_ajuste». Igual que `src/signals/s11.py`.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    p = produccion.withColumn("fecha", F.col("fecha").cast("date"))
+    p = p.filter(en_ventana("S11")) if aplicar_ventana else p
+    cols = ["stock_inicial", "produccion", "ventas", "bonificaciones", "stock_final"]
+    n = {c: F.col(c).cast("double") for c in cols}
+    residuo = n["stock_inicial"] + n["produccion"] - n["ventas"] - n["bonificaciones"] - n["stock_final"]
+    tol = F.lit(config.TOL_RESIDUO_STOCK)
+    completo = F.lit(True)
+    for c in cols:
+        completo = completo & n[c].isNotNull()
+    dispara = (F.abs(residuo) <= tol) & completo & F.coalesce(F.col("stock_final_es_calculado") == True, F.lit(False))  # noqa: E712
+    ajuste = (n["produccion"] < 0) & (F.abs(n["produccion"] + n["stock_inicial"]) <= tol)
+    d = p.filter(dispara)
+    motivo = F.when(ajuste, "cierre_calculado_con_ajuste").otherwise("cierre_calculado_sin_medicion_independiente")
+    return _alertas(d, "S11", motivo, kg=F.lit(None).cast("double"))
+
+
+# --- S12: tesorería × logística -------------------------------------------------
+def cruce_s12(tesoreria, compras):
+    """Cruce full_outer entre tesorería y logística por factura, con la clase de cada par.
+
+    tesoreria: Silver `pedidos_proveedor` (proveedor, documento «SERIE-NUMERO», kg,
+    fecha_pago, fecha_vence). compras: interfaz `compras` (normalizar_compras).
+    Clases: coincide, kg_distinto (|Δkg| > TOL_KG_S12), solo_logistica, solo_tesoreria y
+    kg_desconocido (los dos registros existen, pero a uno le faltan los kg: no se afirma
+    que coincidan ni que difieran, y no genera alerta). Lo usan s12() y modelo_factura (F07).
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    partes = F.split(F.col("documento"), "-")
+    t = tesoreria.select(
+        llave_factura(F.col("proveedor"), partes.getItem(0), partes.getItem(1)).alias("_llave_t"),
+        F.col("kg").cast("double").alias("kg_tesoreria"),
+        F.col("fecha_pago").cast("date").alias("fecha_pago"),
+        F.col("fecha_vence").cast("date").alias("fecha_vence"))
+    lg = compras.select(F.col("factura_id").alias("_llave_l"), "unidad_id", "codigo_scop",
+                        F.col("fecha").alias("_fecha_l"), F.col("kg").cast("double").alias("kg_logistica"))
+    j = lg.join(t, lg["_llave_l"] == t["_llave_t"], "full_outer")
+    clase = (F.when(F.col("_llave_t").isNull(), "solo_logistica")
+             .when(F.col("_llave_l").isNull(), "solo_tesoreria")
+             .when(F.col("kg_logistica").isNull() | F.col("kg_tesoreria").isNull(), "kg_desconocido")
+             .when(F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) > F.lit(TOL_KG_S12), "kg_distinto")
+             .otherwise("coincide"))
+    fecha = F.coalesce(F.col("_fecha_l"), F.col("fecha_pago"), F.col("fecha_vence"))
+    return (j.withColumn("factura_id", F.coalesce(F.col("_llave_l"), F.col("_llave_t")))
+            .withColumn("clase_s12", clase)
+            .withColumn("fecha", fecha)
+            .withColumn("anio", F.year(fecha)).withColumn("mes", F.month(fecha))
+            .drop("_llave_l", "_llave_t", "_fecha_l"))
+
+
+def s12(tesoreria, compras, aplicar_ventana: bool = True):
+    """Alertas S12: facturas solo en logística, solo en tesorería o con kg distinto.
+
+    puntaje: diferencia relativa de kg cuando hay pareja (|Δ| ÷ máx) y 1.0 cuando falta
+    el segundo registro.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    c = cruce_s12(tesoreria, compras).filter(
+        F.col("clase_s12").isin("solo_logistica", "solo_tesoreria", "kg_distinto"))
+    c = c.filter(en_ventana("S12")) if aplicar_ventana else c
+    kg = F.coalesce(F.col("kg_logistica"), F.col("kg_tesoreria"))
+    dif = (F.abs(F.col("kg_logistica") - F.col("kg_tesoreria"))
+           / F.greatest(F.col("kg_logistica"), F.col("kg_tesoreria")))
+    return _alertas(c, "S12", F.col("clase_s12"), kg=kg, puntaje=F.coalesce(dif, F.lit(1.0)),
+                    unidad=F.col("unidad_id"), factura=F.col("factura_id"), scop=F.col("codigo_scop"))

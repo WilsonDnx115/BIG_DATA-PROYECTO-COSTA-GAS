@@ -19,7 +19,7 @@ def priorizar(alertas: pd.DataFrame, k: int = config.TOP_K) -> pd.DataFrame:
     if k <= 0 or alertas.id_alerta.duplicated().any():
         raise ValueError('k debe ser positivo y las alertas deben tener IDs únicos')
     df = alertas.copy()
-    df['_evidencia'] = df.grado_evidencia.map({'alto': 2, 'medio': 1, 'nulo': 0})
+    df['_evidencia'] = df.grado_evidencia.map({'alto': 2, 'medio': 1, 'indicio': 0, 'nulo': 0})
     if df._evidencia.isna().any():
         raise ValueError('Grado de evidencia inválido')
     p = pd.to_numeric(df.puntaje, errors='coerce')
