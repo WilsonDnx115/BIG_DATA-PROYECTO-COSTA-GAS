@@ -11,7 +11,7 @@ cobertura real de cada fuente. Ruta B (AWS), tope de costo total **US$ 1**.
 - Usar una rama por paquete y PR revisado por el integrante de apoyo. No trabajar directamente en `main`. Mensajes: `tipo(alcance): WP x.y descripción`.
 - Registrar decisiones de diseño en `docs/adr/` usando `0000-plantilla.md` y técnicas del curso en `docs/tecnicas_curso.md`, con archivo y línea.
 - **Ningún valor sin fuente.** Todo parámetro, umbral o cifra lleva su origen: una tabla del informe v17, un dato medido con la consulta o el script que lo reproduce, o una referencia externa citada en un ADR. No se escribe «por confirmar», «por fijar», «a definir» ni «TBD»: `tests/test_sin_pendientes.py` recorre `docs/`, `sql/`, `dashboards/`, `contracts/` y `src/common/config.py` y falla si aparecen.
-- **Si un dato no existe en la entrega, se dice como hecho**: «no cubierto», con la evidencia de la búsqueda y su consecuencia. Eso es un resultado, no un pendiente; el ejemplo es el stock diario ([produccion_no_cubierta.md](docs/evidencias/produccion_no_cubierta.md)).
+- **Si un dato no existe en la entrega, se dice como hecho**: «no cubierto», con la evidencia de la búsqueda y su consecuencia. Eso es un resultado, no un pendiente; el ejemplo es el gasto atribuible a una unidad, declarado como no cubierto en [`contracts/gastos.yaml`](contracts/gastos.yaml) con la medición que lo sostiene ([gastos_posiciones.md](docs/evidencias/gastos_posiciones.md)).
 
 ## Datos y privacidad
 
