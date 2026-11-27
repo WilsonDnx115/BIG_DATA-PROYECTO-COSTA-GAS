@@ -126,3 +126,95 @@ def test_el_lago_local_no_tiene_dni_ni_ruc_de_persona():
             if RE_DNI.search(valor) or RE_RUC_PERSONA.search(valor):
                 hallazgos.append((p.relative_to(config.RAIZ_REPO).as_posix(), valor[:40]))
     assert not hallazgos, f"posible dato personal en Silver: {hallazgos[:5]}"
+
+
+# --- 4 · Las alertas y las vistas de Gold (commit AR13) ------------------------
+# La bandeja de alertas es lo que de verdad mira una persona todos los dias, y la
+# revision ciega la mira alguien que no es el autor. Si un nombre o un documento se
+# cuela, se cuela ahi. `revisor_hash` es el unico dato de persona que existe en Gold y
+# tiene que estar seudonimizado.
+DIR_VISTAS = config.RAIZ_REPO / "sql" / "athena" / "vistas"
+
+# Columnas que no pueden aparecer en una alerta ni en una vista, aunque su nombre no
+# lleve ninguna de las palabras de persona: identifican a alguien o a su vehiculo.
+COLUMNAS_PROHIBIDAS = ("documento", "documento_norm", "ruc", "razon_social", "placa",
+                       "placa_norm", "revisor", "cliente_nombre")
+# `revisor_hash` es la unica excepcion, y lo es porque ya es un hash.
+EXCEPCION = "revisor_hash"
+
+
+def _identificadores_de_la_vista(sql: str) -> set[str]:
+    """Todo nombre que la vista menciona, sin comentarios.
+
+    A proposito no se intenta distinguir la columna publicada de la que solo se usa en
+    un JOIN o en un WHERE: un analizador de SQL que se equivoque dejaria pasar justo lo
+    que esta prueba busca. Aqui, si el nombre de un dato personal aparece en la vista,
+    la prueba falla, y que sobre un caso es mas barato que que falte uno.
+    """
+    cuerpo = "\n".join(l for l in sql.splitlines() if not l.strip().startswith("--"))
+    return set(re.findall(r"\w+", cuerpo))
+
+
+def test_el_contrato_de_alertas_no_trae_ninguna_columna_de_persona():
+    """`fact_alerta_base` identifica con unidad_id, factura_id y codigo_scop, no con placas."""
+    from src.common import schemas                                   # noqa: PLC0415
+
+    columnas = schemas.CONTRATOS["fact_alerta_base"].columnas()
+    assert all(_es_segura(c) for c in columnas), columnas
+    malas = [c for c in columnas if c.lower() in COLUMNAS_PROHIBIDAS]
+    assert not malas, f"la alerta expone datos de persona o de vehiculo: {malas}"
+
+
+def test_ninguna_vista_publica_un_nombre_ni_un_documento():
+    malas = []
+    for sql in sorted(DIR_VISTAS.glob("*.sql")):
+        for columna in sorted(_identificadores_de_la_vista(sql.read_text(encoding="utf-8"))):
+            if columna == EXCEPCION:
+                continue
+            if not _es_segura(columna) or columna.lower() in COLUMNAS_PROHIBIDAS:
+                malas.append((sql.name, columna))
+    assert not malas, f"columnas con datos de persona en las vistas: {malas}"
+
+
+def test_revisor_hash_es_el_unico_dato_de_persona_en_las_vistas():
+    """Si aparece otro, esta prueba lo lista: la excepcion es una, no una categoria."""
+    con_persona = set()
+    for sql in sorted(DIR_VISTAS.glob("*.sql")):
+        for columna in _identificadores_de_la_vista(sql.read_text(encoding="utf-8")):
+            if any(p in columna.lower() for p in PALABRAS_DE_PERSONA) or "revisor" in columna.lower():
+                con_persona.add(columna)
+    assert con_persona == {EXCEPCION}, con_persona
+
+
+def test_el_revisor_se_guarda_seudonimizado_y_no_en_claro():
+    from src.portal import revision                                  # noqa: PLC0415
+
+    nombre = "Persona Ficticia Revisora"
+    valor = revision.revisor_hash(nombre, sal="sal-de-prueba")
+    assert valor != nombre and nombre.lower() not in valor.lower()
+    assert re.fullmatch(r"[0-9a-f]{32}", valor)                      # hash, no texto
+    # Determinista con la misma sal: si no, la misma persona seria dos revisores y la
+    # revision ciega no se podria auditar.
+    assert valor == revision.revisor_hash(nombre, sal="sal-de-prueba")
+    assert valor != revision.revisor_hash(nombre, sal="otra-sal")
+
+
+def test_sin_sal_no_se_escribe_el_revisor():
+    """Preferible fallar que guardar un nombre en claro porque falte una variable."""
+    from src.portal import revision                                  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="SEUDONIMO_SAL"):
+        revision.revisor_hash("Persona Ficticia Revisora", sal="")
+
+
+def test_la_sal_no_esta_en_el_repositorio():
+    from src.common import limpieza                                  # noqa: PLC0415
+
+    fuente = Path(limpieza.__file__).read_text(encoding="utf-8")
+    assert "SEUDONIMO_SAL" in fuente                                 # sale del entorno
+    ejemplo = config.RAIZ_REPO / ".env.example"
+    if ejemplo.exists():
+        for linea in ejemplo.read_text(encoding="utf-8").splitlines():
+            if linea.startswith("SEUDONIMO_SAL"):
+                valor = linea.split("=", 1)[1].strip()
+                assert valor in ("", "cambiar-esta-sal", "cambiame"), linea

@@ -21,6 +21,14 @@ Uso:
     cortes = deciles_entrenamiento(pdf_entrenamiento, VARIABLES)   # se guarda con el modelo
     resultado = evaluar(pdf_nuevas, cortes)
     if requiere_reentreno(resultado): ...
+
+Para guardarlos junto al modelo (FR13) hay que pasar por `a_dict()`: los extremos de
+los tramos son -inf y +inf, y `json.dumps` los escribe como `Infinity`, que Python
+vuelve a leer pero no es JSON valido para nadie mas (ni Athena ni un navegador lo
+aceptan). `a_dict()` los guarda como `null` y `desde_dict()` los restituye:
+
+    lake_io.escribir_json(a_dict(cortes), f"{corrida}/cortes_psi.json")
+    cortes = desde_dict(json.loads(texto))
 """
 from __future__ import annotations
 
@@ -63,6 +71,49 @@ def deciles_entrenamiento(pdf: pd.DataFrame, variables, bins: int | None = None)
                        "esperado": _proporciones(v, bordes).tolist(),
                        "n": int(v.size)}
     return cortes
+
+
+def a_dict(cortes: dict) -> dict:
+    """Los cortes en JSON estricto, para guardarlos con el modelo.
+
+    Los tramos abiertos de los extremos (-inf y +inf) se guardan como `null`, que es
+    valido en cualquier lector de JSON, en vez de `Infinity`, que solo Python relee.
+    El resto de los numeros pasa a `float` e `int` nativos: un `np.float64` suelto
+    rompe la serializacion mas adelante y cuesta de encontrar.
+    """
+    salida = {}
+    for var, info in cortes.items():
+        salida[str(var)] = {
+            "cortes": [None if not np.isfinite(b) else float(b) for b in info["cortes"]],
+            "esperado": [float(p) for p in info["esperado"]],
+            "n": int(info["n"]),
+        }
+    return salida
+
+
+def desde_dict(datos: dict) -> dict:
+    """Vuelve a armar los cortes guardados con `a_dict()`.
+
+    Un `null` solo tiene sentido en el primer o el ultimo borde. Si aparece en el
+    medio, el archivo esta corrupto y se avisa: calcular el PSI con un borde perdido
+    daria un numero que parece bueno y no lo es.
+    """
+    salida = {}
+    for var, info in datos.items():
+        bordes = list(info["cortes"])
+        for i, borde in enumerate(bordes):
+            if borde is not None:
+                bordes[i] = float(borde)
+            elif i == 0:
+                bordes[i] = -np.inf
+            elif i == len(bordes) - 1:
+                bordes[i] = np.inf
+            else:
+                raise ValueError(f"{var}: borde nulo en la posicion {i}, que no es un extremo")
+        salida[str(var)] = {"cortes": bordes,
+                            "esperado": [float(p) for p in info["esperado"]],
+                            "n": int(info["n"])}
+    return salida
 
 
 def _proporciones(valores, cortes) -> np.ndarray:

@@ -70,7 +70,7 @@ pendiente:
   - "PETROPERU no registra fecha de pago ni moneda: fecha_pago queda nula y para esas facturas se usa fecha_vence (informe v16, 4.3)."
   - "PETROPERU y SOLGAS no traen tipo de cambio; solo PLUSPETROL tiene la columna T.C."
   - "Columnas de PLUSPETROL no declaradas: CANTIDAD ORDEN, S/, SOLES, SIN IGV SIN FISE y CON FISE. Son desgloses del mismo importe; se declaran cuando una metrica las necesite."
-  - "Columna CAMBISTA de PLUSPETROL: puede nombrar a una persona natural, asi que no pasa a Silver hasta definir su seudonimizacion."
+  - "Columna CAMBISTA de PLUSPETROL: puede nombrar a una persona natural, asi que no pasa a Silver. Una columna de persona solo entra seudonimizada con limpieza.seudonimizar, y ninguna metrica de S12 la necesita."
   - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de estas hojas por separado."
   - "La hoja CALCULO PLUS PETROL es un resumen y no pasa a Silver."
 
