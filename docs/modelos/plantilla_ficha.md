@@ -27,8 +27,9 @@ que está en el registro, o no aparece ninguno.
 ## Lo que falta se escribe como falta
 
 Si una de esas claves no está en el registro, la ficha publica **«no cubierto»** con el motivo y
-dónde se escribiría ese dato. Nunca queda en blanco y nunca dice «por confirmar» (regla 2 del
-equipo, y la prueba `tests/test_sin_pendientes.py` la hace cumplir).
+dónde se escribiría ese dato. Nunca queda en blanco y nunca usa una de las fórmulas que la regla
+2 del equipo prohíbe: la lista la tiene `tests/test_sin_pendientes.py`, que es además lo que las
+hace cumplir en todo el repositorio.
 
 El motivo es de lectura, no de forma: un hueco en la sección de sesgos de una ficha de modelo se
 lee como «este modelo no tiene sesgos», que es muy distinto de «nadie los ha medido todavía».
