@@ -143,6 +143,35 @@ def test_youtube_falla_con_mensaje_claro_si_no_hay_clave(externo, monkeypatch):
     assert not (externo / "youtube").exists()
 
 
+def test_youtube_consulta_las_cinco_busquedas_del_plan(externo, monkeypatch):
+    """ADR 0015 y paso 3.2.7: cinco busquedas, sin canal mientras no haya id."""
+    _responder(monkeypatch, BUSQUEDA)
+
+    escritas = youtube.extraer(clave="clave-de-prueba", canal="")
+
+    assert len(youtube.CONSULTAS) == 5
+    assert len(escritas) == 5
+    assert not [r for r in escritas if "canal__" in r]
+
+
+def test_youtube_agrega_el_canal_de_osinergmin_cuando_hay_id(externo, monkeypatch):
+    vistos = []
+
+    def falso(url, params=None, cabeceras=None):   # noqa: ARG001
+        vistos.append(params)
+        return BUSQUEDA
+
+    monkeypatch.setattr("src.extractores.pedir", falso)
+    monkeypatch.setattr(youtube, "pedir", falso)
+
+    escritas = youtube.extraer(("precio GLP",), clave="k", canal="UC-osinergmin")
+
+    assert len(escritas) == 2
+    assert escritas[1].endswith("canal__glp__2020-05-15.json")
+    assert vistos[0].get("channelId") is None      # la busqueda normal no filtra canal
+    assert vistos[1]["channelId"] == "UC-osinergmin"
+
+
 def test_youtube_no_pone_la_clave_en_la_ruta(externo, monkeypatch):
     _responder(monkeypatch, BUSQUEDA)
 

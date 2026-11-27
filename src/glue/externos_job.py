@@ -38,6 +38,10 @@ DESTINO_MR = ("gold", "mr", "gdelt_eventos")
 DESTINO_TEXTO = ("silver", "entorno", "textos")
 DESTINO_TEMAS = ("silver", "entorno", "temas")
 DESTINO_EVENTOS = ("silver", "entorno", "gdelt")
+# Destino y columnas que fija el ADR 0015 para la fuente NE-01/NE-02.
+DESTINO_YOUTUBE = ("silver", "entorno", "youtube")
+COLUMNAS_YOUTUBE = ("video_id", "publicado", "canal", "titulo",
+                    "descripcion", "consulta")
 TABLA_MERCADO = "mercado_mes"
 LLAVE_MERCADO = ["anio", "mes"]
 K_TEMAS = int(os.environ.get("LDA_K_TEMAS", "5"))
@@ -169,21 +173,38 @@ def texto_de_resoluciones(spark, lake_uri: str | None = None, extractor=None):
             .select(F.col("path").alias("origen"), "fuente", "texto"))
 
 
-def texto_de_youtube(spark, lake_uri: str | None = None):
-    """Titulo y descripcion de cada video, que la Lambda dejo como JSON."""
+def tabla_youtube(spark, lake_uri: str | None = None):
+    """Silver de YouTube con las columnas del ADR 0015, una fila por video.
+
+    `id del video, fecha, canal, titulo y descripcion`. Nada de quien comenta:
+    la fuente externa opera a nivel de marca, mes y mercado.
+    """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    esquema = ("consulta string, consultado string, "
+    esquema = ("consulta string, canal string, consultado string, "
                "items array<struct<title:string, description:string, "
                "channelTitle:string, publishedAt:string, video_id:string>>")
     crudo = (spark.read.option("multiLine", "true").schema(esquema)
              .json(f"{ruta_fuente('youtube', lake_uri)}/*/*.json"))
     item = F.explode("items").alias("item")
     return (crudo.select("consulta", item)
-            .withColumn("fuente", F.lit("youtube"))
-            .select(F.col("item.video_id").alias("origen"), "fuente",
-                    F.concat_ws(". ", F.col("item.title"),
-                                F.col("item.description")).alias("texto")))
+            .select(F.col("item.video_id").alias("video_id"),
+                    F.to_date(F.col("item.publishedAt")).alias("publicado"),
+                    F.col("item.channelTitle").alias("canal"),
+                    F.col("item.title").alias("titulo"),
+                    F.col("item.description").alias("descripcion"),
+                    "consulta")
+            .dropDuplicates(["video_id"]))
+
+
+def texto_de_youtube(spark, lake_uri: str | None = None):
+    """El mismo Silver de YouTube, visto como texto para el pipeline de temas."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    return (tabla_youtube(spark, lake_uri)
+            .select(F.col("video_id").alias("origen"),
+                    F.lit("youtube").alias("fuente"),
+                    F.concat_ws(". ", "titulo", "descripcion").alias("texto")))
 
 
 def consolidar_texto(spark, lake_uri: str | None = None, extractor=None):
@@ -368,6 +389,16 @@ def ejecutar(spark, args, extractor=None) -> dict:
     except Exception as e:                          # noqa: BLE001
         print(f"[externos] sin eventos de GDELT: {type(e).__name__}: {e}")
         resumen["sin_cobertura"].append("gdelt")
+
+    try:
+        youtube = tabla_youtube(spark, args.lake_uri)
+        youtube.take(1)                         # fuerza la lectura: take(), no collect()
+        destino_yt = rutas.ruta_spark(*DESTINO_YOUTUBE, lake_uri=args.lake_uri)
+        youtube.write.mode("overwrite").parquet(destino_yt)
+        resumen["escrito"].append(destino_yt)
+    except Exception as e:                      # noqa: BLE001
+        print(f"[externos] sin videos de YouTube: {type(e).__name__}: {e}")
+        resumen["sin_cobertura"].append("youtube")
 
     textos = consolidar_texto(spark, args.lake_uri, extractor)
     _, descripcion, _ = temas(textos, args.k) if textos is not None else (None, None, None)

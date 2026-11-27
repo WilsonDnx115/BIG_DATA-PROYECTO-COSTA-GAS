@@ -874,75 +874,99 @@ Resources:
       MaximumRetryAttempts: 1
       DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
 
+  # Los extractores los programa EventBridge Scheduler (informe M1 y ADR 0015),
+  # no una regla de EventBridge Events: Scheduler es el servicio de horarios y
+  # trae su propia politica de reintento y su cola de fallas por programa.
+  RolExtractoresScheduler:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-extractores-scheduler-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: invocar-solo-los-extractores
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ExtractorBcrp.Arn
+                  - !GetAtt ExtractorFacilito.Arn
+                  - !GetAtt ExtractorYoutube.Arn
+                  - !GetAtt ExtractorResoluciones.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
   # El BCRP publica con un dia de rezago: a las 11:00 UTC (06:00 en Peru) la
   # serie del dia anterior ya esta.
   ProgramaBcrpDiario:
-    Type: AWS::Events::Rule
+    Type: AWS::Scheduler::Schedule
     Properties:
       Name: costagas-bcrp-diario
       Description: Tipo de cambio oficial del BCRP, una vez al dia
-      ScheduleExpression: cron(0 11 * * ? *)
       State: ENABLED
-      Targets: [{ Id: extractor-bcrp, Arn: !GetAtt ExtractorBcrp.Arn }]
+      ScheduleExpression: cron(0 11 * * ? *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorBcrp.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
 
   ProgramaFacilitoSemanal:
-    Type: AWS::Events::Rule
+    Type: AWS::Scheduler::Schedule
     Properties:
       Name: costagas-facilito-semanal
-      Description: Precios de GLP de Facilito, los lunes
-      ScheduleExpression: cron(30 11 ? * MON *)
+      Description: Precios de GLP de Facilito, los lunes (ADR 0024)
       State: ENABLED
-      Targets: [{ Id: extractor-facilito, Arn: !GetAtt ExtractorFacilito.Arn }]
+      ScheduleExpression: cron(30 11 ? * MON *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorFacilito.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
 
   ProgramaYoutubeSemanal:
-    Type: AWS::Events::Rule
+    Type: AWS::Scheduler::Schedule
     Properties:
       Name: costagas-youtube-semanal
-      Description: Texto publico de YouTube, los lunes (fuente opcional)
-      ScheduleExpression: cron(45 11 ? * MON *)
+      Description: Texto publico de YouTube, los lunes (ADR 0015)
       State: ENABLED
-      Targets: [{ Id: extractor-youtube, Arn: !GetAtt ExtractorYoutube.Arn }]
+      ScheduleExpression: cron(45 11 ? * MON *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorYoutube.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
 
   ProgramaResolucionesMensual:
-    Type: AWS::Events::Rule
+    Type: AWS::Scheduler::Schedule
     Properties:
       Name: costagas-resoluciones-mensual
-      Description: Resoluciones de Osinergmin en PDF, el dia 1 de cada mes
-      ScheduleExpression: cron(0 12 1 * ? *)
+      Description: Resoluciones de Osinergmin en PDF, el dia 1 de cada mes (ADR 0024)
       State: ENABLED
-      Targets: [{ Id: extractor-resoluciones, Arn: !GetAtt ExtractorResoluciones.Arn }]
+      ScheduleExpression: cron(0 12 1 * ? *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorResoluciones.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
 
-  PermisoProgramaBcrp:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ExtractorBcrp
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt ProgramaBcrpDiario.Arn
-
-  PermisoProgramaFacilito:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ExtractorFacilito
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt ProgramaFacilitoSemanal.Arn
-
-  PermisoProgramaYoutube:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ExtractorYoutube
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt ProgramaYoutubeSemanal.Arn
-
-  PermisoProgramaResoluciones:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ExtractorResoluciones
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt ProgramaResolucionesMensual.Arn
   # ---------------------------------------------------------------------------
   # (11) Job de fuentes externas (W21): conteo de GDELT con MapReduce, texto de
   #      las resoluciones con pdfplumber, LDA de MLlib y gold.mercado_mes.

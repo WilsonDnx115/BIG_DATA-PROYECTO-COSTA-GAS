@@ -132,6 +132,31 @@ def test_el_texto_de_las_resoluciones_sale_de_pdfplumber_en_el_executor(spark, l
     assert fila.origen.endswith("OS-123-2020.pdf")
 
 
+def test_la_tabla_de_youtube_lleva_las_columnas_del_adr_0015(spark, lago):
+    carpeta = Path(rutas.ruta("landing", "externo", "youtube", "fecha_carga=2020-05-15"))
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / "precio_glp__2020-05-15.json").write_text(json.dumps({
+        "consulta": "precio GLP", "consultado": "2020-05-15",
+        "items": [{"title": "Sube el balon", "description": "en Trujillo",
+                   "channelTitle": "Canal", "publishedAt": "2020-05-01T00:00:00Z",
+                   "video_id": "abc123"},
+                  {"title": "Otro", "description": "otra cosa",
+                   "channelTitle": "Canal", "publishedAt": "2020-05-02T00:00:00Z",
+                   "video_id": "abc123"}],            # repetido: se queda uno
+    }), encoding="utf-8")
+
+    d = ext.tabla_youtube(spark)
+
+    assert d.columns == list(ext.COLUMNAS_YOUTUBE)
+    fila = d.take(1)[0]
+    assert fila.video_id == "abc123"
+    assert str(fila.publicado) == "2020-05-01"
+    assert fila.canal == "Canal"
+    assert d.count() == 1                            # dropDuplicates por video_id
+    # Ninguna columna de quien comenta (ADR 0015 y seccion 5.1 del informe).
+    assert not [c for c in d.columns if "coment" in c or "autor" in c or "usuario" in c]
+
+
 def test_el_texto_de_youtube_junta_titulo_y_descripcion(spark, lago):
     carpeta = Path(rutas.ruta("landing", "externo", "youtube", "fecha_carga=2020-05-15"))
     carpeta.mkdir(parents=True, exist_ok=True)

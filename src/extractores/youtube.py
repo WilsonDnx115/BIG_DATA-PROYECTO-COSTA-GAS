@@ -22,17 +22,32 @@ from src.extractores import ClaveAusente, RespuestaInvalida, clave_youtube, escr
 
 API = "https://www.googleapis.com/youtube/v3/search"
 FUENTE = "youtube"
-CONSULTAS = tuple(os.environ.get(
-    "YOUTUBE_CONSULTAS", "balon de gas Trujillo|precio GLP La Libertad").split("|"))
+# Las cinco busquedas del paso 3.2.7 del PLAN, orientadas a la pregunta 7 del
+# informe: si el cliente percibe balones con menos peso de nuestras marcas.
+CONSULTAS_POR_DEFECTO = (
+    "balon de gas Trujillo",
+    "precio GLP La Libertad",
+    "balon de gas peso incompleto",
+    "NOR GAS balon",
+    "COSTA GAS PLUS balon",
+)
+CONSULTAS = tuple(filter(None, os.environ.get("YOUTUBE_CONSULTAS", "").split("|")))     or CONSULTAS_POR_DEFECTO
+# Canal de Osinergmin (NE-02): su id va en YOUTUBE_CANAL. Sin id no se consulta,
+# y queda dicho en el log; no se adivina un canal.
+CANAL = os.environ.get("YOUTUBE_CANAL", "")
 MAXIMO = int(os.environ.get("YOUTUBE_MAX_RESULTADOS", "50"))
 CAMPOS = ("title", "description", "channelTitle", "publishedAt")
 
 
-def buscar(consulta: str, clave: str, maximo: int = MAXIMO) -> list[dict]:
+def buscar(consulta: str, clave: str, maximo: int = MAXIMO,
+           canal: str | None = None) -> list[dict]:
     """Una pagina de resultados, reducida a los campos de texto publico."""
-    crudo = pedir(API, params={"part": "snippet", "q": consulta, "type": "video",
-                               "maxResults": maximo, "regionCode": "PE",
-                               "relevanceLanguage": "es", "key": clave})
+    params = {"part": "snippet", "q": consulta, "type": "video",
+              "maxResults": maximo, "regionCode": "PE",
+              "relevanceLanguage": "es", "key": clave}
+    if canal:
+        params["channelId"] = canal
+    crudo = pedir(API, params=params)
     datos = json.loads(crudo)
     if "items" not in datos:
         raise RespuestaInvalida(f"la API no devolvio items para «{consulta}»: {datos.get('error')}")
@@ -45,24 +60,44 @@ def buscar(consulta: str, clave: str, maximo: int = MAXIMO) -> list[dict]:
     return salida
 
 
-def extraer(consultas=CONSULTAS, clave: str | None = None) -> list[str]:
-    """Un JSON por consulta. Levanta `ClaveAusente` si SSM no tiene la clave."""
+def _nombre(consulta: str, fecha, canal: str | None = None) -> str:
+    base = consulta.lower().replace(" ", "_")
+    prefijo = "canal__" if canal else ""
+    return f"{prefijo}{base}__{fecha.isoformat()}.json"
+
+
+def extraer(consultas=None, clave: str | None = None,
+            canal: str | None = None) -> list[str]:
+    """Un JSON por consulta, mas el canal de Osinergmin si su id esta definido.
+
+    Levanta `ClaveAusente` si SSM no tiene la clave: sin clave no se guarda un
+    archivo vacio.
+    """
     api_key = clave or clave_youtube()
     if not api_key:
         raise ClaveAusente("la clave de YouTube llego vacia")
+    busquedas = tuple(consultas) if consultas is not None else CONSULTAS
+    canal_id = CANAL if canal is None else canal
     fecha = hoy()
     escritas = []
-    for consulta in consultas:
+    for consulta in busquedas:
         items = buscar(consulta, api_key)
-        nombre = f"{consulta.lower().replace(' ', '_')}__{fecha.isoformat()}.json"
         cuerpo = json.dumps({"consulta": consulta, "consultado": fecha.isoformat(),
                              "items": items}, ensure_ascii=False).encode("utf-8")
-        escritas.append(escribir(cuerpo, FUENTE, nombre, fecha))
+        escritas.append(escribir(cuerpo, FUENTE, _nombre(consulta, fecha), fecha))
+    if canal_id:
+        items = buscar("GLP", api_key, canal=canal_id)
+        cuerpo = json.dumps({"consulta": "canal", "canal": canal_id,
+                             "consultado": fecha.isoformat(), "items": items},
+                            ensure_ascii=False).encode("utf-8")
+        escritas.append(escribir(cuerpo, FUENTE, _nombre("glp", fecha, canal_id), fecha))
+    else:
+        print("[youtube] sin YOUTUBE_CANAL: no se consulta el canal de Osinergmin (NE-02)")
     return escritas
 
 
 def lambda_handler(event: dict | None = None, context=None) -> dict:  # noqa: ARG001
     """Programa `costagas-youtube-semanal`."""
     evento = event or {}
-    consultas = tuple(evento.get("consultas") or CONSULTAS)
-    return {"fuente": FUENTE, "rutas": extraer(consultas)}
+    return {"fuente": FUENTE,
+            "rutas": extraer(evento.get("consultas"), canal=evento.get("canal"))}
