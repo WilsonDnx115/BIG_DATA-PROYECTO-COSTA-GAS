@@ -348,11 +348,17 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: "3"
-        ScriptLocation: !Sub s3://costagas-code-${Sufijo}/_code/glue_conciliacion.py
+        ScriptLocation: !Sub s3://costagas-code-${Sufijo}/_code/glue_gold_job.py
       DefaultArguments:
+        # El zip trae `src/` y los contratos YAML, que es de donde el job lee el
+        # esquema de cada tabla: el DDL y la lectura salen del mismo contrato.
         --extra-py-files: !Sub s3://costagas-code-${Sufijo}/${CodigoKey}
-        --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
-        --ANIO: "todos"
+        # scikit-learn corre en el driver para el reentrenamiento de S12 (--modo
+        # entrenar, informe Tabla 2.2c M8). Version fija: una menor cambia el
+        # modelo guardado y el registro de `gold/_modelos/` dejaria de cuadrar.
+        --additional-python-modules: scikit-learn==1.5.2
+        --modo: evento
+        --lake_uri: !Sub s3://costagas-trujillo-lake-${Sufijo}
         --enable-spark-ui: "true"
         --spark-event-logs-path: !Sub s3://costagas-trujillo-lake-${Sufijo}/sparkui/
         --enable-glue-datacatalog: "true"

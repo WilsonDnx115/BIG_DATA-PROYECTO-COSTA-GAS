@@ -77,7 +77,10 @@ with zipfile.ZipFile(build / "costagas_src.zip", "w", zipfile.ZIP_DEFLATED) as z
             z.write(f, f.relative_to(pkg).as_posix())
 PY
 aws s3 cp "$BUILD/costagas_src.zip" "s3://${CODE_BUCKET}/_code/costagas_src.zip" --sse AES256 --only-show-errors
-aws s3 cp src/silver_to_gold/conciliacion.py "s3://${CODE_BUCKET}/_code/glue_conciliacion.py" --sse AES256 --only-show-errors
+# El script del trabajo de Gold es `gold_job.py` (WR07): un solo script con sus
+# tres modos. `conciliacion.py` sigue viajando dentro del zip porque las
+# evidencias de planes fisicos lo importan, pero ya no es el punto de entrada.
+aws s3 cp src/glue/gold_job.py "s3://${CODE_BUCKET}/_code/glue_gold_job.py" --sse AES256 --only-show-errors
 aws s3 cp src/glue/externos_job.py "s3://${CODE_BUCKET}/_code/glue_externos.py" --sse AES256 --only-show-errors
 
 echo ">> Desplegando stack ${STACK}"
