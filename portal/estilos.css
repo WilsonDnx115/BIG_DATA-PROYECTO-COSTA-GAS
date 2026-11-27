@@ -1,0 +1,207 @@
+/* Portal Costa Gas (B10). Diseño adaptable: margen lateral de 16 px en celular y sin
+   desplazamiento horizontal. Colores como variables, con modo oscuro del sistema. */
+
+:root {
+  --fondo: #f5f6f8;
+  --superficie: #ffffff;
+  --texto: #1c2430;
+  --texto-suave: #5b6675;
+  --borde: #d9dee5;
+  --primario: #0b5cad;
+  --primario-texto: #ffffff;
+  --verde: #1e7d3a;
+  --ambar: #a86400;
+  --rojo: #b3261e;
+  --foco: #ffb000;
+  --radio: 8px;
+  --margen: 16px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #12161c;
+    --superficie: #1b2129;
+    --texto: #e6e9ee;
+    --texto-suave: #a3adbb;
+    --borde: #313a46;
+    --primario: #5aa2f0;
+    --primario-texto: #0c1118;
+    --verde: #5cc47a;
+    --ambar: #f0b14a;
+    --rojo: #f2847b;
+  }
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+[hidden] { display: none !important; }
+
+code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; overflow-wrap: anywhere; }
+
+/* Cabecera y menú */
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--margen);
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borde);
+}
+.cabecera__marca { display: flex; flex-direction: column; min-width: 0; }
+.cabecera__titulo { font-weight: 700; font-size: 1.1rem; }
+.cabecera__sub { color: var(--texto-suave); font-size: 0.875rem; }
+.cabecera__usuario { display: flex; align-items: center; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
+
+.menu {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 8px var(--margen);
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borde);
+}
+.menu a {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: var(--radio);
+  color: var(--primario);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.menu a:hover,
+.menu a[aria-current="page"] { background: var(--fondo); }
+
+/* Contenido */
+.contenido {
+  display: grid;
+  gap: var(--margen);
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--margen);
+}
+
+.tarjeta {
+  min-width: 0;
+  padding: var(--margen);
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+.tarjeta h1,
+.tarjeta h2 { margin: 0 0 12px; font-size: 1.25rem; }
+
+.ayuda { color: var(--texto-suave); font-size: 0.875rem; }
+
+.aviso {
+  margin: var(--margen) var(--margen) 0;
+  padding: 10px 12px;
+  border-radius: var(--radio);
+  background: var(--superficie);
+  border-left: 4px solid var(--primario);
+}
+
+.error { color: var(--rojo); font-weight: 600; }
+
+/* Formularios */
+form { display: grid; gap: 8px; max-width: 420px; }
+label { font-weight: 600; font-size: 0.9rem; }
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--texto);
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+textarea { min-height: 96px; resize: vertical; }
+
+.boton {
+  min-height: 44px;
+  padding: 8px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--primario-texto);
+  background: var(--primario);
+  border: 1px solid var(--primario);
+  border-radius: var(--radio);
+  cursor: pointer;
+}
+.boton--secundario { color: var(--primario); background: transparent; }
+.boton:disabled { opacity: 0.6; cursor: progress; }
+
+:focus-visible { outline: 3px solid var(--foco); outline-offset: 2px; }
+
+progress { width: 100%; height: 12px; margin-top: 12px; accent-color: var(--primario); }
+
+/* Estado por capa */
+.capas {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.capa {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  border-top: 4px solid var(--borde);
+}
+.capa__nombre { font-weight: 700; }
+.capa__hora { color: var(--texto-suave); font-size: 0.875rem; overflow-wrap: anywhere; }
+.capa--lista { border-top-color: var(--verde); }
+.capa--en-curso { border-top-color: var(--ambar); }
+.capa--fallo { border-top-color: var(--rojo); }
+
+/* KPI */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.kpi {
+  padding: 12px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+.kpi__nombre { color: var(--texto-suave); font-size: 0.875rem; }
+.kpi__valor { font-size: 1.5rem; font-weight: 700; overflow-wrap: anywhere; }
+
+/* Pie */
+.pie {
+  padding: 16px var(--margen) 24px;
+  color: var(--texto-suave);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* Celular */
+@media (max-width: 600px) {
+  .capas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  form { max-width: none; }
+  .cabecera__usuario { width: 100%; justify-content: space-between; }
+}

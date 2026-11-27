@@ -1,0 +1,111 @@
+# Despliegue continuo del stack (W23, informe v16 Tabla 2.12).
+#
+# Sin claves de acceso guardadas: el trabajo pide un token OIDC a GitHub y asume
+# el rol costagas-github-deploy, cuya confianza solo acepta este repositorio en la
+# rama main (ver RolDespliegueGithub en infra/cloudformation/stack.yaml).
+#
+# El cambio nunca se aplica solo: el primer trabajo crea un change set y lo
+# muestra; el segundo lo ejecuta y solo arranca cuando alguien aprueba el
+# environment «produccion», que el titular configura en GitHub.
+name: cd
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/**
+      - src/**
+      - contracts/**
+      - .github/workflows/cd.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write        # necesario para OIDC
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  STACK: costagas-trujillo
+  PLANTILLA: infra/cloudformation/stack.yaml
+
+jobs:
+  plan:
+    name: Change set (sin ejecutar)
+    runs-on: ubuntu-latest
+    outputs:
+      cambios: ${{ steps.crear.outputs.cambios }}
+      nombre: ${{ steps.crear.outputs.nombre }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias de verificacion
+        run: python -m pip install --quiet -r requirements.txt cfn-lint
+
+      - name: Pruebas
+        run: python -m pytest -q
+
+      - name: cfn-lint de la plantilla
+        run: |
+          python - <<'PY'
+          from cfnlint import api
+          plantilla = open("infra/cloudformation/stack.yaml", encoding="utf-8").read()
+          hallazgos = api.lint(plantilla, config=api.ManualArgs(regions=["us-east-2"]))
+          for h in hallazgos:
+              print(h)
+          raise SystemExit(1 if hallazgos else 0)
+          PY
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROL_DESPLIEGUE }}
+          aws-region: us-east-2
+
+      - name: Crear el change set
+        id: crear
+        env:
+          SUFIJO: ${{ vars.PROYECTO_SUFIJO }}
+          CORREO1: ${{ secrets.COSTAGAS_CORREO1 }}
+        run: |
+          NOMBRE="gh-${GITHUB_RUN_ID}"
+          echo "nombre=${NOMBRE}" >> "$GITHUB_OUTPUT"
+          aws cloudformation create-change-set --stack-name "$STACK" --change-set-name "$NOMBRE" --template-body "file://${PLANTILLA}" --capabilities CAPABILITY_NAMED_IAM --parameters ParameterKey=Sufijo,ParameterValue="$SUFIJO" ParameterKey=Correo1,ParameterValue="$CORREO1" ParameterKey=Correo2,UsePreviousValue=true ParameterKey=Correo3,UsePreviousValue=true ParameterKey=Correo4,UsePreviousValue=true > /dev/null
+          if aws cloudformation wait change-set-create-complete --stack-name "$STACK" --change-set-name "$NOMBRE"; then
+            echo "cambios=si" >> "$GITHUB_OUTPUT"
+          else
+            RAZON=$(aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "$NOMBRE" --query StatusReason --output text)
+            case "$RAZON" in
+              *"didn't contain changes"*|*"No updates"*)
+                echo "Sin cambios que aplicar: $RAZON"
+                echo "cambios=no" >> "$GITHUB_OUTPUT"
+                aws cloudformation delete-change-set --stack-name "$STACK" --change-set-name "$NOMBRE" ;;
+              *) echo "El change set fallo: $RAZON"; exit 1 ;;
+            esac
+          fi
+
+      - name: Mostrar el change set
+        if: steps.crear.outputs.cambios == 'si'
+        run: |
+          aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "${{ steps.crear.outputs.nombre }}" --query "Changes[].ResourceChange.{Accion:Action,Recurso:LogicalResourceId,Tipo:ResourceType,Reemplazo:Replacement}" --output table
+          echo "Revise que no haya ningun Remove ni Replacement=True inesperado antes de aprobar."
+
+  aplicar:
+    name: Ejecutar el change set
+    needs: plan
+    if: needs.plan.outputs.cambios == 'si'
+    runs-on: ubuntu-latest
+    environment: produccion        # la aprobacion la configura el titular en GitHub
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROL_DESPLIEGUE }}
+          aws-region: us-east-2
+
+      - name: Ejecutar
+        run: |
+          aws cloudformation execute-change-set --stack-name "$STACK" --change-set-name "${{ needs.plan.outputs.nombre }}"
+          aws cloudformation wait stack-update-complete --stack-name "$STACK"
+          aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].StackStatus" --output text

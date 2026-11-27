@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Solo scripts propios y la librería de Cognito fijada por versión; llamadas solo a AWS. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.amazonaws.com https://*.on.aws; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <title>Portal Costa Gas</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="cabecera">
+    <div class="cabecera__marca">
+      <span class="cabecera__titulo">Portal Costa Gas</span>
+      <span class="cabecera__sub">Planta Trujillo · control de pérdidas de GLP</span>
+    </div>
+    <div class="cabecera__usuario" id="usuario" hidden>
+      <span id="usuario-nombre"></span>
+      <button type="button" class="boton boton--secundario" id="boton-salir">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <nav class="menu" id="menu" hidden aria-label="Secciones del portal">
+    <a href="#subir">Subir entrega</a>
+    <a href="#estado">Estado por capa</a>
+    <a href="#kpis">Resumen de KPI</a>
+    <a href="#revision">Revisión</a>
+  </nav>
+
+  <p class="aviso" id="aviso" role="status" aria-live="polite" hidden></p>
+
+  <main class="contenido">
+    <!-- 1. Iniciar sesión (B11). Sin autorregistro: los usuarios los crea el titular en Cognito. -->
+    <section class="tarjeta" id="sesion" aria-labelledby="titulo-sesion">
+      <h1 id="titulo-sesion">Iniciar sesión</h1>
+      <form id="form-sesion" autocomplete="on" novalidate>
+        <label for="campo-usuario">Usuario</label>
+        <input id="campo-usuario" name="usuario" type="text" autocomplete="username" required>
+        <label for="campo-clave">Contraseña</label>
+        <input id="campo-clave" name="clave" type="password" autocomplete="current-password" required>
+        <button type="submit" class="boton">Entrar</button>
+      </form>
+      <!-- Primer ingreso: Cognito exige una contraseña nueva. -->
+      <form id="form-clave-nueva" hidden novalidate>
+        <p>Es tu primer ingreso: define una contraseña nueva (mínimo 12 caracteres, con mayúsculas, minúsculas y números).</p>
+        <label for="campo-clave-nueva">Contraseña nueva</label>
+        <input id="campo-clave-nueva" name="clave_nueva" type="password" autocomplete="new-password" minlength="12" required>
+        <button type="submit" class="boton">Guardar y entrar</button>
+      </form>
+      <p class="error" id="error-sesion" role="alert" hidden></p>
+    </section>
+
+    <!-- 2. Subir entrega (B12): URL prefirmada de la función firmar y PUT del archivo. -->
+    <section class="tarjeta" id="subir" aria-labelledby="titulo-subir" hidden>
+      <h2 id="titulo-subir">Subir entrega</h2>
+      <p class="ayuda">El archivo llega a <code>landing/</code> y el pipeline lo lleva a Bronze, Silver y Gold.</p>
+      <form id="form-subir" novalidate>
+        <label for="campo-archivo">Archivo de la entrega</label>
+        <input id="campo-archivo" name="archivo" type="file" required>
+        <button type="submit" class="boton">Subir</button>
+      </form>
+      <progress id="progreso-subida" max="100" value="0" hidden></progress>
+      <p class="ayuda" id="texto-subida" aria-live="polite"></p>
+    </section>
+
+    <!-- 3. Estado por capa (B12): landing, Bronze, Silver y Gold con su hora. -->
+    <section class="tarjeta" id="estado" aria-labelledby="titulo-estado" hidden>
+      <h2 id="titulo-estado">Estado por capa</h2>
+      <ol class="capas" id="lista-capas">
+        <li class="capa" data-capa="landing"><span class="capa__nombre">Landing</span><span class="capa__hora">—</span></li>
+        <li class="capa" data-capa="bronze"><span class="capa__nombre">Bronze</span><span class="capa__hora">—</span></li>
+        <li class="capa" data-capa="silver"><span class="capa__nombre">Silver</span><span class="capa__hora">—</span></li>
+        <li class="capa" data-capa="gold"><span class="capa__nombre">Gold</span><span class="capa__hora">—</span></li>
+      </ol>
+    </section>
+
+    <!-- 4. Resumen de KPI (B13): los 5 KPI desde la función kpis. -->
+    <section class="tarjeta" id="kpis" aria-labelledby="titulo-kpis" hidden>
+      <h2 id="titulo-kpis">Resumen de KPI</h2>
+      <div class="kpis" id="lista-kpis"></div>
+      <p class="ayuda">Un KPI sin dato se muestra como «sin dato», nunca como cero.</p>
+    </section>
+
+    <!-- 5. Revisión (B13): formulario de la validación documental ciega, abierto desde #revision/<id>. -->
+    <section class="tarjeta" id="revision" aria-labelledby="titulo-revision" hidden>
+      <h2 id="titulo-revision">Revisión</h2>
+      <p class="ayuda">Revisión ciega: la alerta se muestra sin probabilidad, puntaje ni grado de evidencia del modelo.</p>
+      <div id="contenedor-revision"></div>
+    </section>
+  </main>
+
+  <footer class="pie">
+    <span>Solo se muestran identificadores seudonimizados.</span>
+  </footer>
+
+  <!-- config.js lo genera infra/scripts/deploy.sh (W22) con las salidas del stack; no se versiona. -->
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.12/dist/amazon-cognito-identity.min.js"
+          integrity="sha384-YkDOkBg8dBira7f28t9KbD0tG5OnnuU540fRBz8JgorAXLJOwtakyHNV7m36RDG4"
+          crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
+</html>

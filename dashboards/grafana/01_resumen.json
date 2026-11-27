@@ -1,0 +1,1410 @@
+{
+  "title": "Costa Gas · Resumen",
+  "uid": "costagas-resumen",
+  "description": "Página 1 del tablero (Tabla 4.11): 5 KPI del mes, tendencia, semáforo del KPI 1 y calidad de Silver. Gerencia de planta.",
+  "tags": [
+    "costagas",
+    "resumen"
+  ],
+  "timezone": "America/Lima",
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-12M",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true,
+    "refresh_intervals": [
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_athena",
+        "label": "Origen de datos",
+        "description": "Origen Amazon Athena (AwsDataCatalog, costagas_gold, workgroup costagas-wg, us-east-2).",
+        "type": "datasource",
+        "query": "grafana-athena-datasource",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": ""
+      },
+      {
+        "name": "anio",
+        "label": "Año",
+        "description": "Años presentes en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "anio",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo WHERE anio IS NOT NULL ORDER BY anio DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "mes",
+        "label": "Mes",
+        "description": "Meses del año elegido en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "mes",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio} AND mes IS NOT NULL ORDER BY mes DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio}",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "producto",
+        "label": "Producto",
+        "description": "GLP-E o GLP-G, de dim_producto. «All» vale __all e incluye también los productos sin clasificar del balance.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "producto",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT producto FROM costagas_gold.dim_producto WHERE producto IS NOT NULL ORDER BY producto",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT producto FROM costagas_gold.dim_producto",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "rol",
+        "label": "Rol de la unidad",
+        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. «All» vale __all e incluye las unidades sin rol.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "rol",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad WHERE rol IS NOT NULL ORDER BY rol",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "umbral_kpi1",
+        "label": "Umbral KPI 1",
+        "description": "Referencia del KPI 1 (UMBRAL_KPI_DIF de src/common/config.py). La fija la gerencia (B18).",
+        "type": "constant",
+        "query": "0.02",
+        "hide": 2,
+        "current": {
+          "text": "0.02",
+          "value": "0.02"
+        },
+        "options": [
+          {
+            "text": "0.02",
+            "value": "0.02",
+            "selected": true
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "KPI del mes elegido",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "KPI 1 · Diferencia bruta (sin merma)",
+      "description": "(kg comprados - kg vendidos) / kg comprados, por planta y mes (fact_balance_planta). Mensual. Semáforo: verde bajo el umbral de referencia (2 %), rojo en o sobre él. Responsable: gerencia de planta (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "grafana-athena-datasource",
+        "uid": "${ds_athena}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-athena-datasource",
+            "uid": "${ds_athena}"
+          },
+          "format": 1,
+          "rawSQL": "-- Fuente: sql/athena/tablero/resumen.sql (B03). Editar alli y regenerar.\nWITH ventana AS (\n    SELECT anio, mes\n      FROM costagas_gold.dim_tiempo\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n),\nk1 AS (\n    SELECT anio, mes,\n           SUM(kg_comprados)      AS kg_comprados,\n           SUM(kg_vendidos)       AS kg_vendidos,\n           MAX(merma_tecnica_pct) AS merma_tecnica_pct\n      FROM costagas_gold.v_kpi_1\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n       AND ('__all' IN (${producto:sqlstring}) OR producto IN (${producto:sqlstring}))\n     GROUP BY anio, mes\n),\nk2 AS (\n    SELECT anio, mes, SUM(valor_diferencia_soles) AS valor_diferencia_soles\n      FROM costagas_gold.v_kpi_2\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n       AND ('__all' IN (${producto:sqlstring}) OR producto IN (${producto:sqlstring}))\n     GROUP BY anio, mes\n),\nk3 AS (\n    SELECT anio, mes,\n           SUM(n_compras)              AS n_compras,\n           SUM(n_con_segundo_registro) AS n_con_segundo_registro\n      FROM costagas_gold.v_kpi_3\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n     GROUP BY anio, mes\n),\nk4 AS (\n    SELECT anio, mes,\n           SUM(combustible_soles) AS combustible_soles,\n           SUM(kg)                AS kg\n      FROM costagas_gold.v_kpi_4\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n       AND ('__all' IN (${rol:sqlstring}) OR rol IN (${rol:sqlstring}))\n     GROUP BY anio, mes\n),\nk5 AS (\n    SELECT anio, mes,\n           SUM(n_revisadas)   AS n_revisadas,\n           SUM(n_confirmadas) AS n_confirmadas\n      FROM costagas_gold.v_kpi_5\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n     GROUP BY anio, mes\n),\nkpi AS (\n    SELECT 'kpi' AS bloque,\n           format('%04d-%02d', v.anio, v.mes) AS periodo,\n           v.anio, v.mes,\n           CAST(k1.kg_comprados - k1.kg_vendidos AS double)\n               / NULLIF(k1.kg_comprados, 0)                                AS kpi1_sin_merma,\n           CAST(k1.kg_comprados - k1.kg_vendidos AS double)\n               / NULLIF(k1.kg_comprados, 0) - k1.merma_tecnica_pct          AS kpi1_con_merma,\n           CAST(k1.merma_tecnica_pct AS double)                             AS merma_tecnica_pct,\n           CAST(${umbral_kpi1} AS double)                                   AS umbral_kpi1,\n           CAST(k2.valor_diferencia_soles AS double)                        AS kpi2_soles,\n           CAST(k3.n_con_segundo_registro AS double) / NULLIF(k3.n_compras, 0) AS kpi3_pct,\n           CAST(k4.combustible_soles AS double) / NULLIF(k4.kg / 1000.0, 0) AS kpi4_soles_por_t,\n           CAST(k5.n_confirmadas AS double) / NULLIF(k5.n_revisadas, 0)     AS kpi5_pct,\n           CAST(k5.n_revisadas AS bigint)                                   AS kpi5_n_revisadas,\n           CAST(NULL AS varchar) AS tabla,\n           CAST(NULL AS varchar) AS dimension,\n           CAST(NULL AS double)  AS valor,\n           CAST(NULL AS double)  AS meta,\n           CAST(NULL AS boolean) AS cumple,\n           CAST(NULL AS varchar) AS fecha_control\n      FROM ventana v\n      LEFT JOIN k1 ON k1.anio = v.anio AND k1.mes = v.mes\n      LEFT JOIN k2 ON k2.anio = v.anio AND k2.mes = v.mes\n      LEFT JOIN k3 ON k3.anio = v.anio AND k3.mes = v.mes\n      LEFT JOIN k4 ON k4.anio = v.anio AND k4.mes = v.mes\n      LEFT JOIN k5 ON k5.anio = v.anio AND k5.mes = v.mes\n),\n-- calidad_silver guarda un control por corrida, no por mes del dato: no tiene anio/mes que\n-- filtrar. Se toma el último control de cada tabla y dimensión.\ncalidad AS (\n    SELECT 'calidad' AS bloque,\n           CAST(NULL AS varchar) AS periodo,\n           CAST(NULL AS integer) AS anio,\n           CAST(NULL AS integer) AS mes,\n           CAST(NULL AS double)  AS kpi1_sin_merma,\n           CAST(NULL AS double)  AS kpi1_con_merma,\n           CAST(NULL AS double)  AS merma_tecnica_pct,\n           CAST(NULL AS double)  AS umbral_kpi1,\n           CAST(NULL AS double)  AS kpi2_soles,\n           CAST(NULL AS double)  AS kpi3_pct,\n           CAST(NULL AS double)  AS kpi4_soles_por_t,\n           CAST(NULL AS double)  AS kpi5_pct,\n           CAST(NULL AS bigint)  AS kpi5_n_revisadas,\n           tabla, dimension,\n           CAST(valor AS double) AS valor,\n           CAST(meta AS double)  AS meta,\n           cumple,\n           CAST(fecha_control AS varchar) AS fecha_control\n      FROM (\n            SELECT tabla, dimension, valor, meta, cumple, fecha_control,\n                   row_number() OVER (PARTITION BY tabla, dimension\n                                      ORDER BY fecha_control DESC) AS orden\n              FROM costagas_gold.calidad_silver\n           )\n     WHERE orden = 1\n)\nSELECT * FROM kpi\nUNION ALL\nSELECT * FROM calidad\nORDER BY bloque DESC, periodo, tabla, dimension",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin dato",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.02
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^kpi1_sin_merma$/"
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "KPI 1 · Diferencia no explicada (con merma)",
+      "description": "KPI 1 sin merma - merma técnica. Si la empresa no fijó la merma técnica, no se calcula y se muestra «sin merma fijada». Mensual. Mismo semáforo que el KPI 1 sin merma. Responsable: gerencia de planta (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "gridPos": {
+        "x": 5,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "noValue": "sin merma fijada",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin merma fijada",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.02
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^kpi1_con_merma$/"
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Merma técnica aplicada",
+      "description": "merma_tecnica_pct de v_kpi_1. Nula mientras la empresa no la fije; el valor de trabajo del equipo es un supuesto, no un dato de la empresa.",
+      "gridPos": {
+        "x": 10,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "noValue": "sin merma fijada",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin merma fijada",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^merma_tecnica_pct$/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "KPI 2 · Valor de la diferencia",
+      "description": "Suma del valor de la diferencia en soles (fact_balance_planta). Mensual. No equivale a una pérdida confirmada. Responsable: gerencia de planta (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "gridPos": {
+        "x": 14,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:S/ ",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin dato",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^kpi2_soles$/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "KPI 3 · Compras con segundo registro",
+      "description": "Compras con un segundo registro coincidente / compras (modelo_factura). Mensual. Responsable: tesorería (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "gridPos": {
+        "x": 19,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin dato",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^kpi3_pct$/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "KPI 4 · Combustible por tonelada",
+      "description": "Combustible (S/) / (kg / 1000), con kg vendidos en reparto y transportados en transporte (fact_unidad_mes). Respeta el filtro de rol. Mensual. Responsable: operaciones (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:S/ ",
+          "decimals": 1,
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin dato",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^kpi4_soles_por_t$/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "KPI 5 · Confirmación documental de alertas",
+      "description": "Alertas confirmadas / alertas revisadas en la validación documental ciega (v_alerta y revision_alerta). Mensual. Una alerta no es un robo confirmado. Responsable: control interno (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin dato",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^kpi5_pct$/"
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Tendencia de 12 meses",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "barchart",
+      "title": "KPI 1 frente al umbral de referencia (12 meses)",
+      "description": "KPI 1 sin y con merma por mes. La línea roja es el umbral de referencia (2 %). Un mes sin datos queda vacío, no en cero.",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "periodo",
+                "kpi1_sin_merma",
+                "kpi1_con_merma"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "kpi1_sin_merma": "Sin merma",
+              "kpi1_con_merma": "Con merma"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.02
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line"
+            },
+            "fillOpacity": 80,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "periodo",
+        "orientation": "vertical",
+        "groupWidth": 0.7,
+        "barWidth": 0.9,
+        "showValue": "never",
+        "stacking": "none",
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xTickLabelRotation": -45
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Los 5 KPI por mes (12 meses)",
+      "description": "Una fila por mes de la ventana. «sin dato» = el mes no tiene cobertura en la fuente.",
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "kpi"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "periodo",
+                "kpi1_sin_merma",
+                "kpi1_con_merma",
+                "kpi2_soles",
+                "kpi3_pct",
+                "kpi4_soles_por_t",
+                "kpi5_pct",
+                "kpi5_n_revisadas"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "periodo": "Mes",
+              "kpi1_sin_merma": "KPI 1 sin merma",
+              "kpi1_con_merma": "KPI 1 con merma",
+              "kpi2_soles": "KPI 2 (S/)",
+              "kpi3_pct": "KPI 3",
+              "kpi4_soles_por_t": "KPI 4 (S/ por t)",
+              "kpi5_pct": "KPI 5",
+              "kpi5_n_revisadas": "Alertas revisadas"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "sin dato",
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "sin dato",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KPI 1 sin merma"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KPI 1 con merma"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KPI 2 (S/)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "prefix:S/ "
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KPI 3"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KPI 4 (S/ por t)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "prefix:S/ "
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "KPI 5"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Alertas revisadas"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Mes",
+            "desc": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Calidad del dato (Silver)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Calidad de Silver · último control por tabla y dimensión",
+      "description": "Desde calidad_silver (silver/_control). Una métrica de Gold no se publica si sus fuentes de Silver incumplen las metas del contrato.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "panelId": 1,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "bloque",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "calidad"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "tabla",
+                "dimension",
+                "valor",
+                "meta",
+                "cumple",
+                "fecha_control"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "tabla": "Tabla",
+              "dimension": "Dimensión",
+              "valor": "Valor",
+              "meta": "Meta",
+              "cumple": "Estado",
+              "fecha_control": "Control"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "sin control",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Estado"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "cumple",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "false": {
+                        "text": "incumple",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Valor"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Meta"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Estado",
+            "desc": false
+          }
+        ]
+      }
+    }
+  ]
+}

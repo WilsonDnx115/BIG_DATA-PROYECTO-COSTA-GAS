@@ -68,7 +68,7 @@ Resources:
   # ---------------------------------------------------------------------------
   Lago:
     Type: AWS::S3::Bucket
-    DependsOn: PermisoS3InvocaLambda
+    DependsOn: [PermisoS3InvocaLambda, PermisoS3InvocaIngesta]
     Properties:
       BucketName: !Sub costagas-trujillo-lake-${Sufijo}
       VersioningConfiguration: { Status: Suspended }
@@ -96,6 +96,19 @@ Resources:
               S3Key:
                 Rules:
                   - { Name: prefix, Value: bronze/interno/ }
+          # W02/W03: la entrega llega a landing/ y la operacion mensual a op/landing/.
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt Ingesta.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: landing/ }
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt Ingesta.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: op/landing/ }
 
   # (3.8.3) Rechazo de peticiones sin TLS
   PoliticaLago:
@@ -178,6 +191,99 @@ Resources:
       Principal: s3.amazonaws.com
       SourceArn: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
       SourceAccount: !Ref AWS::AccountId
+
+  # ---------------------------------------------------------------------------
+  # (2b) Ingesta de landing/ a Bronze (W02). Rol de minimo privilegio: lee solo
+  #      landing/, escribe solo bronze/, op/bronze/ y _manifests/. Sin costo.
+  # ---------------------------------------------------------------------------
+  RolIngesta:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-ingesta-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: landing-lectura-bronze-escritura
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/op/landing/*
+              - Effect: Allow                      # Bronze es inmutable: no hay DeleteObject
+                Action: s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/bronze/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/op/bronze/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/_manifests/*
+              - Effect: Allow                      # la huella ya cargada se busca listando claves
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                Condition:
+                  StringLike:
+                    s3:prefix: ["landing/*", "op/landing/*", "_manifests/*"]
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  # Costo: capa gratuita (400 000 GB-s/mes). 35 archivos x 300 s x 0.5 GB = 5 250 GB-s.
+  Ingesta:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-ingesta
+      Runtime: python3.12
+      Handler: src.ingest.lambda_ingesta.lambda_handler
+      Role: !GetAtt RolIngesta.Arn
+      MemorySize: 512
+      Timeout: 300
+      EphemeralStorage: { Size: 1024 }     # /tmp para la copia local: el Excel mas grande pesa 62 MB
+      Layers: [!Ref PandasLayerArn]        # openpyxl, para contar las filas en el manifiesto
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  PermisoS3InvocaIngesta:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Ingesta
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+      SourceAccount: !Ref AWS::AccountId
+
+  # Una extension fuera de _archivos.yaml levanta excepcion y el evento termina en la cola.
+  DestinoFallasIngesta:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref Ingesta
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 2
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  AlarmaErrorIngesta:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: costagas-error-ingesta
+      AlarmDescription: Errores de la Lambda costagas-ingesta
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref Ingesta }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref TemaOperacion]
 
   # ---------------------------------------------------------------------------
   # (3) Rol de Glue: lee bronze/externo/* y silver/*; escribe silver/* y gold/*.
@@ -592,11 +698,564 @@ Resources:
         - !Sub arn:aws:iam::${AWS::AccountId}:policy/costagas-ingenieria-datos
         - !Sub arn:aws:iam::${AWS::AccountId}:policy/costagas-base
 
+  # ---------------------------------------------------------------------------
+  # (10) Extractores de fuentes externas (W20, informe seccion 2.4 y Tabla 2.5).
+  #      Cinco funciones que dejan el crudo en landing/externo/<fuente>/. Ese
+  #      prefijo lo ignora la Lambda de ingesta: no es la entrega interna y no
+  #      va a Bronze interno.
+  #      Costo: capa gratuita. Las cuatro programadas suman unas 70 invocaciones
+  #      al mes de pocos segundos; la de GDELT se invoca a mano una sola vez.
+  #      Las fallas van a costagas-eventos-fallidos, que ya tiene su alarma
+  #      (AlarmaEventosFallidos), asi que no se agrega una alarma por funcion.
+  # ---------------------------------------------------------------------------
+  RolExtractores:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-extractores-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: solo-escritura-en-landing-externo
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow                      # no leen nada del lago: solo depositan
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/externo/*
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  # La clave de YouTube se lee de SSM en cada invocacion y nunca se versiona;
+  # por eso esta funcion tiene su propio rol: es la unica con ssm:GetParameter.
+  RolExtractorYoutube:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-extractor-youtube-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: landing-externo-y-clave-de-youtube
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/externo/youtube/*
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/costagas/youtube/api_key
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  ExtractorBcrp:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-bcrp
+      Runtime: python3.12
+      Handler: src.extractores.bcrp.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 256
+      Timeout: 60
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  ExtractorFacilito:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-facilito
+      Runtime: python3.12
+      Handler: src.extractores.facilito.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 256
+      Timeout: 120
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  ExtractorYoutube:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-youtube
+      Runtime: python3.12
+      Handler: src.extractores.youtube.lambda_handler
+      Role: !GetAtt RolExtractorYoutube.Arn
+      MemorySize: 256
+      Timeout: 120
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          SSM_PARAM_YOUTUBE: /costagas/youtube/api_key
+
+  # Carga historica de 2020: ~35 000 zip de pocos KB que salen en bloques gzip
+  # de ~128 MB. Sin programa: se invoca a mano por ano (evento {"anio": 2020}).
+  ExtractorGdelt:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-gdelt
+      Runtime: python3.12
+      Handler: src.extractores.gdelt.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 2048                     # el bloque se arma en memoria antes de comprimirlo
+      Timeout: 900
+      EphemeralStorage: { Size: 1024 }
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          TAMANO_OBJETIVO_MB: "128"
+
+  ExtractorResoluciones:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-extractor-resoluciones
+      Runtime: python3.12
+      Handler: src.extractores.resoluciones.lambda_handler
+      Role: !GetAtt RolExtractores.Arn
+      MemorySize: 512
+      Timeout: 300
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  FallasExtractorBcrp:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorBcrp
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  FallasExtractorFacilito:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorFacilito
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  FallasExtractorYoutube:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorYoutube
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  FallasExtractorResoluciones:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ExtractorResoluciones
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
+  # Los extractores los programa EventBridge Scheduler (informe M1 y ADR 0015),
+  # no una regla de EventBridge Events: Scheduler es el servicio de horarios y
+  # trae su propia politica de reintento y su cola de fallas por programa.
+  RolExtractoresScheduler:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-extractores-scheduler-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: invocar-solo-los-extractores
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ExtractorBcrp.Arn
+                  - !GetAtt ExtractorFacilito.Arn
+                  - !GetAtt ExtractorYoutube.Arn
+                  - !GetAtt ExtractorResoluciones.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  # El BCRP publica con un dia de rezago: a las 11:00 UTC (06:00 en Peru) la
+  # serie del dia anterior ya esta.
+  ProgramaBcrpDiario:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: costagas-bcrp-diario
+      Description: Tipo de cambio oficial del BCRP, una vez al dia
+      State: ENABLED
+      ScheduleExpression: cron(0 11 * * ? *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorBcrp.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
+
+  ProgramaFacilitoSemanal:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: costagas-facilito-semanal
+      Description: Precios de GLP de Facilito, los lunes (ADR 0024)
+      State: ENABLED
+      ScheduleExpression: cron(30 11 ? * MON *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorFacilito.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
+
+  ProgramaYoutubeSemanal:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: costagas-youtube-semanal
+      Description: Texto publico de YouTube, los lunes (ADR 0015)
+      State: ENABLED
+      ScheduleExpression: cron(45 11 ? * MON *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorYoutube.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
+
+  ProgramaResolucionesMensual:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: costagas-resoluciones-mensual
+      Description: Resoluciones de Osinergmin en PDF, el dia 1 de cada mes (ADR 0024)
+      State: ENABLED
+      ScheduleExpression: cron(0 12 1 * ? *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt ExtractorResoluciones.Arn
+        RoleArn: !GetAtt RolExtractoresScheduler.Arn
+        RetryPolicy: { MaximumRetryAttempts: 1 }
+        DeadLetterConfig: { Arn: !GetAtt ColaEventosFallidos.Arn }
+
+  # ---------------------------------------------------------------------------
+  # (11) Job de fuentes externas (W21): conteo de GDELT con MapReduce, texto de
+  #      las resoluciones con pdfplumber, LDA de MLlib y gold.mercado_mes.
+  #      2 trabajadores G.1X en FLEX, una corrida mensual: ~= US$ 0.03
+  #      (Tabla 2.7a). Timeout de 15 minutos y MaxRetries 0, como el de Gold.
+  # ---------------------------------------------------------------------------
+  JobExternos:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: costagas-externos
+      Role: !GetAtt RolGlue.Arn
+      GlueVersion: "5.0"
+      WorkerType: G.1X
+      NumberOfWorkers: !Ref GlueTrabajadores
+      ExecutionClass: FLEX              # mensual y sin hora fija: FLEX cuesta menos
+      Timeout: 15
+      MaxRetries: 0
+      ExecutionProperty: { MaxConcurrentRuns: 1 }
+      JobRunQueuingEnabled: true
+      Command:
+        Name: glueetl
+        PythonVersion: "3"
+        ScriptLocation: !Sub s3://costagas-code-${Sufijo}/_code/glue_externos.py
+      DefaultArguments:
+        --extra-py-files: !Sub s3://costagas-code-${Sufijo}/${CodigoKey}
+        --additional-python-modules: pdfplumber>=0.11
+        --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+        --k: "5"
+        --enable-spark-ui: "true"
+        --spark-event-logs-path: !Sub s3://costagas-trujillo-lake-${Sufijo}/sparkui/
+        --enable-glue-datacatalog: "true"
+        --enable-metrics: "true"
+        --job-bookmark-option: job-bookmark-enable
+        --datalake-formats: iceberg
+        --conf: !Sub >-
+          spark.sql.adaptive.enabled=true --conf spark.sql.adaptive.skewJoin.enabled=true
+          --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+          --conf spark.sql.catalog.glue_catalog=org.apache.iceberg.spark.SparkCatalog
+          --conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog
+          --conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+          --conf spark.sql.catalog.glue_catalog.warehouse=s3://costagas-trujillo-lake-${Sufijo}/gold/
+
+  # Dia 2 de cada mes a las 13:00 UTC: los extractores semanales y el de
+  # resoluciones (dia 1) ya dejaron el mes completo en landing/externo/.
+  ProgramaExternosMensual:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: costagas-externos-mensual
+      Type: SCHEDULED
+      Schedule: cron(0 13 2 * ? *)
+      StartOnCreation: true
+      Actions:
+        - JobName: !Ref JobExternos
+          Arguments:
+            --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          Timeout: 15
+  # ---------------------------------------------------------------------------
+  # (12) Funciones del portal (W22, informe M9 y M10). Cuatro Lambdas con URL de
+  #      funcion: firmar la carga, estado del lago, KPI y revision documental.
+  #      AuthType NONE con validacion del token de Cognito en el codigo
+  #      (src/controles/jwt.py) y CORS limitado al dominio de CloudFront.
+  #      Costo: capa gratuita (las invocaciones son de un operador, no de un
+  #      publico). Las consultas de Athena del portal son las de desarrollo de
+  #      la Tabla 2.7, de pocos KB escaneados.
+  # ---------------------------------------------------------------------------
+  RolPortal:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-portal-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: portal-firmar-consultar-y-revisar
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow                  # la URL prefirmada solo puede escribir aqui
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/interno/*
+              - Effect: Allow                  # estado del lago: manifiestos y calidad
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/_manifests/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/_control/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                Condition:
+                  StringLike:
+                    s3:prefix: ["_manifests/*", "silver/_control/*"]
+              - Effect: Allow                  # Gold de solo lectura, salvo revision_alerta
+                Action: [s3:GetObject]
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/*
+              - Effect: Allow
+                Action: [s3:PutObject]
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/revision_alerta/*
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/athena-results/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+              - Effect: Allow
+                Action: [athena:StartQueryExecution, athena:GetQueryExecution,
+                         athena:GetQueryResults, athena:StopQueryExecution]
+                Resource: !Sub arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${WorkgroupAthena}
+              - Effect: Allow                  # el catalogo, solo para leer el esquema
+                Action: [glue:GetDatabase, glue:GetDatabases, glue:GetTable, glue:GetTables,
+                         glue:GetPartition, glue:GetPartitions]
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/costagas_gold
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/costagas_gold/*
+              - Effect: Allow
+                Action: glue:UpdateTable       # Iceberg actualiza el puntero al insertar
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/costagas_gold
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/costagas_gold/revision_alerta
+              - Effect: Allow
+                Action: ssm:GetParameter       # la sal del seudonimo del revisor
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/costagas/seudonimo/sal
+
+  PortalFirmar:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-firmar
+      Runtime: python3.12
+      Handler: src.portal.firmar.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          LAKE_BUCKET: !Sub costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+
+  PortalEstado:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-estado
+      Runtime: python3.12
+      Handler: src.portal.estado.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          LAKE_BUCKET: !Sub costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+
+  PortalKpis:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-kpis
+      Runtime: python3.12
+      Handler: src.portal.kpis.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+          ATHENA_WORKGROUP: !Ref WorkgroupAthena
+          BASE_GOLD: !Ref BaseGold
+
+  PortalRevision:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-revision
+      Runtime: python3.12
+      Handler: src.portal.revision.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+          ATHENA_WORKGROUP: !Ref WorkgroupAthena
+          BASE_GOLD: !Ref BaseGold
+
+  UrlPortalFirmar:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalFirmar.Arn
+      AuthType: NONE                      # la autorizacion es el token de Cognito
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  UrlPortalEstado:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalEstado.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  UrlPortalKpis:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalKpis.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  UrlPortalRevision:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalRevision.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  PermisoUrlPortalFirmar:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalFirmar
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PermisoUrlPortalEstado:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalEstado
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PermisoUrlPortalKpis:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalKpis
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PermisoUrlPortalRevision:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalRevision
+      Principal: "*"
+      FunctionUrlAuthType: NONE
 Outputs:
   Bucket: { Value: !Ref Lago }
   LakeUri: { Value: !Sub "s3://costagas-trujillo-lake-${Sufijo}" }
   Workgroup: { Value: !Ref WorkgroupAthena }
   Lambda: { Value: !Ref BronzeToSilver }
+  LambdaIngesta: { Value: !Ref Ingesta }
   GlueJob: { Value: !Ref JobConciliacion }
   RolLambda: { Value: !GetAtt RolLambda.Arn }
   RolGlue: { Value: !GetAtt RolGlue.Arn }
@@ -609,3 +1268,13 @@ Outputs:
   CognitoUserPoolId: { Value: !Ref GrupoUsuariosPortal }
   CognitoClientId: { Value: !Ref ClientePortal }
   RolDespliegueGithub: { Value: !GetAtt RolDespliegueGithub.Arn }
+  ExtractorBcrp: { Value: !Ref ExtractorBcrp }
+  ExtractorFacilito: { Value: !Ref ExtractorFacilito }
+  ExtractorYoutube: { Value: !Ref ExtractorYoutube }
+  ExtractorGdelt: { Value: !Ref ExtractorGdelt }
+  ExtractorResoluciones: { Value: !Ref ExtractorResoluciones }
+  JobExternos: { Value: !Ref JobExternos }
+  UrlPortalFirmar: { Value: !GetAtt UrlPortalFirmar.FunctionUrl }
+  UrlPortalEstado: { Value: !GetAtt UrlPortalEstado.FunctionUrl }
+  UrlPortalKpis: { Value: !GetAtt UrlPortalKpis.FunctionUrl }
+  UrlPortalRevision: { Value: !GetAtt UrlPortalRevision.FunctionUrl }
