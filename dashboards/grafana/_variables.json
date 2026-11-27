@@ -1,0 +1,108 @@
+{
+  "templating": {
+    "list": [
+      {
+        "name": "ds_athena",
+        "label": "Origen de datos",
+        "description": "Origen Amazon Athena (AwsDataCatalog, costagas_gold, workgroup costagas-wg, us-east-2).",
+        "type": "datasource",
+        "query": "grafana-athena-datasource",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": ""
+      },
+      {
+        "name": "anio",
+        "label": "Año",
+        "description": "Años presentes en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": { "type": "grafana-athena-datasource", "uid": "${ds_athena}" },
+        "query": {
+          "refId": "anio",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo WHERE anio IS NOT NULL ORDER BY anio DESC",
+          "connectionArgs": { "region": "__default", "catalog": "__default", "database": "__default", "resultReuseEnabled": false }
+        },
+        "definition": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "mes",
+        "label": "Mes",
+        "description": "Meses del año elegido en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": { "type": "grafana-athena-datasource", "uid": "${ds_athena}" },
+        "query": {
+          "refId": "mes",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio} AND mes IS NOT NULL ORDER BY mes DESC",
+          "connectionArgs": { "region": "__default", "catalog": "__default", "database": "__default", "resultReuseEnabled": false }
+        },
+        "definition": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio}",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "producto",
+        "label": "Producto",
+        "description": "Productos de dim_producto. Se usa con IN (${producto:sqlstring}).",
+        "type": "query",
+        "datasource": { "type": "grafana-athena-datasource", "uid": "${ds_athena}" },
+        "query": {
+          "refId": "producto",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT id_producto AS __value, COALESCE(producto, id_producto) AS __text FROM costagas_gold.dim_producto WHERE id_producto IS NOT NULL ORDER BY 2",
+          "connectionArgs": { "region": "__default", "catalog": "__default", "database": "__default", "resultReuseEnabled": false }
+        },
+        "definition": "SELECT DISTINCT id_producto, producto FROM costagas_gold.dim_producto",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "rol",
+        "label": "Rol de la unidad",
+        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. Se usa con IN (${rol:sqlstring}).",
+        "type": "query",
+        "datasource": { "type": "grafana-athena-datasource", "uid": "${ds_athena}" },
+        "query": {
+          "refId": "rol",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad WHERE rol IS NOT NULL ORDER BY rol",
+          "connectionArgs": { "region": "__default", "catalog": "__default", "database": "__default", "resultReuseEnabled": false }
+        },
+        "definition": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      }
+    ]
+  }
+}
