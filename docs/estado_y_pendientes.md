@@ -1,191 +1,269 @@
 # Costa Gas Trujillo · dónde estamos y qué falta
 
-**Fecha:** 27/11/2026 (actualizado tras el merge de los PR #13 y #16) · **Escribe:** Oftcher Anghelo Alcántara Pérez (Calidad y documentación, Semanas 8-14)
+**Fecha:** 27/11/2026 · **Escribe:** Oftcher Anghelo Alcántara Pérez (Calidad y documentación,
+Semanas 8-14) · Repositorio: `WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS`
 
-Este documento resume lo que llevo hecho y, sobre todo, **qué necesito de cada uno para poder seguir**. Las secciones de Wilson, Frank y Bruno están escritas para que puedan pasárselas directamente a su asistente.
-
-Repositorio: `WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS`
+Actualizado tras los merges de los PR #18 (Wilson), #19 (Frank) y #20 (mío), y con el PR #21
+abierto. Resume **qué hice**, **qué me queda** y, sobre todo, **qué necesito de cada uno**. Las
+secciones de Wilson, Frank y Bruno están escritas para que puedan pasárselas directamente a su
+asistente.
 
 ## Lo que falta, en corto
 
-| Quién | Qué | Desbloquea |
+| Quién | Qué necesito | Qué desbloquea |
 |---|---|---|
-| **Wilson** | Publicar los encabezados de `CO01. GASTOS` y `GASTOS FLOTA` en `encabezados_raw.md` | Mi A06 |
-| **Wilson** | Decir de qué archivo y hoja sale el stock diario, o confirmar que no existe | La mitad de mi A08 |
-| **Wilson** | Publicar los encabezados de la hoja `PRIMAX` | El cuarto proveedor de mi A07 |
-| **Frank** | Escribir `detector.calibrar_h` (su F14) | Mi A18 |
-| **Bruno** | Corregir los roles de la Semana 8 en `docs/equipo.md` | Coherencia con el v16 |
-| **Bruno y Wilson** | Decidir qué pasa con el ADR 0014 de EMR y la evidencia de Hadoop Streaming | Un requisito del curso |
-| **Titular de AWS** | MFA del usuario raíz y de los cuatro usuarios de IAM | Seguridad de la cuenta |
+| **Wilson o quien tenga los archivos** | La carpeta `DATASETS` con los 35 Excel (hoy **no está en ninguna de nuestras máquinas**, ver 4.1), y describir en prosa qué mide cada posición de `GASTOS FLOTA` y de `CO01/Sheet1` | **AR01** (contrato de gastos) y con él **AR21**, el `fact_unidad_mes` del W07 y el combustible del KPI 4 |
+| **Wilson** | WR07-WR10: despliegue, carga inicial a S3 y primera corrida | **AR16, AR17 y AR22**, y todas las cifras reales del informe |
+| **Wilson** | WR17: la Lambda del detector | **AR18 y AR19** (la medición ciega) |
+| **Frank** | Fusionar `dev-frank`: tiene **10 commits sin entrar a `main`** | El ADR 0028, las métricas con bootstrap y las columnas de `modelo_factura` |
+| **Frank** | Revisar la cita de S11 y F36 (abajo, punto 5.1) | Que el informe v17 no publique una cifra que los archivos no sostienen |
+| **Bruno y Wilson** | Decidir el ADR 0014 de EMR y la evidencia de Hadoop Streaming | **AR10** y un requisito del curso |
+| **Bruno** | Corregir los roles de la Semana 8 en `docs/equipo.md` | Coherencia con el informe v16 |
+| **Bruno o Wilson** | Proteger la rama `main` (abajo, punto 6.3) | Que CODEOWNERS sirva de algo y que no se pueda fusionar en rojo |
+| **Titular de AWS** | MFA del usuario raíz y de los cuatro usuarios de IAM, y rotar claves | La seguridad de la cuenta |
 
-Lo mío que ya no depende de nadie está hecho. Con el #13 mergeado me quedan desbloqueados el A11, el A13 y el A19, que hago yo en cuanto el PR #17 entre.
-
-El detalle de cada punto está abajo, con el archivo y la hoja exactos.
-
----
-
-## 1. Estado de los pull requests
-
-| PR | Autor | Estado | Qué trae |
-|---|---|---|---|
-| [#15](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/pull/15) | Anghelo | **Mergeado** 27/11 | A01-A05: README y PLAN al v16, ADR 0015-0021, bitácora |
-| [#17](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/pull/17) | Anghelo | **Abierto** | A07, A08, A10, A12, A14-A17 y medio A11, más un arreglo de privacidad |
-| [#13](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/pull/13) | Wilson | **Mergeado** | W01-W05, W08, W13, W23: ingesta, job de Gold, dimensiones, CD y el `ci.yml` |
-| [#16](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/pull/16) | Bruno | **Mergeado** | Coordinación, tablero, portal, validación ciega y controles |
-
-Los PR #13 y #16 entraron a `main` mientras el mío estaba abierto. El único choque fue `tests/conftest.py`, que tocamos Wilson y yo: lo resolví quedándome con su sesión de Iceberg y añadiéndole mis dos arreglos de Windows. Suite en verde con todo integrado, y ahora **el `ci.yml` de Wilson ya corre sobre mi PR**, que es la primera verificación real de las pruebas de Spark.
+**Lo único que me queda por mi cuenta es el AR15**, y ya no está bloqueado: las diez técnicas que
+tiene que documentar están en `main` desde los merges del 27/11 (punto 1.3). Los otros 8 commits
+esperan alguna de las filas de arriba.
 
 ---
 
-## 2. Lo que llevo hecho
+## 1. Lo que hice
 
-### Mergeado en `main` (PR #15)
+### En `main` (PR #15, #17 y #20)
 
 | Commit | Qué |
 |---|---|
-| `e28b910` | **A01** README con el flujo real del v16, señales S1-S12, `us-east-2`, costo de US$ 0.89, sin Power BI, y la tabla de quién cuida qué carpeta |
-| `17a9a3f` | **A02** PLAN con `us-east-2`, el paso 4.4.4 con Grafana Cloud y sus 6 páginas, y la sección «Fase 6» con las 96 casillas del equipo |
-| `7c68c98` | **A03** ADR 0015 YouTube Data API y 0016 Grafana Cloud |
-| `a1b3901` | **A04** ADR 0017 cola de corridas con `MaxRetries` 0 y 0018 lago `op/` |
-| `8f17fae` | **A05** ADR 0019 `revision_alerta`, 0020 regla de Gold y 0021 memoria de la Lambda |
-| `6bae64c` | Renumeración del `0011` duplicado a `0022` y anotación del `0014` de EMR |
-| `4b2ccf1` | `docs/bitacora.md` y `PLAN.md` sin `yt-dlp` |
+| **AR06** | `src/sim/validacion.py`: validación del detector con 100 semillas en lotes de 10. Calibra con el escenario A y mide con el B **sin volver a tocar el umbral**; cada lote deja su JSON en `sim/resultados/lote=<n>.json` con las cifras de la Tabla 4.8h y su meta al lado |
+| **AR07** | `src/models/ficha.py`: la ficha de cada versión del modelo se genera del registro de W13, no se escribe a mano |
+| **AR08** | `deriva.a_dict()` y `desde_dict()`: los cortes del PSI se guardan con el modelo en JSON válido |
+| **AR09** | `calidad_silver.bloqueos()`: qué KPI no se publica si su tabla Silver incumple las metas de la Tabla 3.7 |
+| **AR11** | ADR 0030: un solo esquema por tabla (catálogo S1-S12, `fact_alerta_base`, interfaces del WP 0.8 y `COLUMNAS_GOLD`) |
+| **AR13** | Privacidad en las alertas y en las ocho vistas de Athena |
+| **AR20** | Anexo A con el uso de IA |
+| **AR23** | Bitácora al cierre: decisiones 0015-0027 y 0030, y seis riesgos materializados |
+| **AR03** | El `ci.yml` valida los contratos con `python -m src.silver.contratos --validar` |
+| **AR12** | `tests/test_sin_pendientes.py`: falla si vuelve a aparecer una de las fórmulas que prohíbe la regla 2 del equipo |
 
-### En el PR #17, esperando revisión
+### En el PR #21, esperando revisión
 
 | Commit | Qué |
 |---|---|
-| `fa5ec36` | **Arreglo de privacidad** (ver sección 3) |
-| `616e47f` | **A12** prueba de privacidad en tres frentes |
-| `f88153a` | **A10** `calidad_silver.py` |
-| `280e8e5` | **A14** compensación de pares redigitados |
-| `e61c3eb` | **A15** PSI de deriva |
-| `454c823` | **A16** escenario A sin robos |
-| `db40cf2` | **A17** inyección ciega del escenario B |
-| `5826f56` | **A11 parcial** `--validar` de contratos |
-| `57b5037` | Pruebas de Spark y encoding arregladas en Windows |
-| `153cf8a` | **A07** contrato `pedidos_proveedor` |
-| `a0a79fc` | **A08 parcial** maestros de distribuidores y clientes |
-| merge | Integra `main` con los PR #13 y #16, resolviendo el conflicto de `conftest.py` |
+| **AR04** | `pytest.importorskip("pyspark")` en la prueba que rompía el workflow `cd` (punto 4.1) |
+| **AR02** | La producción diaria, declarada **no cubierta** con la búsqueda que lo sostiene |
+| **AR05** | `tests/test_integridad_gold.py`: `left_anti` de cada hecho contra cada dimensión |
+| **AR14** | `docs/diccionario_gold.md`: las 13 tablas de Gold desde sus DDL |
 
-Las pruebas quedan en **verde, 0 fallos**, ya con el trabajo de Wilson y de Bruno dentro. Las de Spark se omiten en mi máquina por falta de winutils; ahora las corre la CI en Ubuntu sobre este mismo PR.
+**Pruebas: 563 en local (0 fallos, 72 omitidas por Spark en Windows) y CI en verde en Ubuntu**,
+donde las de Spark sí corren: el `ci.yml` falla a propósito si alguna queda omitida por Spark.
+
+### Lo que me queda, y de qué depende cada uno
+
+| Commit | Espera |
+|---|---|
+| **AR01** contrato de gastos | Los 35 Excel (4.1) |
+| **AR21** estado de los contratos | AR01 |
+| **AR10** CLAUDE.md al v16 | La decisión sobre EMR (6.2) |
+| **AR16, AR17, AR22** | La carga inicial (WR09) |
+| **AR18, AR19** | La Lambda del detector (WR17) |
+| **AR24** insumos del informe v17 | FR24, WR21 y mi AR17 |
+
+### 1.3 · Lo siguiente que hago, y no necesito a nadie
+
+**AR15 · técnicas de ingeniería con archivo y línea.** El plan lo daba como bloqueado por WR06 y
+WR12, y eso ya no es cierto: las diez técnicas que faltaba documentar están en `main`.
+
+| Técnica | Dónde está |
+|---|---|
+| MapReduce SQL | `src/glue/mapreduce_sql.py:62` (`mapear`) y `:71` (`reducir`) |
+| MapReduce sobre RDD | `src/silver_to_gold/mapreduce.py:53` (`reduceByKey`) y `:59` (`groupByKey`) |
+| `MERGE` de Iceberg | `src/glue/iceberg.py:70` (`escribir_merge`) |
+| Lectura incremental | `infra/cloudformation/stack.yaml:360` y `:1002` (`job-bookmark-enable`) |
+| AQE y `broadcast()` | ya están en la tabla de `docs/tecnicas_curso.md` |
+| EventBridge Events | `infra/cloudformation/stack.yaml:515` y `:562` |
+| EventBridge Scheduler | `infra/cloudformation/stack.yaml:877` |
+| Flujos de Glue | `infra/cloudformation/stack.yaml` |
+| LDA | `src/glue/externos_job.py:248` (`temas`) |
+| pdfplumber | `src/extractores/resoluciones.py` |
+
+Hoy [`docs/tecnicas_curso.md`](tecnicas_curso.md) cubre S1-S5 con 27 filas, todas con su archivo y
+su línea. Faltan estas diez, que entraron después.
 
 ---
 
-## 3. El hallazgo que más importa: una fuga de datos personales
+## 2. Estado de las ramas y los pull requests
 
-Mi prueba del A12 encontró esto en `src/bronze_to_silver/handler.py`:
+| Rama | Estado |
+|---|---|
+| `dev-wilson` | **Todo en `main`** (PR #18) |
+| `dev-bruno` | **Todo en `main`** |
+| `dev-frank` | **10 commits sin fusionar**, el último `624d56e` |
+| `dev-anghelo` | PR #21 abierto, CI en verde |
 
-```python
-df["ruc"] = df["documento_norm"].where(df["clase_documento"] == "RUC")
-```
+| PR | Autor | Estado |
+|---|---|---|
+| #15, #17, #20 | Anghelo | Mergeados |
+| #13, #18 | Wilson | Mergeados |
+| #16 | Bruno | Mergeado |
+| #19 | Frank | Mergeado, pero su rama siguió avanzando |
+| **#21** | Anghelo | **Abierto**: AR04, AR02, AR05 y AR14 |
 
-Conservaba **todos** los RUC válidos, incluidos los de prefijo 10, 15 y 17, que son de persona natural. En la tabla `red_02_distribuidores` había **33 RUC de personas publicados en Silver**.
+---
 
-Con la muestra sintética no expone a nadie, pero con los 35 archivos reales sí lo haría, y va contra la regla de `CLAUDE.md` de no publicar RUC de personas naturales.
+## 3. Lo que ya no me bloquea, porque ustedes lo resolvieron
 
-Ya está arreglado: ahora solo pasa el RUC de persona jurídica y el documento completo sigue en `documento_hash`. Verificado sobre el parquet regenerado: **0 RUC de persona natural**, los 34 de empresa intactos, las 125 filas conservadas.
+Vale la pena dejarlo escrito, porque tres cosas que estaban en la versión anterior de este
+documento ya están cerradas:
 
-Wilson, toqué tu handler por esto. Es una línea y lo dejé en un commit aparte de su prueba para que lo veas suelto.
+- **`detector.calibrar_h` existe** (`src/models/detector.py:226`, PR #19 de Frank). Con eso el
+  AR06 dejó de estar bloqueado y ya está hecho.
+- **Los 13 DDL de Gold entraron** con el PR #18 de Wilson. Eso desbloqueó el AR05 y el AR14, los
+  dos hechos y en el PR #21.
+- **Wilson firmó que el stock diario no existe** en la entrega
+  ([`hojas_sin_encabezado.md`](evidencias/hojas_sin_encabezado.md), sección 4). Con esa evidencia
+  el AR02 quedó escrito como resultado, no como pendiente.
 
 ---
 
 ## 4. Wilson · Ingeniería de datos
 
-### Lo que me tiene bloqueado
+### 4.1 · Lo único que me bloquea del todo: los 35 Excel
 
-**4.1 · Encabezados de gastos.** Bloquea mi **A06** entero.
+Tu respuesta sobre los encabezados cerró la duda y fue la que menos esperábamos: en `GASTOS
+FLOTA`, `CO01/Sheet1` y `PRIMAX` **los nombres de columna no existen en el archivo**, las tres
+hojas empiezan en datos. No es que nadie los haya publicado.
 
-`docs/evidencias/encabezados_raw.md` dice literalmente «Sin encabezado claro» para:
+Tu recomendación y la mía coinciden: `OTROS GASTOS` como fuente **con nombres** (MES, FECHA,
+PLACA, ÁREA, DESCRIPCIÓN, COMENTARIOS, MONTO, PROVEEDOR, PLANTA) y `GASTOS FLOTA` y
+`CO01/Sheet1` **por posición**. Para escribir eso necesito una sola cosa:
 
-- `CO01. GASTOS DETALLADO POR PROYECTO X RANGO DE FECHA.xls`, hoja `Sheet1` (encabezado en la fila 3): **8 columnas `A`-`H`, nombres no publicados**
-- `GASTOS 2020.xls`, hoja `GASTOS FLOTA` (fila 3): **15 columnas `A`-`O`, nombres no publicados**
+> **Qué mide cada posición, en prosa y sin ningún valor.** «A: mes como texto», «C: placa»,
+> «F: monto en soles», «H: texto libre del concepto». Y sobre todo **cuál columna dice si el
+> gasto es combustible**, que es la que necesita `gasto_combustible` de `fact_unidad_mes`.
 
-Un contrato empareja **encabezado original → nombre estándar**, así que sin los nombres originales no puedo escribir `contracts/gastos.yaml`. Yo no puedo abrir `data/raw/`; tú sí tienes el rol. Lo que necesito es que publiques esos nombres en `encabezados_raw.md` con el mismo formato de tabla que el resto del inventario.
+**Dónde están los archivos hoy: en ninguna de nuestras dos máquinas.** Los busqué en la mía por
+nombre de libro (`GASTOS 2020.xls`, `1. PEDIDOS GLP.xlsx`, `COMPRAS TOTAL 2020.xlsx`,
+`Reporte de Produccion CGT 2018.xlsx`) y por carpeta, y no aparecen; `C:\BIG DATA\DATASETS` no
+existe. Lo único que tengo son los Excel sintéticos de los escenarios A y B, que son míos. Tú
+escribiste que lo harías cuando tengas `../DATASETS` otra vez a mano. Así que el primer paso de
+todo esto es que alguien recupere la entrega y la ponga en `C:\BIG DATA\DATASETS`, fuera del
+repositorio, y por un canal privado: nunca por WhatsApp ni por correo.
 
-El `contracts/README.md` ya lo tenía anotado como pendiente desde antes.
+Es el cuello de botella real del proyecto: sin eso no hay AR01, y sin AR01 no hay `fact_unidad_mes` (tu W07), ni
+combustible en el KPI 4, ni señal S9 sobre datos reales, ni AR21.
 
-**4.2 · De dónde sale el stock diario.** Bloquea la mitad que falta de mi **A08**.
+Lo que **no** hace falta: que publiques los valores de la primera fila. Tienes razón en no
+hacerlo, esas filas traen placas y el RUC del proveedor pegado a la razón social.
 
-Busqué `STOCK`, `SALDO`, `RESIDUO`, `INICIAL` y `FINAL` en las 3 172 líneas del inventario: **no hay ninguna hoja con stock por día**. Las de `Reporte de Produccion CGT 2018.xlsx` son resúmenes por mes o no publican encabezados.
+### 4.2 · La carga inicial (WR07-WR10)
 
-Existe el contrato Python `pro_01` en `src/common/schemas.py` con los conceptos correctos (fecha, stock inicial, producción, ventas, bonificaciones, stock final), pero `FuenteInterna` no guarda patrón de archivo, así que no sé de qué Excel y hoja salen. Necesito el archivo, la hoja y la fila del encabezado.
+Es lo segundo más importante, porque de ahí salen **todas** las cifras reales del informe: mis
+AR16, AR17 y AR22, tus WR21 y los FR19-FR24 de Frank.
 
-Si resulta que ese dato **no existe** en la entrega, dímelo igual: lo anoto como no cubierto y cerramos el tema. Coincide con lo que ya dice la bitácora y con el `cierres_medidos_fisicamente: 0` del v16.
+Antes de subir, dos cosas que ya acordamos y conviene no saltarse:
 
-**4.3 · Encabezados de PRIMAX.** Completa mi A07.
+1. Confirmar que la regla `costagas-silver-actualizado` sigue en **DISABLED**, para que Gold no
+   corra con la carga a medias ([ADR 0020](adr/0020-regla-gold-prefijos-internos.md)).
+2. La Lambda de ingesta rechaza sola la copia repetida por su huella SHA-256:
+   `COMPRAS MENSUALES (1).xlsx` es copia de `COMPRAS MENSUALES.xlsx`. 35 archivos, 34 únicos,
+   unos 114 MB, menos de US$ 0.01 de subida.
 
-Hoja `PRIMAX` de `1. PEDIDOS GLP.xlsx` (fila 3): 25 columnas `A`-`Y` sin nombres. Con eso añado el cuarto proveedor a `pedidos_proveedor`. No es urgente, las otras tres ya están.
+Mi perfil de AWS es de solo lectura (gobierno): la carga la haces tú o el titular desde
+CloudShell.
 
-**4.4 · El #13 ya entró, gracias.** Con eso me quedan desbloqueados tres commits y los hago yo:
+### 4.3 · `fact_unidad_mes` sigue sin DDL, y está bien así
 
-- **A11**: le agrego el paso `--validar` a tu `ci.yml`
-- **A13**: la prueba de integridad referencial contra tu `dimensiones.py` del W08
-- **A19**: la ficha de cada versión del modelo contra tu registro del W13
+Lo dejaste explicado en `tests/test_ddl_gold.py` y lo recogí en el diccionario de Gold: es el W07
+y espera `contracts/gastos.yaml`. No se declara una tabla cuyo esquema no esté definido. Lo
+desbloquea 4.1.
 
-### Lo que te dejo listo
+### 4.4 · Un aviso: te toqué dos archivos
 
-- `contracts/pedidos_proveedor.yaml` con su DDL generado, para que lo despliegues
-- `contracts/distribuidores.yaml` y `contracts/clientes.yaml`, ídem
-- `python -m src.silver.contratos --validar`, que revisa los 8 contratos y sus DDL y sale con código 1 si algo falla. Mételo en el `ci.yml` cuando quieras
-- El archivo sellado del escenario B, para que lo subas a `sim/_spec/` (tu W19). **No se lo pases a Frank.** Su huella SHA-256 está publicada en `docs/modelos/formato_spec_b.md`
+- **`.github/workflows/ci.yml`** (AR03). Según CODEOWNERS ese archivo es mío y `cd.yml` es tuyo,
+  así que estaba en mi área, pero el paso que cambié lo habías escrito tú: reemplacé el script en
+  línea de 22 líneas por `python -m src.silver.contratos --validar`, que hace lo mismo y además
+  revisa llave, dominio, fuentes, tipos y tablas duplicadas. Si prefieres el script anterior,
+  dímelo y lo revierto.
+- **La prueba de `calidad_silver`** (AR04), que rompía tu workflow `cd`. Detalle abajo.
 
-### Un aviso sobre tu `externos_job.py`
+### 4.5 · El workflow `cd` llevaba roto desde el 27/11 a las 05:13
 
-Revisé tu W21 y ya cubre entero lo que era mi A09, siguiendo mi ADR 0015. Por eso **no voy a escribir** los contratos del entorno: duplicarlos sería mantener dos esquemas de la misma tabla, que `CLAUDE.md` prohíbe. Tu ADR 0023 ya descarta además lo de meter `landing/externo/` en `_archivos.yaml`, así que tampoco lo toco. Estamos alineados.
+No era de nadie en particular y conviene que se sepa por qué, porque el patrón se puede repetir:
+
+```
+FAILED tests/test_calidad_silver.py::test_el_esquema_declara_lo_que_escribe_procesar
+ModuleNotFoundError: No module named 'pyspark'
+```
+
+`ci` instala `requirements-spark.txt` y `cd` instala `requirements.txt`, que no trae pyspark. Esa
+prueba llama a `calidad_silver.esquema()`, que construye un `StructType` y por eso importa pyspark
+**aunque no abra ninguna sesión de Spark**; como no pide el fixture `spark`, nadie la omitía.
+Arreglado en el PR #21 con `pytest.importorskip`.
+
+Ojo con esto: `cd` solo se dispara con cambios en `infra/`, `src/`, `contracts/` o su propio
+workflow, así que el arreglo **no lo va a disparar al entrar**. Se verá en verde con el siguiente
+cambio de `src/` que llegue a `main`.
 
 ---
 
 ## 5. Frank · Análisis y modelado
 
-### Lo que me tiene bloqueado
+### 5.1 · La cita de S11 y F36 no se sostiene con los archivos
 
-**5.1 · `detector.calibrar_h`.** Bloquea mi **A18**, la validación con 100 semillas.
+Es lo que más me importa de tu lado, porque va al informe v17.
 
-`src/models/detector.py` no existe todavía, ni en `main` ni en ninguna rama. Mi A18 necesita llamar a `detector.calibrar_h` para fijar el umbral con el escenario A y después medir la detección sobre el escenario B **sin volver a tocar el umbral**. Esa es la Tabla 4.8h.
+El catálogo ([`src/signals/catalogo.yaml`](../src/signals/catalogo.yaml), S11) le da a la señal la
+fuente **F36**, la ventana **oct-2018** y la referencia «residuo cero en 31 días; un ajuste de
+producción de −9 095». Esa referencia solo puede salir de una tabla **con una fila por día**,
+porque cuenta 31 días de un mes de 31.
 
-### Lo que ya tienes listo de mi lado
+Lo que el inventario muestra de 2018 es `Reporte de Produccion CGT 2018.xlsx`, y sus hojas son
+cuadros **cruzados por mes**. Son dos afirmaciones que no encajan, y la que está verificada contra
+los archivos es la del inventario. La búsqueda completa está en
+[`evidencias/produccion_no_cubierta.md`](evidencias/produccion_no_cubierta.md).
 
-**`src/quality/redigitados.py`** para tu F13:
+Lo que propongo, y que decides tú:
 
-```python
-from src.quality.redigitados import compensar
-df = compensar(movimientos, entidad="placa_norm", valor="kg_error", periodo="fecha", ventana=2)
-```
+1. **Decir de qué hoja exacta del diccionario v3.0 salió F36.**
+2. **Marcar S11 como no evaluable en esta entrega.** Hoy está como `resoluble` con
+   `evidencia: alta`, y eso ya no describe la situación.
+3. **No presentar la cifra de oct-2018 como resultado de esta corrida.**
 
-Añade `redigitado` y `<valor>_compensado`. Dos avisos importantes:
+### 5.2 · Tienes 10 commits sin fusionar
 
-- Se aplica sobre el **desvío con signo**, no sobre los kg absolutos. Un par +X/−X solo se cancela en el desvío; sobre los kg cada semana parte de una base distinta. En la serie del escenario A esa columna se llama `kg_error`.
-- **Los errores sin corregir no se tocan.** Un +500 suelto sigue visible, porque puede ser justo lo que hay que detectar.
+`dev-frank` va 10 commits por delante de `main`, con el ADR 0028 (parámetros del detector con su
+fuente), las métricas con bootstrap, el PR-AUC con MLlib y las columnas de `modelo_factura`. El
+diccionario de Gold cita ese ADR como «escrito en la rama `dev-frank`» justamente porque todavía
+no está. Abre el PR cuando quieras y lo reviso.
 
-**`src/models/deriva.py`** para el control de deriva:
+### 5.3 · Lo que ya tienes de mi lado
 
-```python
-cortes = deriva.deciles_entrenamiento(pdf_entrenamiento, VARIABLES)  # se guarda con el modelo
-resultado = deriva.evaluar(pdf_nuevas, cortes)
-if deriva.requiere_reentreno(resultado): ...
-```
-
-Dos cuidados que están en el módulo y conviene que conozcas:
-
-- Los cortes son **los del entrenamiento**. Si se recalculan con los datos nuevos, el PSI sale casi cero siempre y no mide nada.
-- Con menos de `PSI_MIN_OBS` (100) facturas devuelve `"insuficiente"` en vez de un número. Y «insuficiente» **no** dispara reentrenamiento: no saber si hay deriva no es lo mismo que saber que la hay.
-
-**`src/sim/escenario_a.py`**, la serie sin robos para calibrar tu umbral. Está calibrada contra los agregados publicados, no a ojo: 5.013 M kg de envasado en 2020 frente a los 5.0 de la Tabla 1.5, Spearman de 0.68 frente al 0.66 medido, y merma de 0.5 % exacta. Trae estacionalidad de invierno, la caída de la cuarentena, 15 eventos legítimos documentados y errores de digitación corregidos y sin corregir. Todo eso lo tiene que tolerar el detector sin confundirlo con un robo.
-
-### Lo que te pido expresamente
-
-**No abras `escenario_b_spec.yaml`.** No está en el repositorio justo por eso. Si sabes dónde están los robos, terminarás ajustando el detector a esos casos y la precisión que reportemos en la Tabla 4.8h no medirá nada. Lo tengo sellado con su SHA-256 publicado, así que después se puede demostrar contra qué archivo se midió.
-
-Te adelanto solo lo que necesitas para diseñar: son **seis robos**, uno de ellos de un tipo que el detector no contempla por diseño, y otro que por construcción **no se puede detectar** comparando unidades entre sí (tiene que salir en el balance de planta, KPI 1). Ese segundo está ahí para que el límite del método quede medido y escrito, no para castigar al detector.
+- **`src/sim/validacion.py`** (AR06). Corre con `python -m src.sim.validacion --lotes 10`. El
+  umbral sale **solo** del escenario A y el B no lo recalibra: hay una prueba que lo comprueba
+  recalibrando por su cuenta y comparando. Dos cosas que corregí al medir y que cambian el
+  resultado: la alarma se cuenta **desde la semana en que empieza el robo** (si no, una falsa
+  alarma anterior daba retardo negativo y contaba como detección), y los kg se comparan **en la
+  misma ventana**, lo acumulado hasta la alarma contra lo robado hasta esa semana.
+- **El robo de canal no entra al denominador.** Un robo que baja a toda la flota a la vez no lo
+  ve un detector que compara unidades entre sí: está en el escenario para medir ese límite, sale
+  en `robos_no_detectables_por_diseno` y lo tiene que ver el balance de planta (KPI 1).
+- **`src/models/ficha.py`** (AR07) genera la ficha de cada versión desde `vigente.json`. Si tus
+  métricas traen `ic`, `datos`, `variables`, `psi` y `sesgos`, la ficha los publica; lo que no
+  esté sale como «no cubierto» con su motivo, nunca en blanco.
+- **`deriva.a_dict()`** (AR08) para guardar los cortes del PSI junto al modelo. Acuérdate de que
+  los cortes son **los del entrenamiento**: si se recalculan con los datos nuevos, el PSI sale
+  casi cero siempre y no mide nada.
+- **No abras `escenario_b_spec.yaml`.** Sigue fuera del repositorio y su huella SHA-256 queda en
+  cada resultado, para poder demostrar después contra qué archivo se midió.
 
 ---
 
 ## 6. Bruno · Coordinación
 
-**6.1 · `docs/equipo.md` tiene los roles al revés.**
+### 6.1 · Los roles de la Semana 8 siguen al revés en `docs/equipo.md`
 
-La rotación de la Semana 8 está invertida respecto al informe v16 (sección 0.1):
+La rotación está invertida respecto al informe v16 (sección 0.1) y al reparto real del trabajo. Lo
+corregí en el `README.md`, pero `equipo.md` es tuyo.
 
 | Semanas 8-14 | `docs/equipo.md` dice | El v16 dice |
 |---|---|---|
@@ -194,26 +272,50 @@ La rotación de la Semana 8 está invertida respecto al informe v16 (sección 0.
 | Wilson | Calidad y documentación | **Ingeniería de datos** |
 | Bruno | Ingeniería de datos | **Coordinación** |
 
-El v16 coincide con lo que cada uno está haciendo de verdad. Lo corregí en el `README.md`, pero `equipo.md` es tuyo. Vi que tu PR #16 no lo toca.
+### 6.2 · El ADR 0014 de EMR, contigo y con Wilson
 
-**6.2 · El ADR 0014 de EMR, contigo y con Wilson.**
+Sigue abierto y bloquea mi AR10. El v16 descarta EMR y hace MapReduce con Spark, pero
+`CLAUDE.md:53` todavía cita el ADR 0014 como excepción viva y exige Hadoop Streaming, diciendo que
+una operación sobre RDD de Spark **no sustituye** esa evidencia. Es un requisito del curso, no una
+preferencia nuestra. Si se cierra la ruta EMR, hay que marcar el ADR **y** quitar la excepción de
+`CLAUDE.md` en el mismo cambio.
 
-Lo dejé **anotado, no reemplazado**, porque la decisión no me toca. El problema son dos cosas encadenadas:
+### 6.3 · `main` no tiene protección de rama
 
-- El v16 ya descarta EMR («corre sobre instancias EC2 que cobran por hora y la política base las deniega») y su módulo M5 hace MapReduce con **Spark**. El W05 de Wilson está hecho así.
-- Pero `CLAUDE.md:53` todavía cita el ADR 0014 como excepción viva, y además exige que «Hadoop MapReduce se ejecuta con Hadoop Streaming» y que «una operación sobre RDD de Spark **no sustituye** esa evidencia».
+Esto lo encontré al revisar por qué los merges salían con un check en rojo, y conviene arreglarlo
+antes del hito final:
 
-Eso choca de frente con el v16 y con el W05, y **es un requisito del curso, no una preferencia nuestra**. Hay que decidirlo antes del hito final. Si cerramos la ruta EMR, hay que marcar el ADR **y** quitar la excepción de `CLAUDE.md` en el mismo cambio, si no queda apuntando a una decisión muerta.
+- `repos/.../branches/main/protection` responde **404**: no hay protección.
+- `rulesets` está **vacío**.
+- Resultado: los PR #18, #19 y #20 se fusionaron **con 0 revisiones** y con el `cd` en rojo.
 
-**6.3 · Tu `protocolo_ciego.md` encaja con mi escenario B.**
+`.github/CODEOWNERS` está bien escrito y hasta dice en su cabecera que «quien es dueño de un
+archivo no aprueba su propio pull request», pero **CODEOWNERS no hace nada por sí solo**: solo
+tiene efecto si la rama está protegida con «Require review from Code Owners». Lo mismo con los
+checks: sin «Require status checks to pass» nada impide fusionar en rojo.
 
-Vi que tu PR #16 trae `docs/validacion/protocolo_ciego.md`. Mi A17 implementa la inyección ciega y el sellado por SHA-256; convendría que el protocolo que escribes y el mecanismo que programé digan lo mismo. Cuando lo revises, mira `docs/modelos/formato_spec_b.md`.
+Lo que pediría, en Settings → Branches → Add rule sobre `main`:
+
+1. Require a pull request before merging, con **1 aprobación**.
+2. Require review from Code Owners.
+3. Require status checks to pass: **`ci`**.
+
+Lo configura quien sea dueño del repositorio (Wilson) o tú como coordinación. Yo no tengo ese
+permiso, y tampoco debería tenerlo.
+
+### 6.4 · El protocolo ciego y `revision.py`
+
+Tu `docs/validacion/protocolo_ciego.md` usa niveles «documental» y «parcial»; `src/portal/revision.py`
+usa 1 a 3. Mi AR17 implementa la inyección ciega y el sellado por SHA-256, y conviene que el
+protocolo y el mecanismo digan lo mismo antes de la medición real. Mira
+[`docs/modelos/formato_spec_b.md`](modelos/formato_spec_b.md).
 
 ---
 
 ## 7. Titular de la cuenta AWS
 
-Sigue pendiente desde la auditoría del 26/11:
+Sigue pendiente desde la auditoría del 26/11, y es lo único de la lista que es un riesgo de
+seguridad y no de avance:
 
 - **El usuario raíz no tiene MFA.** Es lo más urgente.
 - Ninguno de los cuatro usuarios de IAM tiene MFA.
@@ -223,28 +325,15 @@ Sigue pendiente desde la auditoría del 26/11:
 
 ---
 
-## 8. Lo que me queda a mí, en orden
+## 8. Dos cosas que conviene no perder de vista
 
-| Commit | Lo hago cuando |
-|---|---|
-| **A06** contrato de gastos | Wilson publique los encabezados (4.1) |
-| **A08** producción diaria | Wilson diga de dónde sale el stock (4.2) |
-| **A11** paso en el `ci.yml` | **Ya puedo**, el #13 entró |
-| **A13** integridad referencial de Gold | **Ya puedo**, el #13 entró |
-| **A18** validación con 100 semillas | Frank tenga `detector.calibrar_h` (5.1) |
-| **A19** ficha de cada versión del modelo | **Ya puedo**, el #13 entró |
-| **A20** técnicas del curso con archivo y línea | Estén W05-W21 |
-| **A21** plan de pruebas ejecutado | Estén W11 y W16-W22, y tenga acceso de lectura |
-| **A22** diccionario de Gold | Esté W09 |
-| **A23** bitácora al cierre | Al final; ya existe el archivo |
-| **A24** insumos del informe v17 | Estén F24, W24 y mi A21 |
+**Una prueba omitida se ve igual que una prueba que pasa.** Las de Spark se omiten en Windows por
+falta de `winutils.exe`, así que durante semanas nadie las ejecutó de verdad. Por eso el `ci.yml`
+las corre en Ubuntu y **falla a propósito** si alguna queda omitida por Spark. Las 11 pruebas de
+integridad del AR05 son el primer caso que se verificó así: en mi máquina se omiten, en CI
+corrieron y dieron 0 filas huérfanas.
 
-**A09 no lo voy a hacer**: ya lo cubre el W21 de Wilson y duplicarlo rompería la regla de no mantener dos esquemas de la misma tabla.
-
----
-
-## 9. Una cosa que no está verificada y conviene saber
-
-Las 2 pruebas con Spark de mi A10 **se omiten** en mi máquina, porque Spark en Windows necesita `winutils.exe` hasta para leer un archivo. No es un problema del código, es que no tengo dónde correrlo.
-
-Con el #13 ya mergeado, el `ci.yml` corre en Ubuntu sobre mi PR y esa es la primera vez que alguien las ejecuta de verdad. **Hasta que ese check pase en verde, el A10 no se puede dar por probado.**
+**Implementado, probado, desplegado y corrido son cuatro cosas distintas.** Casi todo lo que
+tenemos está implementado y probado; **nada está corrido sobre los datos reales** hasta la carga
+inicial (4.2). Ninguna cifra de este repositorio puede presentarse como resultado de la empresa
+hasta entonces.

@@ -11,9 +11,14 @@ Un archivo YAML por tabla. Es la única fuente de verdad del esquema (base B5 y 
 | `unidades` | Relación de unidades, control de flota y SOAT | Ubicar la cuarta familia del diccionario |
 | `ventas_unidad_mes` | `VENTAS FLOTA 2020.xlsx` y `2021.xlsx`, hoja VENTAS | Confirmar las hojas MAYO, JUNIO y Hoja3 |
 | `ventas_detalle` | `VENTAS MAYO 2020.xlsx`, `Ventas Por Proyecto.xlsx` | Reportes mensuales de 2019, sin encabezado |
-| `gastos` | Sin contrato todavía | La hoja principal no publica sus encabezados en el inventario |
+| `gastos` | Sin contrato todavía | `GASTOS FLOTA` y `CO01/Sheet1` empiezan en datos: no hay encabezado que emparejar. Se declara `OTROS GASTOS` con nombres y las otras dos por posición, con la descripción de cada posición ([hojas_sin_encabezado.md](../docs/evidencias/hojas_sin_encabezado.md), sección 2) |
+| `produccion_diaria` | **No cubierta por la entrega** | Ninguna de las 199 hojas tiene stock por día ni stock de planta de ningún grano. No es un pendiente: es un resultado, con su búsqueda en [produccion_no_cubierta.md](../docs/evidencias/produccion_no_cubierta.md). S11 queda sin fuente y el KPI 1 toma la variación de stock como 0, marcada con `stock_es_supuesto` |
 
 Cada contrato lista su propio pendiente en la clave `pendiente`.
+
+Una tabla **no cubierta** y una tabla **pendiente** no son lo mismo, y conviene no confundirlas al
+leer este cuadro: la pendiente espera un dato que existe; la no cubierta ya se buscó y no está, y
+lo que falta queda declarado en las salidas (`stock_es_supuesto`) en lugar de rellenarse.
 
 ## Estructura de un contrato
 
