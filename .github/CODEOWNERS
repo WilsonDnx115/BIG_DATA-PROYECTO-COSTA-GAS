@@ -1,0 +1,38 @@
+# Dueños por carpeta (mínimo privilegio en el repositorio).
+# GitHub aplica la ÚLTIMA regla que coincide: las excepciones van al final.
+# Quien es dueño de un archivo no aprueba su propio pull request
+# (revisión cruzada, ver docs/flujo_git.md).
+#
+# Usuarios de GitHub:
+#   Wilson Mirano Rios                 -> @WilsonDnx115
+#   Frank Trelles Diaz                 -> @Fraanck18
+#   Oftcher Anghelo Alcantara Perez    -> @AngheloAP1203
+#   Bruno Ordonez Gonzales             -> @Bruno2006K
+
+# --- Wilson: infraestructura, ingesta, job de Gold, Lambdas y CD ---
+/infra/                         @WilsonDnx115
+/src/ingest/                    @WilsonDnx115
+/src/glue/gold_job.py           @WilsonDnx115
+/src/controles/*.py             @WilsonDnx115
+/src/portal/                    @WilsonDnx115
+/.github/workflows/cd.yml        @WilsonDnx115
+
+# --- Frank: modelos, señales y vistas de Athena ---
+/src/models/                    @Fraanck18
+/src/signals/                   @Fraanck18
+/sql/athena/vistas/             @Fraanck18
+
+# --- Anghelo: contratos, calidad, simulación, ADR y CI ---
+/contracts/                     @AngheloAP1203
+/src/quality/                   @AngheloAP1203
+/src/sim/                       @AngheloAP1203
+/docs/adr/                      @AngheloAP1203
+/.github/workflows/ci.yml        @AngheloAP1203
+
+# --- Bruno: tablero, portal web y coordinación ---
+/dashboards/                    @Bruno2006K
+/portal/                        @Bruno2006K
+/docs/coordinacion/             @Bruno2006K
+
+# --- Excepciones (al final para que prevalezcan) ---
+/sql/athena/vistas/v_revision_ciega.sql  @Bruno2006K
