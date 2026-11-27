@@ -31,6 +31,13 @@ from src.glue import senales_spark
 
 POSITIVAS = ("solo_logistica", "solo_tesoreria", "kg_distinto")
 
+# Columnas de la tabla, en orden. El DDL de Gold (sql/athena/ddl/gold_modelo_factura.sql) debe
+# declarar exactamente estas; kg_logistica, kg_tesoreria y fecha_pago quedan para el expediente.
+COLUMNAS = ["factura_id", "proveedor_id", "unidad_id", "codigo_scop", "fecha", "anio", "mes",
+            "clase_s12", "etiqueta_s12", "kg", "kg_logistica", "kg_tesoreria", "precio_usd_kg",
+            "usd_kg_vs_mediana", "desvio_tc", "flag_scop_duplicado", "ratio_carga_capacidad",
+            "fecha_pago", "fecha_vence", "vence_estimado", "fecha_madurez", "madura"]
+
 
 def _precio_usd_kg(tesoreria):
     """Precio de tesorería por factura (usd_por_kg), con la misma llave que logística."""
@@ -109,7 +116,4 @@ def construir(compras, tesoreria, fecha_corte: str, tc=None, unidades=None):
     else:
         d = d.withColumn("ratio_carga_capacidad", F.lit(None).cast("double"))
 
-    return d.select("factura_id", "proveedor_id", "unidad_id", "codigo_scop", "fecha", "anio", "mes",
-                    "clase_s12", "etiqueta_s12", "kg", "precio_usd_kg", "usd_kg_vs_mediana", "desvio_tc",
-                    "flag_scop_duplicado", "ratio_carga_capacidad", "fecha_vence", "vence_estimado",
-                    "fecha_madurez", "madura")
+    return d.select(*COLUMNAS)

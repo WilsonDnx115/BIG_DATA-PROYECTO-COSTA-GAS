@@ -82,6 +82,8 @@ def test_variables_a_la_fecha_de_la_factura(sp):
     assert r["PETROPERU|F001|3"]["desvio_tc"] == pytest.approx(abs(3.95 - 3.80) / 3.80)   # último hábil anterior
     assert r["PETROPERU|F001|1"]["ratio_carga_capacidad"] == pytest.approx(0.8)
     assert r["SOLGAS|F002|7"]["ratio_carga_capacidad"] is None           # capacidad 0: no se divide
+    assert (r["PETROPERU|F001|2"]["kg_logistica"], r["PETROPERU|F001|2"]["kg_tesoreria"]) == (10_000.0, 12_000.0)
+    assert str(r["PETROPERU|F001|1"]["fecha_pago"]) == "2022-03-20"
 
 
 def test_sin_tc_ni_unidades_quedan_nulos(sp):
@@ -94,6 +96,7 @@ def test_sirve_al_clasificador_y_a_la_vista_del_kpi3(sp):
 
     compras = senales_spark.normalizar_compras(sp(logistica()))
     t = modelo_factura.construir(compras, sp(tesoreria()), "2022-07-31")
+    assert t.columns == modelo_factura.COLUMNAS
     assert set(COLUMNAS_GOLD["modelo_factura"]) <= set(t.columns)
     necesarias = set(mllib.VARIABLES_NUMERICAS) | {"proveedor_id", "etiqueta_s12", "madura"}
     assert necesarias <= set(t.columns)
