@@ -85,3 +85,76 @@ def test_proveedor_nuevo_no_rompe_la_puntuacion(spark, datos):
     nueva = facturas(n=5).assign(proveedor_id="PROVEEDOR_NUEVO")
     puntuado = modelo.transform(mllib.preparar_variables(spark.createDataFrame(nueva)))
     assert puntuado.count() == 5
+
+
+# --- FR07 · evaluación hacia adelante -----------------------------------------------
+def modelo_factura_sintetica(por_mes=40, semilla=4):
+    """feb-2022 a jul-2023, como la ventana de S12; vence a los 30 días y madura a los 60."""
+    rng = np.random.default_rng(semilla)
+    filas = []
+    for m in range(18):
+        anio, mes = 2022 + (m + 1) // 12, (m + 1) % 12 + 1
+        for i in range(por_mes):
+            fecha = pd.Timestamp(anio, mes, 1) + pd.Timedelta(days=int(rng.integers(0, 28)))
+            sobre = rng.normal(0, 0.04)
+            filas.append({"factura_id": f"{anio}{mes:02d}-{i}", "proveedor_id": rng.choice(["P1", "P2", "P3"]),
+                          "fecha": fecha.date(), "anio": anio, "mes": mes, "kg": float(rng.uniform(5e3, 3e4)),
+                          "usd_kg_vs_mediana": sobre, "desvio_tc": abs(rng.normal(0, 0.005)),
+                          "flag_scop_duplicado": int(rng.integers(0, 2)), "ratio_carga_capacidad": np.nan,
+                          "etiqueta_s12": float(sobre > 0.04),
+                          "fecha_madurez": (fecha + pd.Timedelta(days=60)).date(), "madura": True})
+    return pd.DataFrame(filas)
+
+
+@pytest.fixture()
+def rapido(monkeypatch):
+    from src.common import config
+
+    monkeypatch.setattr(config, "RF_ARBOLES", 10)   # solo para que la prueba corra rápido
+
+
+def test_matriz_y_umbral():
+    pares = [(0.9, 1), (0.8, 1), (0.7, 0), (0.3, 1), (0.2, 0), (0.1, 0)]
+    assert mllib.matriz(pares, 0.75) == {"tp": 2, "fp": 0, "fn": 1, "tn": 3}
+    u = mllib.elegir_umbral(pares, recall_min=0.5)
+    assert u["umbral"] == 0.8 and u["precision"] == 1.0 and u["cumple_recall"]
+    # Si ningún umbral alcanza el recall mínimo, se toma el de mayor recall y queda marcado.
+    sin_recall = mllib.elegir_umbral([(0.9, 0), (0.5, 0), (0.1, 1)], recall_min=1.1)
+    assert sin_recall["cumple_recall"] is False and sin_recall["umbral"] == 0.1 and sin_recall["recall"] == 1.0
+
+
+def test_el_umbral_no_usa_etiquetas_que_no_se_conocian(spark, rapido):
+    from pyspark.sql import functions as F
+
+    mf = spark.createDataFrame(modelo_factura_sintetica())
+    corte = mllib._primer_dia(2022, 10)
+    prueba = mf.filter((F.col("anio") == 2022) & (F.col("mes") == 10))
+    base = mllib.evaluar_corte(mf, corte, prueba)
+    # Se invierten las etiquetas que maduran después del corte: el umbral no debe cambiar.
+    invertidas = mf.withColumn("etiqueta_s12", F.when(F.col("fecha_madurez") >= F.lit(str(corte)).cast("date"),
+                                                      1.0 - F.col("etiqueta_s12")).otherwise(F.col("etiqueta_s12")))
+    otra = mllib.evaluar_corte(invertidas, corte, prueba)
+    assert base["estado"] == "evaluado" and base["umbral"] == otra["umbral"]
+
+
+def test_evaluacion_hacia_adelante_mes_a_mes(spark, rapido):
+    mf = spark.createDataFrame(modelo_factura_sintetica())
+    r = mllib.evaluar_s12(mf, inicio="2022-08", fin="2022-10")
+    assert list(r["mes"]) == ["2022-08", "2022-09", "2022-10"]
+    evaluados = r[r["estado"] == "evaluado"]
+    assert len(evaluados) >= 2
+    assert ((evaluados.tp + evaluados.fp + evaluados.fn + evaluados.tn) == evaluados.n_prueba).all()
+
+
+def test_sin_meses_suficientes_no_se_evalua(spark, rapido):
+    from pyspark.sql import functions as F
+
+    mf = spark.createDataFrame(modelo_factura_sintetica())
+    r = mllib.evaluar_corte(mf, mllib._primer_dia(2022, 4), mf.filter(F.col("mes") == 4))
+    assert r["estado"] == "no_evaluable_sin_meses_suficientes"
+
+
+def test_evaluacion_inicial_2022_frente_a_2023(spark, rapido):
+    r = mllib.evaluar_2022_2023(spark.createDataFrame(modelo_factura_sintetica()))
+    assert (r["n_entrenamiento"], r["n_validacion"], r["n_prueba"]) == (280, 160, 280)
+    assert r["estado"] == "evaluado" and r["tp"] + r["fp"] + r["fn"] + r["tn"] == 280

@@ -109,6 +109,10 @@ MERMA_TECNICA_ES_SUPUESTO = _env("MERMA_TECNICA_ES_SUPUESTO", "si").strip().lowe
 MADUREZ_DIAS = _env_int("MADUREZ_DIAS", 30)                  # la etiqueta madura 30 días después del vencimiento
 VENTANA_MEDIANA_DIAS = _env_int("VENTANA_MEDIANA_DIAS", 90)  # mediana móvil de USD/kg a la fecha de la factura
 INICIO_EVAL_ADELANTE = _env("INICIO_EVAL_ADELANTE", "2022-08")  # evaluación hacia adelante, mes a mes
+# Meses con etiqueta madura que eligen el umbral antes de cada mes evaluado: con unas 58 facturas
+# al mes (1 040 en feb-2022 a jul-2023) y 7.4 % de discrepancias, 2 meses dan unas 115 facturas y
+# 8 positivas, lo mínimo para estimar la precisión de la clase positiva (informe v16, 4.3).
+MESES_VALIDACION = _env_int("MESES_VALIDACION", 2)
 META_PRECISION = _env_float("META_PRECISION", 0.70)          # precisión de la clase positiva
 META_AUC = _env_float("META_AUC", 0.70)
 RECALL_MIN_RETADOR = _env_float("RECALL_MIN_RETADOR", 0.50)  # el retador no reemplaza al vigente por debajo
