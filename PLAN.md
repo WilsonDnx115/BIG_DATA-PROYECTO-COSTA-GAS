@@ -22,6 +22,7 @@ Este plan sigue el informe **punto por punto**, del 0.1 al 4.4, sin saltar ningu
 - [Fase 3 · Pipeline de datos (3.1–3.8)](#fase-3--pipeline-de-datos-3138)
 - [Fase 4 · Análisis, modelado y consumo (4.1–4.4)](#fase-4--análisis-modelado-y-consumo-4144)
 - [Fase 5 · Preparación del hito final (secciones 5, 6 y 7)](#fase-5--preparación-del-hito-final-secciones-5-6-y-7)
+- [Fase 6 · Implementación del informe v16](#fase-6--implementación-del-informe-v16)
 - [E. Cierre: verificación, entrega y desmontaje](#e-cierre-verificación-entrega-y-desmontaje)
 - [F. Calendario resumido](#f-calendario-resumido)
 
@@ -113,7 +114,7 @@ costagas-bigdata/
 
 | Regla | Cómo se aplica |
 |---|---|
-| Región única | `us-east-1` en todos los recursos. |
+| Región única | `us-east-2` en todos los recursos ([ADR 0011](docs/adr/0011-region-us-east-2.md)). |
 | Presupuesto | AWS Budgets con alertas en US$ 0.50 y US$ 1.00 (paso 2.4.4). |
 | Sin servicios con costo fijo | Nada de EC2, EMR, NAT Gateway, QuickSight, claves KMS propias ni Glue crawlers. |
 | Glue con freno | Máximo 2 trabajadores salvo en la prueba de escalabilidad (5). Usar clase de ejecución **FLEX** cuando no importe la espera. Timeout de 15 minutos por job. |
@@ -131,7 +132,7 @@ costagas-bigdata/
   - *Aceptación:* los cuatro pueden hacer push a una rama y abrir un PR.
 - [x] **0.1.2 Roles en el repositorio.** Archivo `docs/equipo.md` con la Tabla de roles del informe (Semanas 2–7 y 8–14) y una etiqueta de GitHub por rol.
 - [x] **0.1.3 `CLAUDE.md` — WP 0.1, B2.** Reglas alineadas al informe v6 y al Plan de Corrección: muestra real enmascarada, contratos YAML, conciliación por planta y por rol, validación documental, MLlib e Iceberg. EMR transitorio documentado en ADR 0014; ejecución todavía bloqueada por la cuenta y sus permisos.
-  > **Instrucción para Claude Code:** Crea `CLAUDE.md` con estas reglas: región us-east-1; nunca leer, imprimir ni commitear archivos de `data/raw/`; no crear recursos AWS fuera de `infra/cloudformation/stack.yaml`; no usar `collect()` en Spark; esquemas declarados en `src/common/schemas.py`; nombres en snake_case sin tildes; capas `bronze/`, `silver/`, `gold/`; toda función nueva con prueba en `tests/`; antes de proponer un comando AWS que cree recursos, indicar su costo estimado.
+  > **Instrucción para Claude Code:** Crea `CLAUDE.md` con estas reglas: región us-east-2; nunca leer, imprimir ni commitear archivos de `data/raw/`; no crear recursos AWS fuera de `infra/cloudformation/stack.yaml`; no usar `collect()` en Spark; esquemas declarados en `src/common/schemas.py`; nombres en snake_case sin tildes; capas `bronze/`, `silver/`, `gold/`; toda función nueva con prueba en `tests/`; antes de proponer un comando AWS que cree recursos, indicar su costo estimado.
   - *Aceptación:* `CLAUDE.md` en `main`.
 
 ### 0.2 · Cronograma
@@ -212,8 +213,8 @@ Esta fase deja en el repositorio la evidencia que sostiene las cifras del capít
 
 ### 2.4 · Stack tecnológico y equivalencia entre rutas
 
-- [ ] **2.4.1 Entorno local reproducible.** `requirements.txt` con versiones fijas: `pandas 2.2`, `pyarrow`, `awswrangler 3.9`, `pyspark 3.5.*` (igual que Glue 5.0), `scikit-learn 1.5`, `openpyxl`, `pdfplumber 0.11`, `yt-dlp`, `boto3`, `pytest`. Python 3.11 para coincidir con Glue 5.0.
-- [ ] **2.4.2 Capas de Lambda.** Usar la capa gestionada **AWS SDK for pandas** para Python 3.12 (ARN publicado por AWS para us-east-1) y una capa propia pequeña con `openpyxl` para leer XLSX.
+- [ ] **2.4.1 Entorno local reproducible.** `requirements.txt` con versiones fijas: `pandas 2.2`, `pyarrow`, `awswrangler 3.9`, `pyspark 3.5.*` (igual que Glue 5.0), `scikit-learn 1.5`, `openpyxl`, `pdfplumber 0.11`, `boto3`, `pytest`. Python 3.11 para coincidir con Glue 5.0.
+- [ ] **2.4.2 Capas de Lambda.** Usar la capa gestionada **AWS SDK for pandas** para Python 3.12 (ARN publicado por AWS para us-east-2) y una capa propia pequeña con `openpyxl` para leer XLSX.
 - [ ] **2.4.3 Despliegue.** `infra/scripts/deploy.sh` que empaqueta el código, lo sube a `s3://…/_code/` y despliega el stack.
 - [ ] **2.4.4 Control de costo.** Verificar que el presupuesto de 2.1.1 existe y enviar una alerta de prueba. Activar Cost Explorer.
 - [x] **2.4.5 Registro de técnicas.** `docs/tecnicas_curso.md` con la Tabla 2.8 del informe, enlazando cada técnica al archivo que la implementa. Se completa a medida que avanza la Fase 3.
@@ -239,8 +240,8 @@ Cada extractor escribe en Bronze **sin transformar** (ELT) y registra un manifie
 - [ ] **3.2.4 PU-02 Tipo de cambio BCRP.** `src/ingest/bcrp.py`: consulta la API de BCRPData para las series PD04640PD (diaria) y PN01207PM (mensual) de 2016 a 2024 y guarda el JSON. Verificar el formato de fechas de la API antes de automatizar.
 - [ ] **3.2.5 PU-03 Órdenes SCOP propias.** Carga manual del Excel exportado por la empresa con `internos.py` (mismo flujo que 3.2.2).
 - [ ] **3.2.6 EN-01 Facilito.** `src/ingest/facilito.py`: guarda la tabla de plantas, estaciones y locales de la provincia de Trujillo como JSON con fecha de captura. Si la página exige reCAPTCHA, la captura es manual (guardar HTML desde el navegador) y el script solo convierte el HTML a JSON.
-- [ ] **3.2.7 NE-01 y NE-02 YouTube.** `src/ingest/youtube.sh` con `yt-dlp` (sin descargar video): `--skip-download --write-info-json --write-auto-subs --sub-langs es --write-comments --extractor-args "youtube:max_comments=200"`, para las cinco búsquedas de 200 y el canal de Osinergmin.
-- [ ] **3.2.8 NE-03 a NE-05 TikTok y Facebook.** Lista de URL en `src/ingest/urls_videos.txt` (recopilada con sesión iniciada) y `yt-dlp -a` con `--write-info-json`.
+- [ ] **3.2.7 NE-01 y NE-02 YouTube.** Lambda `costagas-extractor-youtube` con la **YouTube Data API v3** ([ADR 0015](docs/adr/0015-youtube-data-api.md)), programada semanalmente con EventBridge Scheduler: pide metadatos, descripciones y comentarios de videos **públicos** para las cinco búsquedas y el canal de Osinergmin, y escribe el JSON en `landing/externo/`. La clave es un `SecureString` en Parameter Store que solo lee esa función; nunca va al repositorio. **No se guarda ningún dato de quien comenta.**
+- ~~**3.2.8 NE-03 a NE-05 TikTok y Facebook.**~~ **Fuera del alcance corregido** (`CLAUDE.md`). Sus APIs de investigación exigen aprobación institucional y la descarga automatizada va contra las condiciones de uso ([ADR 0015](docs/adr/0015-youtube-data-api.md)).
 - [ ] **3.2.9 NE-06 Google Maps.** Plantilla CSV `data/raw/maps_resenas.csv` para la carga manual (marca, local, fecha, texto, estrellas). Sin nombres de usuarios.
 - [ ] **3.2.10 NE-07 Resoluciones de Osinergmin.** `src/ingest/resoluciones.py`: descarga los PDF de una lista de URL (`urls_resoluciones.txt`, armada con la búsqueda `site:cdn.www.gob.pe osinergmin GLP cilindros`), con pausa de 2 segundos entre descargas.
 - [ ] **3.2.11 NE-08 GDELT.** `src/ingest/gdelt.py`: DOC API (`mode=artlist`, `format=json`, `maxrecords=250`) con términos de GLP en Perú y 5 segundos de pausa entre consultas por el límite de peticiones. Para el histórico, una muestra de archivos de `masterfilelist.txt` de los meses con eventos.
@@ -376,8 +377,15 @@ Cada optimización se mide **antes y después** y se guarda en `docs/evidencias/
 - [ ] **4.4.1 Dimensiones.** `src/silver_to_gold/dimensiones.py`: `dim_fecha`, `dim_vehiculo`, `dim_conductor` (solo hash), `dim_producto`, `dim_cliente_distribuidor` (hash, RUC válido, estado, capacidad, canal), `dim_senal`. Sin particionar.
 - [ ] **4.4.2 Hechos.** `fact_conciliacion_unidad` (grano unidad × producto × día) y `fact_alerta` (grano alerta), con claves hacia las dimensiones. Prueba de integridad referencial (`left_anti` de cada hecho contra cada dimensión debe devolver 0 filas).
 - [ ] **4.4.3 Vistas de KPIs.** `sql/athena/kpis/`: una vista por cada uno de los cinco KPIs de la Tabla 4.10 (diferencia no explicada %, valor de la diferencia S/, divergencia de placa S1, maestro enlazable %, confirmación de alertas %).
-- [ ] **4.4.4 Tablero.** Power BI Desktop con el conector de Amazon Athena (controlador ODBC de Athena) y las cuatro páginas de la Tabla 4.11: Resumen, Conciliación por unidad, Bandeja de alertas, Mercado. Guardar `dashboard/costagas.pbix` y `dashboard/conexion.md`.
-  - *Aceptación:* cada KPI muestra su fórmula, su frecuencia y su responsable; ningún nombre ni DNI visible.
+- [ ] **4.4.4 Tablero.** Grafana Cloud (plan gratuito) con el origen de datos Amazon Athena: región `us-east-2`, workgroup `costagas-wg`, base `costagas_gold` y salida `athena-results/`, con la clave del usuario técnico `svc-dashboard`, cuya política solo permite consultar Gold ([ADR 0016](docs/adr/0016-grafana-cloud.md)). Las seis páginas de la Tabla 4.11:
+  1. **Resumen** · los 5 KPIs del mes, su tendencia, el semáforo frente al umbral y la calidad del dato desde `gold.calidad_silver` · gerencia de planta.
+  2. **Balance y unidades** · balance de planta por mes; por unidad, kg, combustible y S/ por t; Pareto; filtro por rol · gerencia y operaciones.
+  3. **Bandeja de alertas** · alertas abiertas con su expediente: orden SCOP, volumen, fecha, unidad declarada, comprobante y grado de evidencia · operaciones y control interno.
+  4. **Mercado** · precio propio frente a la competencia, tipo de cambio, eventos de mercado por mes (GDELT con el patrón MapReduce en PySpark), infracciones del sector y quejas por marca · gerencia y comercial.
+  5. **Semáforo de unidades** · unidades en rojo, ámbar o verde con el periodo de inicio del desvío y los kg y S/ acumulados; el mismo resumen sale por correo a las 6:30 · jefatura de planta.
+  6. **Revisión ciega** · alertas en orden aleatorio, sin probabilidad ni puntaje, con enlace al formulario de revisión del portal · control interno (Coordinación).
+  - Cada página hace una sola consulta por refresco y sus paneles comparten el resultado; refresco automático cada minuto. Guardar los paneles exportados en `dashboard/grafana/` y la conexión en `dashboard/conexion.md`.
+  - *Aceptación:* cada KPI muestra su fórmula, su frecuencia y su responsable; cada panel coincide con la misma consulta en Athena en menos de 5 s; una carga nueva se ve en menos de 5 minutos; `svc-dashboard` no puede leer Bronze ni Silver; ningún nombre ni DNI visible.
 
 ---
 
@@ -392,6 +400,189 @@ Estas secciones se redactan para la Semana 14, pero el código deja la evidencia
 - [ ] **5.5** Aporte a la región: cifras del tablero para la planta Trujillo.
 - [ ] **6.1–6.4** Tabla de trazabilidad del valor, conclusiones por objetivo, recomendaciones y trabajo futuro, alimentadas por las métricas de 4.3 y los KPIs de 4.4.
 - [ ] **7 · Anexos** Enlace al repositorio, constancia de la empresa, Anexo A (uso de IA generativa: declarar el uso de Claude Code por paso) y Anexo B (lista de verificación).
+
+---
+
+## Fase 6 · Implementación del informe v16
+
+Las 96 tareas de la implementación, una casilla por commit, agrupadas por fase y por
+responsable. **Cada integrante marca `[x]` su propia casilla en el mismo commit en que la
+cumple** y escribe ahí el asunto real del commit si todavía no está puesto; nadie marca la
+casilla de otro (regla de [CLAUDE.md](CLAUDE.md): `[x]` solo lo verificado).
+Las casillas sin asunto corresponden a los planes privados de Wilson, Frank y Bruno, que no
+se versionan; su dueño los completa al commitear. Los asuntos de W01-W05, W08, W13 y W23
+salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
+
+### 6.1 · Base
+
+*Wilson · ingeniería de datos*
+
+- [ ] **W01** · crear_tablas solo con los DDL vigentes
+- [ ] **W02** · Lambda de ingesta de landing a Bronze
+- [ ] **W03** · funcion de ingesta en el stack
+
+*Frank · análisis y modelado*
+
+- [ ] **F01**
+- [ ] **F02**
+- [ ] **F03**
+- [ ] **F04**
+
+*Anghelo · calidad y documentación*
+
+- [x] **A01** · docs: README alineado con el informe v16
+- [x] **A02** · docs: PLAN con us-east-2, Grafana y la fase de implementacion del v16
+- [ ] **A03** · docs(adr): 0015 YouTube Data API y 0016 Grafana Cloud
+- [ ] **A04** · docs(adr): 0017 cola de corridas y 0018 lago op/
+- [ ] **A05** · docs(adr): 0019 revisiones, 0020 regla de Gold y 0021 memoria de Lambda
+- [ ] **A06** · feat(contratos): contrato de gastos con conductor seudonimizado
+- [ ] **A07** · feat(contratos): contrato de tesoreria con fecha de pago y vencimiento
+- [ ] **A08** · feat(contratos): produccion diaria, distribuidores y clientes
+- [ ] **A09** · feat(contratos): BCRP, Facilito y YouTube hacia silver/entorno
+
+*Bruno · coordinación*
+
+- [ ] **B01**
+- [ ] **B02**
+
+### 6.2 · Gold y demostración
+
+*Wilson · ingeniería de datos*
+
+- [ ] **W04** · esqueleto del job de Gold con MERGE en Iceberg
+- [ ] **W05** · patron MapReduce en Spark SQL hacia gold/mr
+- [ ] **W06**
+- [ ] **W07**
+- [ ] **W08** · dimensiones del modelo estrella
+- [ ] **W09**
+- [ ] **W10**
+- [ ] **W11**
+
+*Frank · análisis y modelado*
+
+- [ ] **F05**
+- [ ] **F06**
+- [ ] **F07**
+
+*Anghelo · calidad y documentación*
+
+- [ ] **A10** · feat(calidad): tabla calidad_silver desde silver/_control
+- [ ] **A11** · ci: pytest con PySpark local, cfn-lint y validacion de contratos
+- [ ] **A12** · test(privacidad): sin nombres, DNI ni RUC de persona natural
+- [ ] **A13** · test(gold): integridad referencial de hechos contra dimensiones
+
+*Bruno · coordinación*
+
+- [ ] **B03**
+- [ ] **B04**
+- [ ] **B05**
+- [ ] **B06**
+- [ ] **B07**
+- [ ] **B08**
+- [ ] **B09**
+
+### 6.3 · Aprendizaje automático
+
+*Wilson · ingeniería de datos*
+
+- [ ] **W12**
+- [ ] **W13** · registro de modelos S12 con vigente.json
+- [ ] **W14**
+- [ ] **W15**
+
+*Frank · análisis y modelado*
+
+- [ ] **F08**
+- [ ] **F09**
+- [ ] **F10**
+- [ ] **F11**
+- [ ] **F12**
+- [ ] **F13**
+- [ ] **F14**
+- [ ] **F15**
+- [ ] **F16**
+- [ ] **F17**
+
+*Anghelo · calidad y documentación*
+
+- [ ] **A14** · feat(calidad): compensacion de pares redigitados para el detector
+- [ ] **A15** · feat(deriva): PSI con deciles del entrenamiento y minimo de 100
+- [ ] **A16** · feat(sim): escenario A calibrado con agregados de 2020
+- [ ] **A17** · feat(sim): inyeccion ciega del escenario B con especificacion sellada
+- [ ] **A18** · feat(sim): validacion del detector con escenarios A y B en lotes
+- [ ] **A19** · docs(modelos): ficha automatica de cada version del modelo
+
+### 6.4 · Controles y operación
+
+*Wilson · ingeniería de datos*
+
+- [ ] **W16**
+- [ ] **W17**
+- [ ] **W18**
+- [ ] **W19**
+
+*Frank · análisis y modelado*
+
+- [ ] **F18**
+
+*Bruno · coordinación*
+
+- [ ] **B10**
+- [ ] **B11**
+- [ ] **B12**
+- [ ] **B13**
+- [ ] **B14**
+- [ ] **B15**
+- [ ] **B16**
+- [ ] **B17**
+
+### 6.5 · Externos, portal y CD
+
+*Wilson · ingeniería de datos*
+
+- [ ] **W20**
+- [ ] **W21**
+- [ ] **W22**
+- [ ] **W23** · despliegue continuo con OIDC y aprobacion
+
+*Anghelo · calidad y documentación*
+
+- [ ] **A20** · docs: tecnicas de ingenieria con archivo y linea
+- [ ] **A21** · docs(evidencias): plan de pruebas del sistema ejecutado
+- [ ] **A22** · docs: diccionario de datos de Gold
+
+*Bruno · coordinación*
+
+- [ ] **B18**
+- [ ] **B19**
+- [ ] **B20**
+- [ ] **B21**
+
+### 6.6 · Resultados y cierre
+
+*Wilson · ingeniería de datos*
+
+- [ ] **W24**
+
+*Frank · análisis y modelado*
+
+- [ ] **F19**
+- [ ] **F20**
+- [ ] **F21**
+- [ ] **F22**
+- [ ] **F23**
+- [ ] **F24**
+
+*Anghelo · calidad y documentación*
+
+- [ ] **A23** · docs: bitacora de decisiones y riesgos al cierre
+- [ ] **A24** · docs(resultados): insumos y cierre de hipotesis para el informe v17
+
+*Bruno · coordinación*
+
+- [ ] **B22**
+- [ ] **B23**
+- [ ] **B24**
 
 ---
 

@@ -1,7 +1,11 @@
-# 0011 · Medir la línea base antes de limpiar los datos
+# 0022 · Medir la línea base antes de limpiar los datos
 
 - **Fecha:** 2026-10-10 (America/Lima)
 - **Estado:** propuesta
+- **Antes numerada 0011.** Se renumeró el 2026-11-26: convivía con
+  [0011 · Región us-east-2](0011-region-us-east-2.md), que es la que citan `CLAUDE.md`,
+  `PLAN.md`, `README.md`, `stack.yaml` e `infra/iam/`. Ninguna referencia apuntaba a este
+  archivo, así que el cambio de número no rompe enlaces.
 - **Responsable:** integrante que revise el PR del paso 1.4.1
 
 ## Contexto

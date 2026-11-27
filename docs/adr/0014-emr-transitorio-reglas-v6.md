@@ -45,3 +45,29 @@ La restricción vigente de región `us-east-2` se conserva.
   corresponden al paquete de MapReduce y al administrador autorizado.
 - Comprobar el cierre del clúster y la limpieza de los recursos de la corrida;
   comprimir GDELT y aplicar su borrado después del filtrado.
+
+---
+
+> ## Revisión pendiente (anotado el 2026-11-26 por Calidad y documentación)
+>
+> **Esta excepción puede haber quedado sin uso y la decisión no es de este rol.**
+>
+> El informe v16 ya no contempla la ruta EMR. En su tabla de alternativas descarta «Amazon
+> EMR, EMR Serverless o Databricks» porque «EMR corre sobre instancias EC2 que cobran por
+> hora y la política base las deniega», y su módulo **M5 · MapReduce** es Apache Spark 3.5
+> en AWS Glue con la API de DataFrames. El commit W05 de Ingeniería de datos implementa ese
+> patrón en Spark SQL hacia `gold/mr/`.
+>
+> Quedan dos cosas por decidir, y las dos tocan `CLAUDE.md`, que no es de este rol:
+>
+> 1. **La excepción de EMR.** `CLAUDE.md` cita este ADR como excepción viva a la regla de
+>    recursos exclusivamente por CloudFormation. Si se da por cerrada la ruta EMR, hay que
+>    marcar este ADR como reemplazado **y** quitar esa excepción de `CLAUDE.md` en el mismo
+>    cambio, para que no apunte a una decisión muerta.
+> 2. **La evidencia de Hadoop Streaming.** `CLAUDE.md` exige que «Hadoop MapReduce se ejecuta
+>    con Hadoop Streaming, mapper, reducer y combiner» y que «una operación sobre RDD de
+>    Spark no sustituye esa evidencia». Eso contradice al v16 y al W05. Es un requisito del
+>    curso, no una preferencia técnica, así que debe resolverlo Coordinación con Ingeniería
+>    de datos antes del hito final.
+>
+> Hasta que se decida, **este ADR se deja tal cual**: no se borra ni se cambia su estado.
