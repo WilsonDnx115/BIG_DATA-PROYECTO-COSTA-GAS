@@ -158,3 +158,44 @@ def test_evaluacion_inicial_2022_frente_a_2023(spark, rapido):
     r = mllib.evaluar_2022_2023(spark.createDataFrame(modelo_factura_sintetica()))
     assert (r["n_entrenamiento"], r["n_validacion"], r["n_prueba"]) == (280, 160, 280)
     assert r["estado"] == "evaluado" and r["tp"] + r["fp"] + r["fn"] + r["tn"] == 280
+
+
+# --- FR09 · regresión del combustible -----------------------------------------------
+def unidad_mes_combustible(meses=12, semilla=6):
+    """2020 sintético: 50 S/ por t en los dos roles, con un fijo distinto por rol y ruido de 3 %."""
+    rng = np.random.default_rng(semilla)
+    filas = []
+    for rol, n, fijo in (("reparto", 10, 200.0), ("transporte", 4, 800.0)):
+        for u in range(n):
+            for mes in range(1, meses + 1):
+                kg = float(rng.uniform(8_000, 40_000) * (5 if rol == "transporte" else 1))
+                gasto = (fijo + 50.0 * kg / 1000) * (1 + rng.normal(0, 0.03))
+                vend, trans = (kg, 0.0) if rol == "reparto" else (0.0, kg)
+                filas.append((f"{rol[:3]}{u}", rol, 2020, mes, vend, trans, gasto, gasto * 1.5))
+    filas.append(("rep_parada", "reparto", 2020, 5, 0.0, 0.0, 0.0, 0.0))          # sin volumen ni gasto
+    filas.append(("rep_sin_venta", "reparto", 2020, 6, 0.0, 0.0, 300.0, 400.0))   # combustible sin volumen
+    return pd.DataFrame(filas, columns=["unidad_id", "rol", "anio", "mes", "kg_vendidos", "kg_transportados",
+                                        "gasto_combustible", "gasto_total"])
+
+
+def test_regresion_recupera_los_soles_por_tonelada(spark):
+    spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+    r = mllib.regresion_combustible(spark.createDataFrame(unidad_mes_combustible()), rejilla=(0.0,))
+    assert r["pliegues"] == 12                                    # exclusión mensual
+    assert r["soles_por_t"] == pytest.approx(50.0, rel=0.05)      # coeficiente en S/ por t, sin escalar
+    assert r["rmse"] < r["rmse_trivial"] and r["mejor_que_trivial"] is True
+    assert r["n_no_evaluables"] == 2 and r["residuos"].count() == r["n_evaluables"] == 14 * 12
+    assert "residuo_combustible" in r["residuos"].columns
+
+
+def test_regresion_elige_el_regparam_de_menor_rmse(spark):
+    spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+    datos = spark.createDataFrame(unidad_mes_combustible(meses=4))
+    r = mllib.regresion_combustible(datos, rejilla=(0.0, 50_000.0))   # un regParam enorme aplasta la pendiente
+    assert r["reg_param"] == 0.0 and r["rmse_por_regparam"][0.0] < r["rmse_por_regparam"][50_000.0]
+
+
+def test_la_rejilla_por_defecto_es_la_de_la_tabla_4_6b():
+    from src.common import config
+
+    assert config.REGRESION_REGPARAM == (0.0, 0.1, 0.3)

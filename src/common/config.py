@@ -122,6 +122,9 @@ RF_PROFUNDIDAD = _env_int("RF_PROFUNDIDAD", 6)
 # Árbol de decisión que explica las reglas a la gerencia (informe v16, 4.3): 3 niveles dan reglas
 # de hasta 3 condiciones, que se leen sin software; más profundo deja de ser legible.
 ARBOL_PROFUNDIDAD = _env_int("ARBOL_PROFUNDIDAD", 3)
+# Regresión del combustible (S9): rejilla de regParam de la Tabla 4.6b del informe v16; se elige
+# la de menor RMSE en la validación por exclusión mensual.
+REGRESION_REGPARAM = tuple(float(x) for x in _env("REGRESION_REGPARAM", "0.0,0.1,0.3").split(","))
 BOOTSTRAP_REMUESTREOS = _env_int("BOOTSTRAP_REMUESTREOS", 1000)
 PSI_UMBRAL = _env_float("PSI_UMBRAL", 0.2)                   # un PSI mayor adelanta el reentrenamiento
 PSI_MIN_OBS = _env_int("PSI_MIN_OBS", 100)                   # con menos facturas el PSI salta por ruido

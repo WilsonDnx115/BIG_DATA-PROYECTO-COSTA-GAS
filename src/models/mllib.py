@@ -273,3 +273,91 @@ def evaluar_2022_2023(modelo_factura) -> dict:
     return {"evaluacion": "2022 frente a 2023", "n_entrenamiento": entrenamiento.count(),
             "n_validacion": validacion.count(), "n_prueba": prueba.count(),
             **entrenar_validar_probar(entrenamiento, validacion, prueba)}
+
+
+# --- Regresión del combustible esperado (FR09; informe v16, 4.3 y Tablas 4.6b y 4.7) ---------
+def _volumen_del_rol(unidad_mes):
+    """kg_movidos: kg vendidos en reparto y transportados en transporte (igual que el modelo base)."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    return unidad_mes.withColumn(
+        "kg_movidos", F.when(F.col("rol") == "reparto", F.col("kg_vendidos"))
+                       .otherwise(F.col("kg_transportados")).cast("double"))
+
+
+def pipeline_combustible(reg_param: float = 0.0):
+    """StringIndexer y OneHotEncoder del rol, VectorAssembler y LinearRegression, sin escalar.
+
+    Sin escalado el coeficiente de kg_movidos queda en soles por kg (× 1 000 = S/ por t).
+    """
+    from pyspark.ml import Pipeline  # noqa: PLC0415
+    from pyspark.ml.feature import OneHotEncoder, StringIndexer, VectorAssembler  # noqa: PLC0415
+    from pyspark.ml.regression import LinearRegression  # noqa: PLC0415
+
+    return Pipeline(stages=[
+        StringIndexer(inputCol="rol", outputCol="rol_idx", handleInvalid="keep"),
+        OneHotEncoder(inputCols=["rol_idx"], outputCols=["rol_vec"], handleInvalid="keep"),
+        VectorAssembler(inputCols=["kg_movidos", "rol_vec"], outputCol="features_comb"),
+        LinearRegression(featuresCol="features_comb", labelCol="gasto_combustible",
+                         predictionCol="combustible_esperado", regParam=reg_param,
+                         standardization=False),
+    ])
+
+
+def _fuera_de_pliegue(datos, reg_param: float):
+    """Predicciones por exclusión mensual: cada mes se predice con un modelo que no lo vio.
+
+    Para el mismo mes, el modelo trivial predice la mediana del gasto en los demás meses.
+    """
+    from functools import reduce  # noqa: PLC0415
+
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    periodos = sorted({(r["anio"], r["mes"]) for r in datos.select("anio", "mes").distinct().take(1000)})
+    partes = []
+    for anio, mes in periodos:
+        es_mes = (F.col("anio") == anio) & (F.col("mes") == mes)
+        entrenamiento, prueba = datos.filter(~es_mes), datos.filter(es_mes)
+        mediana = entrenamiento.agg(F.expr("percentile(gasto_combustible, 0.5)")).take(1)[0][0]
+        pred = (pipeline_combustible(reg_param).fit(entrenamiento).transform(prueba)
+                .withColumn("combustible_trivial", F.lit(mediana).cast("double")))
+        partes.append(pred.select("unidad_id", "rol", "anio", "mes", "kg_movidos", "gasto_combustible",
+                                  "combustible_esperado", "combustible_trivial"))
+    return reduce(lambda a, b: a.unionByName(b), partes), len(periodos)
+
+
+def regresion_combustible(unidad_mes, rejilla=config.REGRESION_REGPARAM) -> dict:
+    """Combustible esperado por unidad-mes con validación por exclusión mensual.
+
+    Entrada: interfaz `unidad_mes` del WP 0.8. Solo entran las unidades-mes con volumen y
+    gasto de combustible positivos (las demás no son evaluables y se cuentan).
+    Elige el regParam de la rejilla con menor RMSE fuera de pliegue y devuelve:
+      * `rmse`, `r2` y `rmse_trivial` (mediana del gasto de los otros meses) del elegido;
+      * `soles_por_t`: el coeficiente de kg_movidos × 1 000, ajustado con todos los meses;
+      * `residuos`: DataFrame con el residuo (real − esperado) por unidad-mes, que alimenta S9.
+    """
+    from pyspark.ml.evaluation import RegressionEvaluator  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    base = _volumen_del_rol(unidad_mes)
+    evaluables = base.filter((F.col("kg_movidos") > 0) & (F.col("gasto_combustible") > 0))
+    datos = evaluables.withColumn("gasto_combustible", F.col("gasto_combustible").cast("double"))
+    rmse_de = lambda df, col: RegressionEvaluator(  # noqa: E731
+        labelCol="gasto_combustible", predictionCol=col, metricName="rmse").evaluate(df)
+
+    candidatos = []
+    for reg in rejilla:
+        pred, pliegues = _fuera_de_pliegue(datos, float(reg))
+        candidatos.append((rmse_de(pred, "combustible_esperado"), float(reg), pred, pliegues))
+    rmse, reg_elegido, pred, pliegues = min(candidatos, key=lambda c: c[0])
+
+    final = pipeline_combustible(reg_elegido).fit(datos).stages[-1]
+    r2 = RegressionEvaluator(labelCol="gasto_combustible", predictionCol="combustible_esperado",
+                             metricName="r2").evaluate(pred)
+    residuos = pred.withColumn("residuo_combustible", F.col("gasto_combustible") - F.col("combustible_esperado"))
+    rmse_trivial = rmse_de(pred, "combustible_trivial")
+    return {"reg_param": reg_elegido, "rmse": rmse, "r2": r2, "rmse_trivial": rmse_trivial,
+            "mejor_que_trivial": rmse < rmse_trivial, "pliegues": pliegues,
+            "soles_por_t": float(final.coefficients[0]) * 1000.0, "intercepto": float(final.intercept),
+            "n_evaluables": datos.count(), "n_no_evaluables": base.count() - datos.count(),
+            "rmse_por_regparam": {c[1]: c[0] for c in candidatos}, "residuos": residuos}
