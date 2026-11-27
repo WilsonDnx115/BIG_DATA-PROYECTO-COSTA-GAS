@@ -11,7 +11,10 @@ from pathlib import Path
 
 from src.common import config
 
-CAPAS = ("bronze", "silver", "gold", "_manifests", "scaletest", "athena-results")
+# Prefijos del lago. `landing` recibe las cargas, `op` es el lago de la operación
+# mensual (W18) y `sim` el de la validación del detector (W19).
+CAPAS = ("landing", "bronze", "silver", "gold", "_manifests", "op", "sim",
+         "scaletest", "athena-results")
 
 
 def base(lake_uri: str | None = None) -> str:

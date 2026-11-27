@@ -29,3 +29,6 @@ derby.log
 # Temporales de despliegue y de Spark
 .build/
 artifacts/
+
+# Generado por deploy.sh con las salidas del stack (W22): no se versiona
+portal/config.js

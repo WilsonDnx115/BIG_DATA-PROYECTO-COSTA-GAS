@@ -1,0 +1,95 @@
+# Integración continua (plan v15, punto 5.5; informe v16, Tabla 2.12).
+#
+# Corre en Ubuntu, donde Spark funciona sin winutils: aquí sí se ejecutan las
+# pruebas de PySpark e Iceberg que en Windows quedan omitidas (el MERGE
+# idempotente de W04, la equivalencia SQL/RDD de W05 y las dimensiones de W08).
+#
+# No toca AWS ni cuesta nada: GitHub Actions es gratuito en repositorios
+# públicos y dentro de la cuota en los privados. El despliegue es cd.yml.
+name: ci
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: Pruebas, plantilla y contratos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 17 (el mismo de Glue 5.0)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Caché de los jars de Iceberg
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy2-iceberg-1.6.1-spark3.5
+
+      - name: Instalar dependencias
+        run: python -m pip install --quiet -r requirements-spark.txt cfn-lint
+
+      - name: Generar la muestra sintética
+        run: python -m src.common.muestra --unidades 25 --semilla 42
+
+      # -rs lista el motivo de cada omisión. Aquí no se admite ninguna por Spark:
+      # si Spark no arrancó, las pruebas que importan quedarían verdes sin correr.
+      - name: Pruebas
+        run: |
+          set -o pipefail
+          python -m pytest -q -rs | tee pytest.log
+          if grep -E "SKIPPED.*(pyspark|Spark)" pytest.log; then
+            echo "Spark no corrió: estas pruebas no pueden omitirse en CI"
+            exit 1
+          fi
+
+      - name: cfn-lint de la plantilla
+        run: |
+          python - <<'PY'
+          from cfnlint import api
+
+          plantilla = open("infra/cloudformation/stack.yaml", encoding="utf-8").read()
+          hallazgos = api.lint(plantilla, config=api.ManualArgs(regions=["us-east-2"]))
+          for h in hallazgos:
+              print(h)
+          raise SystemExit(1 if hallazgos else 0)
+          PY
+
+      - name: Los contratos cargan y el DDL sigue siendo el suyo
+        run: |
+          python - <<'PY'
+          import pathlib
+          import tempfile
+
+          from src.silver import contratos
+
+          cargados = contratos.cargar()
+          print(f"{len(cargados)} contratos: {', '.join(sorted(cargados))}")
+
+          temporal = pathlib.Path(tempfile.mkdtemp())
+          desfasados = []
+          for generado in contratos.escribir_ddl(temporal):
+              comiteado = pathlib.Path("sql/athena/ddl") / generado.name
+              if (not comiteado.exists()
+                      or generado.read_text(encoding="utf-8").strip()
+                      != comiteado.read_text(encoding="utf-8").strip()):
+                  desfasados.append(generado.name)
+          for nombre in desfasados:
+              print(f"{nombre} no coincide con su contrato: regenere el DDL en el mismo cambio")
+          raise SystemExit(1 if desfasados else 0)
+          PY
