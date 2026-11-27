@@ -6,18 +6,21 @@ tiene encabezado; las otras dos empiezan en datos y esperan lectura por posicion
 
 Lo que estas pruebas cuidan, en orden de importancia:
 
-1. Que la muestra pase por el contrato y **no salga ninguna columna de nombre**.
+1. Que **ninguna columna del contrato ni de su DDL nombre a una persona**.
 2. Que el contrato **no afirme que tiene una placa** cuando no la tiene: la columna
    `PLACA` de `OTROS GASTOS` no trae placas (medido en
    `docs/evidencias/gastos_posiciones.md`), asi que va a `unidad_codigo`, no a
    `placa_norm`.
-3. Que `es_combustible` quede **nulo** mientras la categoria no este cubierta. Un falso
-   por defecto diria que ningun gasto es combustible, que es justo la cifra que el
-   KPI 4 necesita.
+3. Que lo no cubierto este declarado con su motivo y con la evidencia que lo sostiene.
+
+Lo que **no** se prueba aqui, y por que: que la hoja pase por el pipeline. `procesar`
+despacha por tabla a `transformar.TRANSFORMACIONES`, y `gastos` todavia no esta ahi
+porque `src/silver/` es de ingenieria de datos. Hay una prueba que deja ese estado
+escrito en vez de suponerlo.
 """
 from pathlib import Path
 
-from src.silver import contratos, procesar
+from src.silver import contratos
 
 EVIDENCIA = Path(__file__).resolve().parents[1] / "docs" / "evidencias" / "gastos_posiciones.md"
 
