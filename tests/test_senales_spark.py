@@ -33,12 +33,27 @@ def _documentos(df_pandas, senal):
     return set(df_pandas.loc[df_pandas["senal"] == senal, "documento"].astype(str))
 
 
-def test_catalogo_tiene_las_12_senales():
+def test_catalogo_sale_del_yaml_unico():
+    """Spark no tiene catálogo propio: descripción y grado salen de src/signals/catalogo.yaml."""
     from src.glue import senales_spark
+    from src.signals.common import cargar_catalogo
 
+    yaml_ = cargar_catalogo()
     assert list(senales_spark.CATALOGO) == [f"S{i}" for i in range(1, 13)]
-    assert {g for _, g in senales_spark.CATALOGO.values()} <= {"alta", "media", "indicio"}
-    assert senales_spark.CATALOGO["S1"][1] == "indicio"
+    assert all(senales_spark.CATALOGO[s][0] == yaml_[s]["descripcion"] for s in yaml_)
+    # Grados de la Tabla 4.3 del informe v16: muestra mínima → indicio.
+    grados = {s: g for s, (_, g) in senales_spark.CATALOGO.items()}
+    assert grados == {"S1": "indicio", "S2": "alta", "S3": "media", "S4": "indicio", "S5": "media",
+                      "S6": "alta", "S7": "indicio", "S8": "alta", "S9": "media", "S10": "media",
+                      "S11": "alta", "S12": "alta"}
+
+
+def test_grado_de_evidencia():
+    from src.glue.senales_spark import grado_evidencia
+
+    assert grado_evidencia({"evidencia": "alta", "muestra_minima": True}) == "indicio"
+    assert grado_evidencia({"evidencia": "alta_si_existe_contraste"}) == "alta"
+    assert grado_evidencia({"evidencia": "media"}) == "media"
 
 
 def test_equivalencia_con_pandas(spark, silver):

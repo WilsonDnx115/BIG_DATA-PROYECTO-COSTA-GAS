@@ -33,22 +33,32 @@ from __future__ import annotations
 
 from src.common import config, schemas
 
-# Tabla 4.3 del informe: descripción y grado de evidencia de cada señal.
-# S1, S4 y S7 son indicios porque la muestra es mínima (2 a 9 casos; Tabla 5.3).
-CATALOGO: dict[str, tuple[str, str]] = {
-    "S1": ("Placa cargada distinta de la facturada", "indicio"),
-    "S2": ("Compra sin SCOP o SCOP repetido", "alta"),
-    "S3": ("Precio de compra fuera de lo pactado o de la mediana", "media"),
-    "S4": ("Carga superior a la capacidad autorizada", "indicio"),
-    "S5": ("Volumen a un distribuidor superior a su capacidad", "media"),
-    "S6": ("Tipo de cambio distinto del oficial", "alta"),
-    "S7": ("Operación de una unidad no habilitada para GLP", "indicio"),
-    "S8": ("Venta sin compra que la respalde (circuito SCOP)", "alta"),
-    "S9": ("Combustible sin venta o carga proporcional", "media"),
-    "S10": ("Precio de venta bajo la mediana de su canal", "media"),
-    "S11": ("Cierre de planta sin medición física", "alta"),
-    "S12": ("Factura sin segundo registro o con kg distinto entre tesorería y logística", "alta"),
-}
+
+def grado_evidencia(regla: dict) -> str:
+    """Grado de evidencia de una señal según el catálogo: «indicio», «alta» o «media».
+
+    Las señales con muestra mínima (S1, S4 y S7: de 2 a 9 casos; informe v16,
+    Tablas 4.3 y 5.3) son «indicio» aunque su fuente sea fuerte. Las demás toman la
+    evidencia del catálogo; «alta_si_existe_…» cuenta como alta (S8).
+    """
+    if regla.get("muestra_minima"):
+        return "indicio"
+    return "alta" if str(regla["evidencia"]).startswith("alta") else "media"
+
+
+def _catalogo() -> dict[str, tuple[str, str]]:
+    """Descripción y grado de cada señal desde `src/signals/catalogo.yaml`, el único catálogo S1-S12.
+
+    Lo comparten las señales en pandas (WP 0.8), las de Spark y la dimensión
+    dim_senal (W08), así no hay dos versiones del catálogo.
+    """
+    from src.signals.common import cargar_catalogo  # noqa: PLC0415
+
+    return {codigo: (regla["descripcion"], grado_evidencia(regla))
+            for codigo, regla in sorted(cargar_catalogo().items(), key=lambda kv: int(kv[0][1:]))}
+
+
+CATALOGO: dict[str, tuple[str, str]] = _catalogo()
 
 COLUMNAS_ALERTA = schemas.CONTRATOS["fact_alerta"].columnas()
 
