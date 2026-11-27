@@ -131,3 +131,14 @@ def test_escribir_dos_veces_no_duplica_el_mes(spark_iceberg, datos):
     filas = spark_iceberg.table(tabla).take(10)
     assert len(filas) == 1
     assert filas[0]["producto"] == "GLP-E"
+
+
+def test_la_merma_se_marca_como_supuesto_para_la_vista_del_KPI_1(spark, datos):
+    """`v_kpi_1` de F06 lee esta columna para etiquetar el KPI (ADR 0027)."""
+    compras, ventas = datos
+
+    con = _fila(balance.construir(spark, compras, ventas, merma_pct=0.005))
+    sin = _fila(balance.construir(spark, compras, ventas, merma_pct=None))
+
+    assert con["merma_es_supuesto"] is True
+    assert sin["merma_es_supuesto"] is None      # sin merma no hay supuesto que declarar

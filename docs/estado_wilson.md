@@ -6,7 +6,7 @@
 El equivalente de [`estado_y_pendientes.md`](estado_y_pendientes.md) desde mi lado. Las secciones
 de Anghelo, Frank y Bruno están escritas para que puedan pasárselas directamente a su asistente.
 
-Mi paquete son 24 commits, W01 a W24. **Llevo 13.**
+Mi paquete son 24 commits, W01 a W24. **Llevo 15.**
 
 ## Lo que falta, en corto
 
@@ -41,6 +41,8 @@ y [#14](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/pull/14).
 | **W22** | Las cuatro funciones del portal, con JWT de Cognito verificado en código | Implementado y probado |
 | **W23** | Despliegue continuo con OIDC y el `ci.yml` | Implementado y corriendo |
 | **W24** | Prueba de escalabilidad, Tabla 3.11 | Medido en local; **las filas de AWS siguen pendientes** |
+| **W06** | `fact_balance_planta`, el balance de planta (KPI 1 y 2) | Implementado y probado |
+| **W09** | DDL de Gold en Iceberg: 13 de las 15 tablas | Implementado y probado |
 
 Y los ADR 0023 a 0026, que documentan las cuatro decisiones de alcance que tomé por el camino.
 
@@ -64,10 +66,9 @@ así que hay que verificar el `MemorySize` en el recurso después, no en el coma
 
 | Commit | Lo hago cuando |
 |---|---|
-| **W06** `fact_balance_planta` | **Ya puedo.** Ver el punto 3: la fuente de stock no existe, así que `delta_stock_kg` es nulo y no necesito A08 |
-| **W09** parcial (DDL de las seis dimensiones, `mercado_mes` y `revision_alerta`) | **Ya puedo.** Es lo que le falta al portal: el `INSERT` de `revision` no tiene tabla |
-| **W07** `fact_unidad_mes` | Anghelo cierre `contracts/gastos.yaml` |
-| **W09** completo, **W10**, **W11** | Estén W06 y W07 |
+| **W07** `fact_unidad_mes` | Anghelo cierre `contracts/gastos.yaml`. **Es el único contrato que falta y es la llave de toda la cadena** |
+| **W09** completo | Esté W07; hoy faltan solo `fact_unidad_mes` y `fact_operacion` |
+| **W10**, **W11** | Esté W09 completo y los contratos de A06 en `main` |
 | **W12** `fact_alerta`, **W14**, **W15**, **W18** | Esté la cadena anterior |
 | **W16** control previo al pago | Esté W12. El lado de tesorería ya lo tengo: `pedidos_proveedor.yaml` |
 | **W17** semáforo de las 6:30 | Esté W16, y Frank publique `v_semaforo_unidades` |

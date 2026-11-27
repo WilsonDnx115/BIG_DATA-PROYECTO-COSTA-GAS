@@ -47,11 +47,12 @@ LLAVE = ("producto", "anio", "mes")
 
 COLUMNAS = ("producto", "anio", "mes", "kg_comprados", "kg_vendidos",
             "diferencia_bruta_kg", "delta_stock_kg", "merma_tecnica_kg",
-            "kg_no_explicados", "pct_no_explicado", "valor_soles", "mes_completo")
+            "merma_es_supuesto", "kg_no_explicados", "pct_no_explicado",
+            "valor_soles", "mes_completo")
 
 # Columnas del contrato `compras_glp` con las que se arma el precio del mes.
 SQL_PRECIO_MES = """
-    SELECT anio, mes,
+    SELECT CAST(anio AS int) AS anio, CAST(mes AS int) AS mes,
            SUM(monto_usd * tipo_cambio) / SUM(kg) AS precio_soles_kg
       FROM {compras}
      WHERE tc_valido AND monto_usd IS NOT NULL AND tipo_cambio IS NOT NULL
@@ -109,7 +110,11 @@ def construir(spark, compras, ventas, produccion=None,
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    base = mapreduce_sql.construir(spark, compras, ventas)
+    # anio y mes llegan de Silver como bigint; el DDL de Gold los declara int,
+    # igual que `dim_tiempo`, para que el join del modelo estrella no castee.
+    base = (mapreduce_sql.construir(spark, compras, ventas)
+            .withColumn("anio", F.col("anio").cast("int"))
+            .withColumn("mes", F.col("mes").cast("int")))
 
     stock = _delta_stock(spark, produccion)
     if stock is None:
@@ -117,11 +122,17 @@ def construir(spark, compras, ventas, produccion=None,
     else:
         base = base.join(F.broadcast(stock), list(LLAVE), "left")
 
+    # `merma_es_supuesto` la consume `v_kpi_1` de F06 para etiquetar el KPI: es
+    # nula cuando no se descuenta merma, porque entonces no hay supuesto que
+    # declarar.
     if merma_pct is None:
-        base = base.withColumn("merma_tecnica_kg", F.lit(None).cast("double"))
+        base = (base.withColumn("merma_tecnica_kg", F.lit(None).cast("double"))
+                    .withColumn("merma_es_supuesto", F.lit(None).cast("boolean")))
     else:
-        base = base.withColumn("merma_tecnica_kg",
-                               F.col("kg_comprados") * F.lit(float(merma_pct)))
+        base = (base.withColumn("merma_tecnica_kg",
+                                F.col("kg_comprados") * F.lit(float(merma_pct)))
+                    .withColumn("merma_es_supuesto",
+                                F.lit(bool(config.MERMA_TECNICA_ES_SUPUESTO))))
 
     base = (base
             .withColumn("diferencia_bruta_kg", F.col("kg_comprados") - F.col("kg_vendidos"))
