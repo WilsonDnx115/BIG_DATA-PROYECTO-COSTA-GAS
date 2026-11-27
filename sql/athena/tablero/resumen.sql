@@ -27,8 +27,8 @@
 -- Pendiente de confirmar: esas vistas aún no están en el repositorio. Las vistas exponen
 -- componentes sumables y el cociente se calcula aquí, para que el filtro de producto o de rol
 -- dé el KPI correcto y no un promedio de porcentajes.
---   v_kpi_1  anio, mes, producto, kg_comprados, kg_vendidos, merma_tecnica_pct (NULL si la
---            empresa no la fijó; fact_balance_planta)
+--   v_kpi_1  anio, mes, producto, kg_comprados, kg_vendidos, merma_tecnica_pct (0.5 %, referencia
+--            de mercado adoptada por el equipo; fact_balance_planta)
 --   v_kpi_2  anio, mes, producto, valor_diferencia_soles (fact_balance_planta)
 --   v_kpi_3  anio, mes, n_compras, n_con_segundo_registro (modelo_factura)
 --   v_kpi_4  anio, mes, rol, combustible_soles, kg (kg vendidos en reparto, transportados en
@@ -38,7 +38,7 @@
 --
 -- Fórmulas (frecuencia mensual):
 --   KPI 1 sin merma = (kg_comprados - kg_vendidos) / kg_comprados          (diferencia bruta)
---   KPI 1 con merma = KPI 1 sin merma - merma_tecnica_pct  (NULL = «sin merma fijada»)
+--   KPI 1 con merma = KPI 1 sin merma - merma_tecnica_pct  (merma: referencia de mercado)
 --   KPI 2 = suma de valor_diferencia_soles                                  (S/)
 --   KPI 3 = n_con_segundo_registro / n_compras                              (%)
 --   KPI 4 = combustible_soles / (kg / 1000)                                 (S/ por t)

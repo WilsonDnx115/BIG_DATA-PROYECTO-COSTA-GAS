@@ -62,18 +62,18 @@ commit de `dev-bruno`; «integrado» exige que el PR esté fusionado en `main`. 
 
 | Para | Tema | Estado |
 |---|---|---|
-| Frank (F06) | Interfaz que espera la página Resumen de `v_kpi_1` a `v_kpi_5`: componentes sumables (ver encabezado de `sql/athena/tablero/resumen.sql`) | por enviar |
+| Frank (F06) | Interfaz que espera la página Resumen de `v_kpi_1` a `v_kpi_5`: componentes sumables (ver encabezado de `sql/athena/tablero/resumen.sql`) | entregada en F06 (`sql/athena/vistas/`, comprobada por `tests/test_vistas_sql.py`) |
 | Anghelo (A10) | Columnas esperadas de `calidad_silver`: `tabla`, `dimension`, `valor`, `meta`, `cumple`, `fecha_control` | por enviar |
 | Wilson (W09) | Confirmar `dim_tiempo.anio/mes`, `dim_producto.producto` y `dim_unidad.rol` en el DDL de Gold | por enviar |
 | Wilson o Anghelo | Agregar `portal/config.js` a `.gitignore` (lo genera `deploy.sh`) | por enviar |
 | Anghelo | `tests/test_linea_base.py` falla en Windows: lee sin `encoding="utf-8"` (pasa con `PYTHONUTF8=1`) | por enviar |
 
-## Decisiones propias por confirmar
+## Decisiones propias
 
 - Refresco del tablero cada 5 min, no cada minuto (costo de Athena; README de `dashboards/grafana/`).
 - Protocolo ciego: 5 alertas con doble revisión por semana; niveles de evidencia `documental` y
   `parcial`; «sustracción confirmada» exige evidencia documental y conformidad de la gerencia.
-- Responsables de cada KPI en la página Resumen, por confirmar con la Tabla 4.10.
+- Responsables de cada KPI en la página Resumen, tomados de la Tabla 4.10: gerencia (KPI 1 y 2), administración (KPI 3), operaciones (KPI 4) y control interno (KPI 5).
 
 ## Registro de cambios
 
