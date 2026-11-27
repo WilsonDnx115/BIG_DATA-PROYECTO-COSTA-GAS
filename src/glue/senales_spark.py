@@ -53,11 +53,20 @@ CATALOGO: dict[str, tuple[str, str]] = {
 COLUMNAS_ALERTA = schemas.CONTRATOS["fact_alerta"].columnas()
 
 
-def _alertas(df, senal: str, placa: str, kg: str = "kg", puntaje=None):
-    """Lleva las filas que disparan una señal al contrato `fact_alerta`."""
+def _alertas(df, senal: str, placa: str, kg: str = "kg", puntaje=None, valor=None):
+    """Lleva las filas que disparan una señal al contrato `fact_alerta`.
+
+    `valor_soles` queda **nulo** salvo que la señal cuantifique un importe en
+    soles, y entonces se pasa en `valor`. No se monetiza el movimiento: unos kg
+    señalados no son una pérdida, y multiplicarlos por un precio de referencia
+    convierte una alerta por revisar en una cifra de pérdida que nadie midió.
+    Es la misma regla de `src/signals/common.py` y del WP 0.8, donde hoy el
+    único caso con importe es el sobrecobro de F08.
+    """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
     puntaje = F.lit(1.0) if puntaje is None else puntaje
+    valor = F.lit(None) if valor is None else valor
     out = df.select(
         F.lit(senal).alias("senal"),
         F.lit("regla").alias("tipo"),
@@ -65,7 +74,7 @@ def _alertas(df, senal: str, placa: str, kg: str = "kg", puntaje=None):
         F.col(placa).cast("string").alias("placa_norm"),
         F.col("documento").cast("string").alias("documento"),
         F.col(kg).cast("double").alias("kg"),
-        (F.col(kg).cast("double") * F.lit(config.PRECIO_REF_KG)).alias("valor_soles"),
+        valor.cast("double").alias("valor_soles"),
         puntaje.cast("double").alias("puntaje"),
         F.lit(CATALOGO[senal][1]).alias("grado_evidencia"),
         F.lit("pendiente").alias("estado_revision"),
