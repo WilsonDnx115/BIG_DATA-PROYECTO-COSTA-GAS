@@ -32,3 +32,36 @@ Se actualiza cuando cambia el código.
 | S5 · Spark SQL | Parquet + Snappy particionado por `anio/mes` | [lake_io.py](../src/common/lake_io.py), [spark.py](../src/common/spark.py) | DDL con proyección de particiones en `sql/athena/ddl/` |
 | S5 · Spark SQL | Joins `left_outer`, `left_anti`, `left_semi`, `full_outer` (Tabla 3.6) | [uniones.py](../src/silver_to_gold/uniones.py) | `tests/test_reglas_y_modelos.py::test_joins_anti_y_semi` |
 | S5 · Spark SQL | Mismo plan con DataFrames y SQL (Athena) | [sql/athena/](../sql/athena) | vistas de KPIs |
+
+## Técnicas de la segunda mitad (commit AR15)
+
+Las de arriba son las sesiones S1-S5 del curso. Estas entraron con los paquetes de Gold, la
+operación en la nube y las fuentes externas. Mismo criterio: cada fila apunta a un archivo y una
+línea que existen hoy en `main`, y la columna de evidencia dice **cómo se comprueba**, no qué se
+pretende.
+
+| Técnica | Dónde se aplica | Cómo se evidencia |
+|---|---|---|
+| **MapReduce con Spark SQL** (módulo M5): las cuatro etapas del patrón en el plan físico | [mapreduce_sql.py:62](../src/glue/mapreduce_sql.py#L62) (`mapear`), [:71](../src/glue/mapreduce_sql.py#L71) (`reducir`), [:77](../src/glue/mapreduce_sql.py#L77) (`construir`) | `Project`/`Filter`, `HashAggregate` parcial, `Exchange hashpartitioning` y `HashAggregate` final en `explain()` ([ADR 0029](adr/0029-mapreduce-con-spark-sin-emr.md)) |
+| **MapReduce sobre RDD** como control de la versión SQL | [mapreduce_sql.py:82](../src/glue/mapreduce_sql.py#L82) (`mapear_reducir_rdd`, con `reduceByKey`) | `tests/test_mapreduce_sql.py`: los totales de las dos versiones coinciden sobre el mismo universo |
+| **Combiner frente a `groupByKey`**: `reduceByKey` suma dentro de la partición antes del shuffle | [mapreduce.py:53](../src/silver_to_gold/mapreduce.py#L53) y [:59](../src/silver_to_gold/mapreduce.py#L59) | `mapreduce.comparar()` mide los bytes de shuffle de las dos; `groupByKey` está como contraejemplo, no como alternativa |
+| **`MERGE INTO` de Iceberg** por la llave del grano, nunca `overwrite` | [iceberg.py:70](../src/glue/iceberg.py#L70) (`escribir_merge`), sentencia en [:87](../src/glue/iceberg.py#L87) | `tests/test_gold_job.py`: el mismo MERGE dos veces deja una fila por llave (idempotencia) |
+| **Lectura incremental** con marcadores de Glue: cada corrida lee solo lo nuevo | [stack.yaml:366](../infra/cloudformation/stack.yaml#L366) y [:1008](../infra/cloudformation/stack.yaml#L1008) (`--job-bookmark-option: job-bookmark-enable`) | una segunda corrida sin archivos nuevos no reprocesa nada |
+| **AQE** y *salting* opcional contra el sesgo de datos | [spark.py:17](../src/common/spark.py#L17), [conciliacion.py:52](../src/silver_to_gold/conciliacion.py#L52) | Spark UI de Glue: tarea más lenta frente a la mediana |
+| **`broadcast()`** de la tabla pequeña (flota) | [conciliacion.py:80](../src/silver_to_gold/conciliacion.py#L80) | `BroadcastHashJoin` en lugar de `SortMergeJoin` en `explain()` |
+| **Orquestación por eventos con EventBridge**: la carga dispara la limpieza y Silver dispara Gold | [stack.yaml:521](../infra/cloudformation/stack.yaml#L521) y [:568](../infra/cloudformation/stack.yaml#L568) (`AWS::Events::Rule`) | la regla de Gold escucha solo los siete prefijos internos de Silver ([ADR 0020](adr/0020-regla-gold-prefijos-internos.md)) |
+| **Flujos de Glue**: un *workflow* con su *trigger*, y los jobs declarados en la plantilla | [stack.yaml:336](../infra/cloudformation/stack.yaml#L336) y [:983](../infra/cloudformation/stack.yaml#L983) (`AWS::Glue::Job`), [:539](../infra/cloudformation/stack.yaml#L539) (`Workflow`), [:542](../infra/cloudformation/stack.yaml#L542) y [:1021](../infra/cloudformation/stack.yaml#L1021) (`Trigger`) | `cfn-lint` sobre `us-east-2` en la integración continua |
+| **EventBridge Scheduler** para lo que va por horario, no por evento | [stack.yaml:917](../infra/cloudformation/stack.yaml#L917), [:932](../infra/cloudformation/stack.yaml#L932), [:947](../infra/cloudformation/stack.yaml#L947), [:962](../infra/cloudformation/stack.yaml#L962) (`AWS::Scheduler::Schedule`) | el semáforo de las 6:30 y los extractores externos ([ADR 0015](adr/0015-youtube-data-api.md)) |
+| **LDA de MLlib** sobre el texto de las fuentes externas | [externos_job.py:248](../src/glue/externos_job.py#L248) (`temas`), pipeline en [:232](../src/glue/externos_job.py#L232) | con menos documentos que temas devuelve `(None, None, None)` en vez de un modelo que no significa nada (`tests/test_externos_job.py`) |
+| **pdfplumber en el executor**, nunca en el driver | [externos_job.py:152](../src/glue/externos_job.py#L152) (`_texto_pdf`), import diferido en [:155](../src/glue/externos_job.py#L155) | el texto se extrae dentro de cada partición; el driver solo coordina ([resoluciones.py](../src/extractores/resoluciones.py)) |
+
+Dos cosas que esta tabla deja dichas, además de la técnica:
+
+- **El patrón MapReduce se ejecuta con Spark SQL, no con Hadoop Streaming.** Es una decisión
+  registrada, no una omisión: EMR corre sobre EC2 por hora y la política base de la cuenta lo
+  deniega ([ADR 0029](adr/0029-mapreduce-con-spark-sin-emr.md), que reemplaza al 0014). La
+  equivalencia se demuestra etapa por etapa en el plan físico y comparando los totales con la
+  versión sobre RDD.
+- **Tener el código no es haberlo ejecutado.** Las filas que apuntan a
+  `infra/cloudformation/stack.yaml` acreditan que el recurso está declarado y que `cfn-lint` lo
+  valida; la corrida en AWS se acredita aparte, en `docs/evidencias/`, con su fecha y su captura.

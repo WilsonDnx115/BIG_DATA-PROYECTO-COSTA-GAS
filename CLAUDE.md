@@ -6,14 +6,16 @@ cobertura real de cada fuente. Ruta B (AWS), tope de costo total **US$ 1**.
 
 ## Referencias y entregas
 
-- Aplicar el informe v6 y [el Plan de Corrección](docs/guias/Correcciones_CostaGas_v6.pdf). Las excepciones documentadas en `docs/adr/` forman parte de las reglas; la región vigente es `us-east-2` (ADR 0011).
+- Aplicar el **informe v17** y [el Plan de Corrección](docs/guias/Correcciones_CostaGas_v6.pdf), que sigue vigente salvo donde el v17 lo reemplaza. Las excepciones documentadas en `docs/adr/` forman parte de las reglas; la región vigente es `us-east-2` (ADR 0011).
 - Trabajar por paquete WP y por la tarea solicitada. Registrar avances en `PLAN.md`: marcar `[x]` solo lo verificado y documentar dependencias, bloqueos y aceptación pendiente.
 - Usar una rama por paquete y PR revisado por el integrante de apoyo. No trabajar directamente en `main`. Mensajes: `tipo(alcance): WP x.y descripción`.
 - Registrar decisiones de diseño en `docs/adr/` usando `0000-plantilla.md` y técnicas del curso en `docs/tecnicas_curso.md`, con archivo y línea.
+- **Ningún valor sin fuente.** Todo parámetro, umbral o cifra lleva su origen: una tabla del informe v17, un dato medido con la consulta o el script que lo reproduce, o una referencia externa citada en un ADR. Las fórmulas que anuncian un valor que no está no se escriben en ninguna parte: la lista exacta la tiene `tests/test_sin_pendientes.py`, que recorre `docs/`, `sql/`, `dashboards/`, `contracts/` y `src/common/config.py` y falla si alguna aparece.
+- **Si un dato no existe en la entrega, se dice como hecho**: «no cubierto», con la evidencia de la búsqueda y su consecuencia. Eso es un resultado, no un pendiente; el ejemplo es el gasto atribuible a una unidad, declarado como no cubierto en [`contracts/gastos.yaml`](contracts/gastos.yaml) con la medición que lo sostiene ([gastos_posiciones.md](docs/evidencias/gastos_posiciones.md)).
 
 ## Datos y privacidad
 
-- El análisis, los modelos, el tablero y las evidencias usan datos reales. Para reproducción local, usar el subconjunto real enmascarado de `sample_data/`, generado por el proceso autorizado; no reemplazarlo por datos inventados cuando falte.
+- El análisis, los modelos, el tablero y las evidencias usan datos reales. Para reproducción local, usar la **muestra sintética** que genera `python -m src.common.muestra --unidades 25 --semilla 42`: tiene el mismo formato que las fuentes internas e inyecta a propósito los problemas de la Tabla 3.5, así que el pipeline corre entero sin datos reales. No representa a ninguna persona ni unidad real y **sus cifras no son resultados del negocio**.
 - Datos sintéticos solo en pruebas y `scaletest/`; el generador anterior queda como fixture. No publicar sus cifras en `docs/evidencias/` ni usarlas como resultados del negocio.
 - El acceso a `data/raw/` y Bronze interno corresponde al rol autorizado de ingeniería. En tareas de análisis, calidad y documentación, trabajar con Silver/Gold o la muestra enmascarada; nunca imprimir ni versionar archivos crudos.
 - No publicar nombres, DNI ni RUC de personas naturales en Silver/Gold, muestras, tableros, logs, evidencias o chat. Usar IDs seudonimizados de forma consistente entre tablas; la sal va en `.env` o SSM, nunca en Git.
@@ -23,8 +25,9 @@ cobertura real de cada fuente. Ruta B (AWS), tope de costo total **US$ 1**.
 
 ## Contratos y capas
 
-- Mantener `src/` y sus imports; contratos YAML en `contracts/` y muestra en `sample_data/`. El patrón MapReduce vive en `src/glue/mapreduce_sql.py`; no hay módulos de Hadoop Streaming ([ADR 0029](docs/adr/0029-mapreduce-con-spark-sin-emr.md)).
+- Mantener `src/` y sus imports; contratos YAML en `contracts/` y la muestra de pruebas en `src/common/muestra.py`. El patrón MapReduce vive en `src/glue/mapreduce_sql.py`; no hay módulos de Hadoop Streaming ([ADR 0029](docs/adr/0029-mapreduce-con-spark-sin-emr.md)).
 - Para las tablas migradas, `contracts/*.yaml` es la fuente de verdad: columnas, tipos, grano, claves, reglas y marcas de datos personales. Lectura, Parquet y DDL se derivan del mismo contrato; regenerar el DDL en el mismo cambio.
+- **Un solo esquema por tabla** ([ADR 0030](docs/adr/0030-un-esquema-por-tabla.md)): las entradas de las señales usan las interfaces del WP 0.8 (`src/signals/contratos.py`); las alertas, el contrato `fact_alerta_base` de `src/common/schemas.py`; las señales S1-S12, `src/signals/catalogo.yaml`; y las columnas de Gold, `COLUMNAS_GOLD` de `tests/test_vistas_sql.py`. Declarar lo mismo en dos sitios es un defecto, aunque los dos coincidan hoy.
 - Los contratos Python existentes solo cubren módulos aún no migrados. No mantener dos esquemas independientes de la misma tabla ni inferir encabezados ausentes: documentar el pendiente del inventario.
 - Toda ruta del lago se construye con `src/common/rutas.py` desde `LAKE_URI`. Umbrales y parámetros viven en `src/common/config.py`, leídos de `.env`.
 - Capas `bronze/`, `silver/`, `gold/`. Bronze es inmutable y conserva manifiesto y hash. Reprocesar no debe duplicar filas ni borrar aportes de otras fuentes.

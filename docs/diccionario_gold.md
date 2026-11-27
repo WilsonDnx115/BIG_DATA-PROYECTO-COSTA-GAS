@@ -45,7 +45,7 @@ Dos columnas que hay que leer con cuidado, porque son supuestos declarados y no 
 
 - **`delta_stock_kg` es nulo**, no cero, mientras la entrega no traiga cierres físicos. Un cero
   afirmaría que el stock no se movió, y eso nadie lo midió
-  ([produccion_no_cubierta.md](evidencias/produccion_no_cubierta.md)). La vista `v_kpi_1` lo
+  ([produccion_diaria_en_la_entrega.md](evidencias/produccion_diaria_en_la_entrega.md)). La vista `v_kpi_1` lo
   convierte en 0 para poder calcular, y publica `stock_es_supuesto` junto al número.
 - **`merma_tecnica_kg`** es el 0.5 % del [ADR 0027](adr/0027-merma-tecnica-referencia-de-mercado.md),
   una referencia de mercado, y `merma_es_supuesto` lo dice en la propia fila.
