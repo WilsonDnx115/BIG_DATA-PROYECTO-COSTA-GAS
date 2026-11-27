@@ -20,19 +20,37 @@ def test_matriz_igual_a_la_de_la_evaluacion():
     assert metricas.matriz_confusion(y, pred) == mllib.matriz(list(zip(prob, y)), 0.75)
 
 
-def test_pr_auc():
-    assert metricas.pr_auc([1, 1, 0, 0], [0.9, 0.8, 0.2, 0.1]) == pytest.approx(1.0)
+def test_precision_promedio_de_control():
+    assert metricas.precision_promedio([1, 1, 0, 0], [0.9, 0.8, 0.2, 0.1]) == pytest.approx(1.0)
     # orden: 1, 0, 1 → (0.5 − 0)·1 + (1 − 0.5)·(2/3)
-    assert metricas.pr_auc([1, 0, 1], [0.9, 0.5, 0.1]) == pytest.approx(0.5 + 0.5 * 2 / 3)
-    assert metricas.pr_auc([0, 0], [0.4, 0.1]) is None
+    assert metricas.precision_promedio([1, 0, 1], [0.9, 0.5, 0.1]) == pytest.approx(0.5 + 0.5 * 2 / 3)
+    assert metricas.precision_promedio([0, 0], [0.4, 0.1]) is None
 
 
-def test_pr_auc_igual_que_scikit_learn():
-    sk = pytest.importorskip("sklearn.metrics")
-    rng = np.random.default_rng(1)
-    y = rng.integers(0, 2, 200)
-    p = np.round(rng.random(200), 2)                      # con empates
-    assert metricas.pr_auc(y, p) == pytest.approx(sk.average_precision_score(y, p))
+def _puntuado(spark, y, prob):
+    """DataFrame como el que deja el clasificador: etiqueta y vector de probabilidades."""
+    from pyspark.ml.functions import array_to_vector
+    from pyspark.sql import functions as F
+
+    spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+    pdf = pd.DataFrame({"etiqueta_s12": np.asarray(y, dtype=float), "p": np.asarray(prob, dtype=float)})
+    df = spark.createDataFrame(pdf)
+    return df.withColumn("probability", array_to_vector(F.array(F.lit(1.0) - F.col("p"), F.col("p"))))
+
+
+def test_pr_auc_de_mllib(spark):
+    assert metricas.pr_auc_mllib(_puntuado(spark, [1, 1, 0, 0], [0.9, 0.8, 0.2, 0.1])) == pytest.approx(1.0)
+    rng = np.random.default_rng(2)
+    y = (rng.random(300) < 0.074).astype(int)            # 7.4 % de positivos, como S12
+    prob = np.clip(0.3 * y + rng.random(300) * 0.7, 0, 1)
+    valor = metricas.pr_auc_mllib(_puntuado(spark, y, prob))
+    assert 0 < valor <= 1
+
+
+def test_lectura_de_las_dos_medidas():
+    r = metricas.lectura_pr_auc(0.62, 0.55)
+    assert r["conservadora"] == "precision_promedio" and r["diferencia"] == pytest.approx(0.07)
+    assert metricas.lectura_pr_auc(0.5, None)["conservadora"] is None
 
 
 def test_bootstrap_intervalo():

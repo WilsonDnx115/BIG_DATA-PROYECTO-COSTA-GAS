@@ -5,8 +5,10 @@ positivos puede variar mucho de una muestra a otra. Por eso se reporta con su in
 bootstrap (BOOTSTRAP_REMUESTREOS remuestreos, IC 95 %; la meta de la Tabla 4.7 pide un
 límite inferior ≥ 0.50) y se agregan tres controles:
 
-* **PR-AUC** (precisión promedio): resume la curva de precisión y recall sin elegir umbral;
-  con clases desbalanceadas es más honesta que el AUC ROC;
+* **PR-AUC** con el evaluador de MLlib (principal, técnica del curso) y la precisión promedio
+  de scikit-learn como control: resumen la curva de precisión y recall sin elegir umbral; con
+  clases desbalanceadas son más honestas que el AUC ROC. Si difieren, se reporta cuál es la
+  conservadora y por qué;
 * **comparación con la regla simple S2 o S6**: si el modelo no supera a la regla, no se usa;
 * **precision@k**, reutilizada del modelo base (`base_mad.precision_at_k`).
 
@@ -36,23 +38,46 @@ def matriz_confusion(y, pred) -> dict:
             "fn": int(((pred == 0) & (y == 1)).sum()), "tn": int(((pred == 0) & (y == 0)).sum())}
 
 
-def pr_auc(y, prob) -> float | None:
-    """Precisión promedio: Σ (Rₙ − Rₙ₋₁) · Pₙ recorriendo los umbrales de mayor a menor.
+def pr_auc_mllib(puntuado, etiqueta: str = "etiqueta_s12", probabilidad: str = "probability") -> float:
+    """PR-AUC principal: `BinaryClassificationEvaluator(metricName="areaUnderPR")` de MLlib.
 
-    Es la definición de precisión promedio (la misma que average_precision_score de
-    scikit-learn), escrita aquí para no depender de la versión instalada en Glue.
+    Es la técnica del curso (evaluadores de MLlib, S9 a S11) y corre repartida en el job de
+    Glue sobre las facturas puntuadas. MLlib une los puntos de la curva de precisión y recall
+    con rectas (regla trapezoidal); con clases desbalanceadas eso puede sobrestimar el área
+    (Davis y Goadrich, 2006). Por eso se reporta junto a la precisión promedio como control.
     """
-    y, prob = np.asarray(y, dtype=int), np.asarray(prob, dtype=float)
-    positivas = int(y.sum())
-    if positivas == 0:
+    from pyspark.ml.evaluation import BinaryClassificationEvaluator  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    evaluador = BinaryClassificationEvaluator(labelCol=etiqueta, rawPredictionCol=probabilidad,
+                                              metricName="areaUnderPR")
+    return float(evaluador.evaluate(puntuado.withColumn(etiqueta, F.col(etiqueta).cast("double"))))
+
+
+def precision_promedio(y, prob) -> float | None:
+    """Control de la PR-AUC: precisión promedio de scikit-learn (`average_precision_score`).
+
+    Suma la precisión en cada umbral ponderada por el aumento de recall, sin interpolar, y es
+    más conservadora que el área trapezoidal con clases desbalanceadas. scikit-learn ya está
+    en el job de Glue (lo usan Isolation Forest y LOF). None si no hay positivos.
+    """
+    from sklearn.metrics import average_precision_score  # noqa: PLC0415
+
+    y = np.asarray(y, dtype=int)
+    if int(y.sum()) == 0:
         return None
-    orden = np.argsort(-prob, kind="stable")
-    y_ord, p_ord = y[orden], prob[orden]
-    tp = np.cumsum(y_ord)
-    ultimos = np.r_[np.flatnonzero(np.diff(p_ord) != 0), len(p_ord) - 1]  # un punto por umbral distinto
-    precision = tp[ultimos] / (ultimos + 1)
-    recall = tp[ultimos] / positivas
-    return float(np.sum(np.diff(np.r_[0.0, recall]) * precision))
+    return float(average_precision_score(y, np.asarray(prob, dtype=float)))
+
+
+def lectura_pr_auc(pr_auc_mllib_valor: float, precision_promedio_valor: float | None) -> dict:
+    """Las dos medidas juntas, con cuál es la conservadora y cuánto difieren (para el informe)."""
+    if precision_promedio_valor is None:
+        return {"pr_auc_mllib": pr_auc_mllib_valor, "precision_promedio": None,
+                "diferencia": None, "conservadora": None}
+    diferencia = pr_auc_mllib_valor - precision_promedio_valor
+    return {"pr_auc_mllib": pr_auc_mllib_valor, "precision_promedio": precision_promedio_valor,
+            "diferencia": diferencia,
+            "conservadora": "precision_promedio" if diferencia > 0 else "pr_auc_mllib"}
 
 
 def bootstrap_precision(y, pred, n: int = config.BOOTSTRAP_REMUESTREOS,
