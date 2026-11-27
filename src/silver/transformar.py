@@ -296,6 +296,98 @@ def pedidos_proveedor(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return o, calidad
 
 
+# --- maestros: distribuidores y clientes (A08) --------------------------------
+# Formas societarias peruanas. Un nombre que las lleva es de una persona juridica,
+# asi que no es dato personal y se conserva legible.
+_RE_PERSONA_JURIDICA = re.compile(
+    r"\b(S\.?\s?A\.?\s?C|E\.?\s?I\.?\s?R\.?\s?L|S\.?\s?R\.?\s?L|S\.?\s?C\.?\s?R\.?\s?L|S\.?\s?A\.?\s?A|S\.?\s?A)\.?\s*$",
+    re.IGNORECASE)
+
+
+def _identidad(documento, nombre_razon, codigo_sn=None) -> dict:
+    """Separa empresa de persona natural y seudonimiza lo que identifica a una persona.
+
+    - RUC valido con prefijo 20 → persona juridica: el RUC y la razon social se conservan,
+      porque la razon social no es dato personal y el RUC permite cruzar con SUNAT.
+    - DNI, o RUC con otro prefijo (10, 15, 17) → persona natural: el numero y el nombre
+      salen hasheados con sal; ni el numero ni el nombre pasan a Silver.
+    - RUC de 11 digitos con prefijo 20 pero digito verificador malo → se trata como
+      empresa (`INVALIDO`), pero sin publicar el RUC: por construccion no es una persona.
+    - Sin documento → solo se conserva el nombre si lleva forma societaria; si no, se
+      hashea, porque no hay forma de descartar que sea una persona.
+    """
+    doc, clase = L.clasificar_documento(documento)
+    nombre = a_texto(nombre_razon)
+    nombre = nombre.upper() if nombre else None
+    codigo = a_texto(codigo_sn)
+    vacio = {"entidad_id": None, "tipo_persona": "VACIO", "ruc": None, "documento_hash": None,
+             "razon_social": None, "nombre_hash": None}
+
+    if clase == "RUC" and doc.startswith("20"):
+        return {**vacio, "entidad_id": doc, "tipo_persona": "JURIDICA", "ruc": doc, "razon_social": nombre}
+    if clase in {"RUC", "DNI"}:                                   # 10, 15, 17 y DNI: persona natural
+        h = L.seudonimizar(doc)
+        return {**vacio, "entidad_id": h, "tipo_persona": "NATURAL",
+                "documento_hash": h, "nombre_hash": L.seudonimizar(nombre)}
+    if clase == "INVALIDO" and doc.startswith("20") and len(doc) == 11:
+        return {**vacio, "entidad_id": codigo or L.seudonimizar(nombre), "tipo_persona": "INVALIDO",
+                "razon_social": nombre}
+    if clase == "INVALIDO":
+        h = L.seudonimizar(doc)
+        return {**vacio, "entidad_id": h, "tipo_persona": "NATURAL",
+                "documento_hash": h, "nombre_hash": L.seudonimizar(nombre)}
+    if nombre and _RE_PERSONA_JURIDICA.search(nombre):            # sin documento, pero con forma societaria
+        return {**vacio, "entidad_id": codigo or L.seudonimizar(nombre), "tipo_persona": "JURIDICA",
+                "razon_social": nombre}
+    return {**vacio, "entidad_id": codigo or L.seudonimizar(nombre), "nombre_hash": L.seudonimizar(nombre)}
+
+
+def _aplicar_identidad(o: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
+    ident = [_identidad(d, n, c) for d, n, c in
+             zip(_col(df, "documento"), _col(df, "nombre_razon"), _col(df, "codigo_sn"))]
+    for campo in ("entidad_id", "tipo_persona", "ruc", "documento_hash", "razon_social", "nombre_hash"):
+        o[campo] = [i[campo] for i in ident]
+    return o
+
+
+def _calidad_maestro(o: pd.DataFrame) -> dict:
+    return {
+        "juridicas": int((o["tipo_persona"] == "JURIDICA").sum()),
+        "naturales": int((o["tipo_persona"] == "NATURAL").sum()),
+        "sin_documento": int((o["tipo_persona"] == "VACIO").sum()),
+        "ruc_invalido": int((o["tipo_persona"] == "INVALIDO").sum()),
+        "ruc_publicado": _tasa(o["ruc"].notna()),
+        "entidad_id_presente": _tasa(o["entidad_id"].notna()),
+    }
+
+
+def distribuidores(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Maestro de distribuidores. La direccion exacta solo se conserva de una empresa."""
+    o = _aplicar_identidad(pd.DataFrame(index=df.index), df)
+    o["departamento"] = _texto(_col(df, "departamento"), mayus=True)
+    o["provincia"] = _texto(_col(df, "provincia"), mayus=True)
+    o["distrito"] = _texto(_col(df, "distrito"), mayus=True)
+    direccion = _texto(_col(df, "direccion"))
+    o["direccion"] = direccion.where(o["tipo_persona"] != "NATURAL")
+    o["capacidad_kg"] = _num(_col(df, "capacidad_kg"))
+    o["empresa_envasadora"] = _texto(_col(df, "empresa_envasadora"), mayus=True)
+    o["tipo"] = _texto(_col(df, "tipo"), mayus=True)
+    o["uit"] = _num(_col(df, "uit"))
+    o["item"] = _entero(_col(df, "item"))
+    calidad = {**_calidad_maestro(o),
+               "capacidad_declarada": _tasa(o["capacidad_kg"] > 0),
+               "direccion_omitida_por_privacidad": int((direccion.notna() & o["direccion"].isna()).sum())}
+    return o, calidad
+
+
+def clientes(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Maestro de clientes. Misma regla de identidad que distribuidores."""
+    o = _aplicar_identidad(pd.DataFrame(index=df.index), df)
+    o["codigo_sn"] = _texto(_col(df, "codigo_sn"), mayus=True)
+    return o, _calidad_maestro(o)
+
+
 TRANSFORMACIONES = {"compras_glp": compras_glp, "scop": scop, "unidades": unidades,
                     "ventas_unidad_mes": ventas_unidad_mes, "ventas_detalle": ventas_detalle,
-                    "pedidos_proveedor": pedidos_proveedor}
+                    "pedidos_proveedor": pedidos_proveedor,
+                    "distribuidores": distribuidores, "clientes": clientes}

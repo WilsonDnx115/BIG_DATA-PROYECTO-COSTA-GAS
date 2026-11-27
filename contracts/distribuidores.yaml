@@ -1,0 +1,107 @@
+# Contrato de la tabla Silver distribuidores (maestro, commit A08).
+# El RUC de empresa (prefijo 20) se conserva para cruzarlo con SUNAT; el DNI y el RUC
+# de persona natural (prefijo 10) se seudonimizan, y con ellos el nombre, porque en
+# estas hojas la misma columna guarda razon social y nombre de persona.
+tabla: distribuidores
+dominio: maestros
+descripcion: Maestro de distribuidores y sus almacenes, con capacidad declarada en kg
+grano: establecimiento de un distribuidor
+llave: [entidad_id, direccion]
+
+fuentes:
+  - id: distribuidores_hoja_maestra
+    familia: F29
+    archivo: '^RELACION DE DISTRIBUIDORES (2020-2021 Act 24092020|ALMACENES 2020-2021)\.xlsx$'
+    hojas: '^DISTRIBUIDORES$'
+    fila_encabezado: 7
+    exigir: [nombre_razon]
+    columnas:
+      ITEM: item
+      DPTO.: departamento
+      PROVINCIA: provincia
+      DISTRITO: distrito
+      NOMBRE Y/O RAZON SOCIAL: nombre_razon
+      RUC/DNI: documento
+      UBICACIÓN DEL ESTABLECIMIENTO: direccion
+      CAP. ALMAC, TOTAL (KILOGRAMOS): capacidad_kg
+      EMPRESA ENVASADORA: empresa_envasadora
+      TIPO: tipo
+      UIT: uit
+  - id: distribuidores_por_envasadora
+    familia: F30
+    archivo: '^RELACION DE DISTRIBUIDORES (2020-2021 Act 24092020|ALMACENES 2020-2021)\.xlsx$'
+    hojas: '^(PIURA GAS|GLP NAZARENO|Costa Gas Trujillo|Costa Gas Chimbote)$'
+    fila_encabezado: 1
+    exigir: [nombre_razon]
+    columnas:
+      ITEM: item
+      DPTO.: departamento
+      PROVINCIA: provincia
+      DISTRITO: distrito
+      NOMBRE Y/O RAZON SOCIAL: nombre_razon
+      RUC/DNI: documento
+      UBICACIÓN DEL ESTABLECIMIENTO: direccion
+      CAP. ALMAC, TOTAL (KILOGRAMOS): capacidad_kg
+      EMPRESA ENVASADORA: empresa_envasadora
+      UIT: uit
+  - id: distribuidores_mega_gas_almacenes
+    familia: F31
+    archivo: '^RELACION DE DISTRIBUIDORES ALMACENES 2020-2021\.xlsx$'
+    hojas: '^MEGA GAS$'
+    fila_encabezado: 1
+    exigir: [nombre_razon]
+    columnas:
+      ITEM: item
+      DPTO.: departamento
+      PROVINCIA: provincia
+      DISTRITO: distrito
+      NOMBRE Y/O RAZON SOCIAL: nombre_razon
+      RUC/DNI: documento
+      UBICACIÓN DEL ESTABLECIMIENTO: direccion
+      CAP. ALMAC, TOTAL (KILOGRAMOS): capacidad_kg
+      EMPRESA ENVASADORA: empresa_envasadora
+      UIT: uit
+  - id: distribuidores_mega_gas_relacion
+    familia: F32
+    archivo: '^RELACION DE DISTRIBUIDORES 2020-2021 Act 24092020\.xlsx$'
+    hojas: '^MEGA GAS$'
+    fila_encabezado: 4
+    exigir: [nombre_razon]
+    columnas:
+      No.: item
+      DPTO.: departamento
+      PROVINCIA: provincia
+      DISTRITO: distrito
+      NOMBRE Y/O RAZON SOCIAL: nombre_razon
+      RUC/DNI: documento
+      UBICACIÓN DEL ESTABLECIMIENTO: direccion
+      CAP. ALMAC, TOTAL (KILOGRAMOS): capacidad_kg
+      EMPRESA ENVASADORA: empresa_envasadora
+      UIT: uit
+
+pendiente:
+  - "La hoja MEGA GAS tiene el encabezado en la fila 4 en RELACION DE DISTRIBUIDORES 2020-2021 y en la fila 1 en RELACION DE DISTRIBUIDORES ALMACENES: por eso son dos fuentes."
+  - "Hoja2 de RELACION DE DISTRIBUIDORES ALMACENES: el inventario no publica los nombres de sus 9 columnas."
+  - "La direccion exacta solo se conserva cuando el titular es una persona juridica; en una persona natural puede ser su domicilio."
+  - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de estas hojas por separado."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje, regla: "id de la fuente del contrato"}
+  - {nombre: hoja, tipo: string, rol: linaje, regla: "hoja de Excel de origen; identifica la envasadora"}
+  - {nombre: fila, tipo: int, rol: linaje, regla: "fila de Excel de origen"}
+  - {nombre: entidad_id, tipo: string, rol: llave, regla: "RUC si es empresa; si no, el hash del documento, o del nombre cuando no hay documento"}
+  - {nombre: tipo_persona, tipo: string, rol: dimension, regla: "JURIDICA, NATURAL, INVALIDO o VACIO"}
+  - {nombre: ruc, tipo: string, rol: llave, regla: "solo RUC válido de persona jurídica (prefijo 20); se conserva para cruzar con SUNAT"}
+  - {nombre: documento_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal del DNI o del RUC 10; el número no pasa a Silver"}
+  - {nombre: razon_social, tipo: string, rol: atributo, regla: "solo de persona jurídica; en persona natural queda nulo"}
+  - {nombre: nombre_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal del nombre cuando el titular es persona natural"}
+  - {nombre: departamento, tipo: string, rol: dimension}
+  - {nombre: provincia, tipo: string, rol: dimension}
+  - {nombre: distrito, tipo: string, rol: dimension}
+  - {nombre: direccion, tipo: string, rol: atributo, regla: "ubicación del establecimiento; nula si el titular es persona natural"}
+  - {nombre: capacidad_kg, tipo: double, rol: medida, regla: "capacidad de almacenamiento declarada, en kg"}
+  - {nombre: empresa_envasadora, tipo: string, rol: dimension}
+  - {nombre: tipo, tipo: string, rol: atributo, regla: "solo lo trae la hoja DISTRIBUIDORES"}
+  - {nombre: uit, tipo: double, rol: medida}
+  - {nombre: item, tipo: int, rol: atributo, regla: "número de orden dentro de la hoja"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}
