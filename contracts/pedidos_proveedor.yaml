@@ -66,7 +66,7 @@ fuentes:
       CON IMPUESTOS: total
 
 pendiente:
-  - "Hoja PRIMAX: el inventario no publica los nombres de sus 25 columnas (encabezados_raw.md). Falta declararla; mientras tanto ese proveedor no llega a Silver."
+  - "Hoja PRIMAX: no cubierta. La hoja empieza en datos y el lector empareja por nombre de encabezado, asi que necesita lectura por posicion. Que mide cada posicion esta medido en docs/evidencias/primax_posiciones.md: B fecha, E producto, G importe, H documento SERIE-NUMERO, Q fecha de pago y R banco; la cantidad en kg no se puede determinar desde la estructura. Mientras tanto ese proveedor no llega a Silver."
   - "PETROPERU no registra fecha de pago ni moneda: fecha_pago queda nula y para esas facturas se usa fecha_vence (informe v16, 4.3)."
   - "PETROPERU y SOLGAS no traen tipo de cambio; solo PLUSPETROL tiene la columna T.C."
   - "Columnas de PLUSPETROL no declaradas: CANTIDAD ORDEN, S/, SOLES, SIN IGV SIN FISE y CON FISE. Son desgloses del mismo importe; se declaran cuando una metrica las necesite."
