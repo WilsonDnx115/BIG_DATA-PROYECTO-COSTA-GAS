@@ -348,11 +348,17 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: "3"
-        ScriptLocation: !Sub s3://costagas-code-${Sufijo}/_code/glue_conciliacion.py
+        ScriptLocation: !Sub s3://costagas-code-${Sufijo}/_code/glue_gold_job.py
       DefaultArguments:
+        # El zip trae `src/` y los contratos YAML, que es de donde el job lee el
+        # esquema de cada tabla: el DDL y la lectura salen del mismo contrato.
         --extra-py-files: !Sub s3://costagas-code-${Sufijo}/${CodigoKey}
-        --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
-        --ANIO: "todos"
+        # scikit-learn corre en el driver para el reentrenamiento de S12 (--modo
+        # entrenar, informe Tabla 2.2c M8). Version fija: una menor cambia el
+        # modelo guardado y el registro de `gold/_modelos/` dejaria de cuadrar.
+        --additional-python-modules: scikit-learn==1.5.2
+        --modo: evento
+        --lake_uri: !Sub s3://costagas-trujillo-lake-${Sufijo}
         --enable-spark-ui: "true"
         --spark-event-logs-path: !Sub s3://costagas-trujillo-lake-${Sufijo}/sparkui/
         --enable-glue-datacatalog: "true"
@@ -1250,6 +1256,74 @@ Resources:
       FunctionName: !Ref PortalRevision
       Principal: "*"
       FunctionUrlAuthType: NONE
+  # (13) Validacion del detector de desvios (W19, informe 4.3 y Tabla 4.8h).
+  #      Corre el codigo de Calidad (`src/sim/validacion.py`, AR06): calibra el
+  #      umbral con el escenario A, sin robos, y mide la deteccion sobre el
+  #      escenario B SIN volver a tocar el umbral. Un lote de 10 semillas por
+  #      invocacion, 10 invocaciones para las 100 semillas.
+  #      El rol solo ve `sim/`: ni Silver ni Gold ni la entrega real entran aqui,
+  #      porque todo lo que maneja son series sinteticas.
+  #      Costo: unas 20 invocaciones de hasta 15 min al mes, dentro de la capa
+  #      gratuita de Lambda.
+  # ---------------------------------------------------------------------------
+  RolValidacionDetector:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-sim-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: solo-sim-y-el-umbral-del-detector
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow                      # escenarios, especificacion sellada y resultados
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/sim/*
+              - Effect: Allow                      # listar sim/_spec/ para hallar la especificacion
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                Condition:
+                  StringLike: { "s3:prefix": ["sim/*"] }
+              - Effect: Allow                      # el umbral fijado en la calibracion, solo lectura
+                Action: s3:GetObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/_modelos/detector/*
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ColaEventosFallidos.Arn
+
+  ValidacionDetector:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-validacion-detector
+      Runtime: python3.12
+      Handler: src.sim.validacion.lambda_handler
+      Role: !GetAtt RolValidacionDetector.Arn
+      MemorySize: 3008                     # 100 semillas x 2 escenarios en pandas
+      Timeout: 900                         # 15 min, el maximo de Lambda
+      EphemeralStorage: { Size: 1024 }     # /tmp para la especificacion sellada
+      Layers: [!Ref PandasLayerArn]
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+
+  # Sin reintentos: repetir un lote de 15 min que ya fallo cuesta y no arregla
+  # nada; el lote se vuelve a lanzar a mano cuando se sepa por que fallo.
+  FallasValidacionDetector:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ValidacionDetector
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 0
+      DestinationConfig: { OnFailure: { Destination: !GetAtt ColaEventosFallidos.Arn } }
+
 Outputs:
   Bucket: { Value: !Ref Lago }
   LakeUri: { Value: !Sub "s3://costagas-trujillo-lake-${Sufijo}" }
@@ -1278,3 +1352,4 @@ Outputs:
   UrlPortalEstado: { Value: !GetAtt UrlPortalEstado.FunctionUrl }
   UrlPortalKpis: { Value: !GetAtt UrlPortalKpis.FunctionUrl }
   UrlPortalRevision: { Value: !GetAtt UrlPortalRevision.FunctionUrl }
+  ValidacionDetector: { Value: !Ref ValidacionDetector }

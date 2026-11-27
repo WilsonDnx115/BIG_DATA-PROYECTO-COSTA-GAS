@@ -1,7 +1,7 @@
 # 0014 · EMR transitorio en las reglas del informe v6
 
 - **Fecha:** 2026-10-11
-- **Estado:** aceptada para el diseño; ejecución bloqueada en la cuenta actual
+- **Estado:** reemplazada por [0029](0029-mapreduce-con-spark-sin-emr.md) el 2026-11-27
 - **Responsable del paquete:** calidad y documentación · WP 0.1, B2
 - **Referencias:** informe v6, tablas 2.2c y 2.5, sección 3.3; Plan de Corrección, G1 y A2
 - **Actualiza:** prohibición general de EMR y regla de recursos exclusivamente CloudFormation de `CLAUDE.md`; complementa ADR 0005 y 0011
@@ -45,6 +45,28 @@ La restricción vigente de región `us-east-2` se conserva.
   corresponden al paquete de MapReduce y al administrador autorizado.
 - Comprobar el cierre del clúster y la limpieza de los recursos de la corrida;
   comprimir GDELT y aplicar su borrado después del filtrado.
+
+---
+
+> ## Decidido: reemplazada por el ADR 0029 (2026-11-27)
+>
+> Se resolvieron los dos puntos que Calidad dejó anotados el 26/11, y los dos se
+> cerraron en el mismo cambio que el [ADR 0029](0029-mapreduce-con-spark-sin-emr.md):
+>
+> 1. **La excepción de EMR.** Cerrada. `CLAUDE.md` ya no la cita y EMR queda prohibido
+>    en cualquier forma. Nada se crea fuera de `infra/cloudformation/stack.yaml`.
+> 2. **La evidencia de Hadoop Streaming.** Reemplazada por las cuatro etapas del patrón
+>    en el plan físico de `src/glue/mapreduce_sql.py` y la igualdad de totales con la
+>    versión RDD sobre el mismo universo
+>    (`tests/test_mapreduce_sql.py::test_las_cuatro_etapas_de_mapreduce_estan_en_el_plan_fisico`
+>    y `::test_sql_y_rdd_dan_los_mismos_totales`), tal como el informe v17 mapea la
+>    técnica S3 en su Tabla 2.8.
+>
+> Este ADR se conserva porque su contexto explica por qué la regla existió. Si la
+> evaluación del curso exigiera el binario de Hadoop y no el patrón, la ruta se reabre
+> con el administrador y el 0029 se reemplaza a su vez.
+>
+> La nota original de Calidad se mantiene abajo, tal como se escribió.
 
 ---
 

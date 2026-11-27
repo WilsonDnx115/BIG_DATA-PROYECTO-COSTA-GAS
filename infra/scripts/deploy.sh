@@ -77,7 +77,10 @@ with zipfile.ZipFile(build / "costagas_src.zip", "w", zipfile.ZIP_DEFLATED) as z
             z.write(f, f.relative_to(pkg).as_posix())
 PY
 aws s3 cp "$BUILD/costagas_src.zip" "s3://${CODE_BUCKET}/_code/costagas_src.zip" --sse AES256 --only-show-errors
-aws s3 cp src/silver_to_gold/conciliacion.py "s3://${CODE_BUCKET}/_code/glue_conciliacion.py" --sse AES256 --only-show-errors
+# El script del trabajo de Gold es `gold_job.py` (WR07): un solo script con sus
+# tres modos. `conciliacion.py` sigue viajando dentro del zip porque las
+# evidencias de planes fisicos lo importan, pero ya no es el punto de entrada.
+aws s3 cp src/glue/gold_job.py "s3://${CODE_BUCKET}/_code/glue_gold_job.py" --sse AES256 --only-show-errors
 aws s3 cp src/glue/externos_job.py "s3://${CODE_BUCKET}/_code/glue_externos.py" --sse AES256 --only-show-errors
 
 echo ">> Desplegando stack ${STACK}"
@@ -91,14 +94,16 @@ for f in costagas-bronze-to-silver costagas-ingesta \
          costagas-extractor-youtube costagas-extractor-gdelt \
          costagas-extractor-resoluciones \
          costagas-portal-firmar costagas-portal-estado \
-         costagas-portal-kpis costagas-portal-revision; do
+         costagas-portal-kpis costagas-portal-revision \
+         costagas-validacion-detector; do
   aws lambda update-function-code --function-name "$f" \
     --s3-bucket "$CODE_BUCKET" --s3-key _code/costagas_src.zip > /dev/null
 done
 
 echo ">> Creando prefijos de las capas (2.1.2)"
 for p in landing/ landing/interno/ landing/externo/ bronze/ silver/ gold/ _manifests/ \
-         op/landing/ scaletest/ athena-results/ sparkui/; do
+         op/landing/ scaletest/ athena-results/ sparkui/ \
+         sim/ sim/_spec/; do
   aws s3api put-object --bucket "$LAGO" --key "$p" --server-side-encryption AES256 > /dev/null
 done
 

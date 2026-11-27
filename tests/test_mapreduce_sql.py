@@ -79,3 +79,19 @@ def test_escribe_particionado_por_anio_y_mes(spark, datos, lago):
     assert sorted(p.name for p in raiz.glob("anio=*")) == ["anio=2020"]
     assert sorted(p.name for p in (raiz / "anio=2020").glob("mes=*")) == ["mes=1", "mes=2"]
     assert not list(raiz.glob("producto=*"))        # nunca se particiona por producto
+
+
+def test_las_cuatro_etapas_de_mapreduce_estan_en_el_plan_fisico(spark, datos):
+    """WR20 (ADR 0029): la evidencia de la tecnica S3 es el plan, no una captura.
+
+    El combiner no se escribe: Catalyst agrega parcialmente antes del intercambio
+    y por eso aparecen dos `HashAggregate` alrededor de un `Exchange`. Si algun
+    dia el plan deja de traer el parcial, el ADR 0029 se queda sin su evidencia y
+    esta prueba falla antes de que eso llegue al informe.
+    """
+    plan = mr.construir(spark, *datos)._jdf.queryExecution().executedPlan().toString()
+
+    assert plan.count("HashAggregate") >= 2            # parcial (combiner) y final
+    assert "Exchange hashpartitioning" in plan         # shuffle por la llave
+    for columna in mr.LLAVE:
+        assert columna in plan.split("Exchange hashpartitioning")[1][:200]
