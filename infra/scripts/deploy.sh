@@ -91,14 +91,16 @@ for f in costagas-bronze-to-silver costagas-ingesta \
          costagas-extractor-youtube costagas-extractor-gdelt \
          costagas-extractor-resoluciones \
          costagas-portal-firmar costagas-portal-estado \
-         costagas-portal-kpis costagas-portal-revision; do
+         costagas-portal-kpis costagas-portal-revision \
+         costagas-validacion-detector; do
   aws lambda update-function-code --function-name "$f" \
     --s3-bucket "$CODE_BUCKET" --s3-key _code/costagas_src.zip > /dev/null
 done
 
 echo ">> Creando prefijos de las capas (2.1.2)"
 for p in landing/ landing/interno/ landing/externo/ bronze/ silver/ gold/ _manifests/ \
-         op/landing/ scaletest/ athena-results/ sparkui/; do
+         op/landing/ scaletest/ athena-results/ sparkui/ \
+         sim/ sim/_spec/; do
   aws s3api put-object --bucket "$LAGO" --key "$p" --server-side-encryption AES256 > /dev/null
 done
 

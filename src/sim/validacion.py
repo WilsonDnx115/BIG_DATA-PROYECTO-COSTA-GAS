@@ -397,5 +397,56 @@ def main(argv=None) -> int:
     return 0
 
 
+# --- Punto de entrada en Lambda (W19) ----------------------------------------
+# La funcion `costagas-validacion-detector` corre un lote por invocacion: 100
+# semillas en 10 lotes de 10, dentro de los 900 s de timeout. Lo unico que hace
+# este handler y no hace `main` es bajar la especificacion sellada del escenario
+# B, porque `escenario_b.cargar_spec` lee un archivo local y en la nube el
+# archivo vive en `sim/_spec/`.
+ARCHIVO_SPEC_TMP = "/tmp/escenario_b_spec.yaml"   # noqa: S108 - unico disco de Lambda
+
+
+def descargar_spec(destino: str = ARCHIVO_SPEC_TMP, lake_uri: str | None = None) -> str:
+    """Baja a disco la especificacion sellada de `sim/_spec/` y devuelve su ruta.
+
+    Exige que haya **exactamente un** archivo bajo ese prefijo: con dos no se
+    adivina cual es el vigente, porque la medicion queda sellada contra la
+    huella SHA-256 del que se use. El contenido no se lee aqui ni se registra en
+    el log: quien valida el detector no debe saber donde estan los robos.
+    """
+    import boto3  # noqa: PLC0415
+
+    base = rutas.ruta("sim", "_spec", lake_uri=lake_uri)
+    if not base.startswith("s3://"):
+        raise escenario_b.EspecificacionInvalida(
+            f"descargar_spec es para S3; en local apunte {escenario_b.VARIABLE_RUTA} al archivo")
+    bucket, _, prefijo = base[len("s3://"):].partition("/")
+    s3 = boto3.client("s3")
+    claves = [o["Key"] for o in
+              s3.list_objects_v2(Bucket=bucket, Prefix=f"{prefijo.rstrip('/')}/")
+               .get("Contents", [])
+              if not o["Key"].endswith("/")]
+    if len(claves) != 1:
+        raise escenario_b.EspecificacionInvalida(
+            f"se esperaba exactamente una especificacion en {base}, hay {len(claves)}")
+    s3.download_file(bucket, claves[0], destino)
+    return destino
+
+
+def lambda_handler(event, context=None) -> dict:
+    """Corre un lote. Evento: {"lote": 1, "tamano": 10}.
+
+    Devuelve el resumen del lote y la ruta del JSON, no las cifras por semilla:
+    el detalle queda en `sim/resultados/lote=<n>.json`.
+    """
+    event = event or {}
+    lote = int(event.get("lote", 1))
+    tamano = int(event.get("tamano", TAMANO_LOTE))
+    spec = event.get("spec") or descargar_spec()
+    resultado = ejecutar_lote(lote, ruta_spec=spec, tamano=tamano)
+    return {"lote": resultado["lote"], "semillas": resultado["semillas"],
+            "ruta": resultado["ruta"], "resumen": resultado["resumen"]}
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

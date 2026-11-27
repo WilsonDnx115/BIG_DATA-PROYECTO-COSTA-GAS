@@ -43,6 +43,7 @@ y [#14](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/pull/14).
 | **W24** | Prueba de escalabilidad, Tabla 3.11 | Medido en local; **las filas de AWS siguen pendientes** |
 | **W06** | `fact_balance_planta`, el balance de planta (KPI 1 y 2) | Implementado y probado |
 | **W09** | DDL de Gold en Iceberg: 13 de las 15 tablas | Implementado y probado |
+| **W19** | Lambda `costagas-validacion-detector` y rol `costagas-sim-role`, solo `sim/` | Implementado y probado |
 
 Y los ADR 0023 a 0026, que documentan las cuatro decisiones de alcance que tomé por el camino.
 
@@ -72,7 +73,6 @@ así que hay que verificar el `MemorySize` en el recurso después, no en el coma
 | **W12** `fact_alerta`, **W14**, **W15**, **W18** | Esté la cadena anterior |
 | **W16** control previo al pago | Esté W12. El lado de tesorería ya lo tengo: `pedidos_proveedor.yaml` |
 | **W17** semáforo de las 6:30 | Esté W16, y Frank publique `v_semaforo_unidades` |
-| **W19** validación del detector | Anghelo cierre A18, que espera a Frank |
 | Filas de AWS de la **Tabla 3.11** | Esté W11 y se haya desplegado |
 | **Desplegar** y llenar las evidencias | Tenga la aprobación del change set |
 
@@ -121,8 +121,12 @@ RUC de prefijo 10, 15 y 17. Lo revisé y tu corrección está bien.
 
 ## 4. Frank · lo que necesito de ti
 
-**4.1 · `src/models/detector.py` con `calibrar_h`.** No existe en ninguna rama. Bloquea el A18 de
-Anghelo y, a través suyo, mi W19, que es la Lambda que corre esa validación en `sim/`.
+**4.1 · `src/models/detector.py` con `calibrar_h`.** Ya está en `main` y con eso Anghelo entregó su
+A18 (`src/sim/validacion.py`), así que mi W19 quedó implementado: la Lambda
+`costagas-validacion-detector` de 3 008 MB y 900 s corre un lote de 10 semillas por invocación.
+Lo que falta ahí no es código: **alguien que no sea quien valida tiene que subir la especificación
+sellada del escenario B a `sim/_spec/`**, un solo archivo, y sin abrirlo. El rol solo ve `sim/` y el
+umbral en `gold/_modelos/detector/`, de modo que la medición no puede mirar Silver ni Gold.
 
 **4.2 · Las vistas de Athena.** `sql/athena/vistas/` no existe en ninguna rama. Necesito:
 

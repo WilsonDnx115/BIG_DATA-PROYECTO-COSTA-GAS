@@ -10,6 +10,7 @@ real no esta en el repositorio y no debe estarlo.
 from __future__ import annotations
 
 import json
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -157,3 +158,108 @@ def test_sin_especificacion_no_se_mide_un_escenario_sin_robos(monkeypatch):
     monkeypatch.delenv(escenario_b.VARIABLE_RUTA, raising=False)
     with pytest.raises(escenario_b.EspecificacionInvalida):
         V.medir_semilla(7, ruta_spec=None)
+
+
+# --- W19: el punto de entrada en Lambda ---------------------------------------
+# `lambda_handler` no mide nada por su cuenta: parte el trabajo en lotes y baja
+# la especificacion sellada. Lo que se prueba es eso, no la medicion, que ya
+# esta cubierta arriba con la especificacion de prueba.
+
+class _S3Falso:
+    """Lo minimo del cliente de S3 que usa `descargar_spec`."""
+
+    def __init__(self, claves):
+        self.claves = list(claves)
+        self.bajados = []
+
+    def list_objects_v2(self, Bucket, Prefix):          # noqa: N803 - firma de boto3
+        self.prefijo = Prefix
+        return {"Contents": [{"Key": k} for k in self.claves]}
+
+    def download_file(self, bucket, clave, destino):
+        self.bajados.append((bucket, clave, destino))
+        pathlib.Path(destino).write_text("escenario: sellado\n", encoding="utf-8")
+
+
+def _falsear_boto3(monkeypatch, s3):
+    import sys                                             # noqa: PLC0415
+    import types                                            # noqa: PLC0415
+
+    modulo = types.ModuleType("boto3")
+    modulo.client = lambda servicio, *a, **k: s3
+    monkeypatch.setitem(sys.modules, "boto3", modulo)
+    return s3
+
+
+def test_el_handler_corre_el_lote_que_pide_el_evento(monkeypatch):
+    vistos = {}
+
+    def falso(numero, ruta_spec=None, tamano=None, **extra):
+        vistos.update(numero=numero, ruta_spec=ruta_spec, tamano=tamano)
+        return {"lote": numero, "semillas": [1], "ruta": "s3://x/sim/resultados/lote=3.json",
+                "resumen": {"cumple": True}, "por_semilla": [{"semilla": 1}]}
+
+    monkeypatch.setattr(V, "ejecutar_lote", falso)
+    salida = V.lambda_handler({"lote": "3", "tamano": "2", "spec": str(SPEC)})
+
+    assert vistos == {"numero": 3, "ruta_spec": str(SPEC), "tamano": 2}
+    assert salida["lote"] == 3
+
+
+def test_el_handler_devuelve_el_resumen_y_no_el_detalle_por_semilla(monkeypatch):
+    """El detalle queda en el JSON del lote: en la respuesta solo abulta el log."""
+    monkeypatch.setattr(V, "ejecutar_lote", lambda *a, **k: {
+        "lote": 1, "semillas": [1], "ruta": "r", "resumen": {"cumple": True},
+        "por_semilla": [{"semilla": 1, "robos": "donde estan"}]})
+
+    salida = V.lambda_handler({"spec": str(SPEC)})
+
+    assert set(salida) == {"lote", "semillas", "ruta", "resumen"}
+
+
+def test_un_evento_vacio_corre_el_primer_lote_completo(monkeypatch):
+    vistos = {}
+    monkeypatch.setattr(V, "ejecutar_lote", lambda numero, **k: vistos.update(
+        numero=numero, **k) or {"lote": numero, "semillas": [], "ruta": "r", "resumen": {}})
+    monkeypatch.setattr(V, "descargar_spec", lambda: "/tmp/spec.yaml")       # noqa: S108
+
+    V.lambda_handler({})
+
+    assert vistos["numero"] == 1 and vistos["tamano"] == V.TAMANO_LOTE
+
+
+def test_la_especificacion_se_baja_de_sim_spec_y_de_ningun_otro_prefijo(monkeypatch, tmp_path):
+    s3 = _falsear_boto3(monkeypatch, _S3Falso(["sim/_spec/escenario_b.yaml"]))
+    destino = tmp_path / "spec.yaml"
+
+    ruta = V.descargar_spec(str(destino), lake_uri="s3://lago-de-prueba")
+
+    assert s3.prefijo == "sim/_spec/"
+    assert s3.bajados == [("lago-de-prueba", "sim/_spec/escenario_b.yaml", str(destino))]
+    assert ruta == str(destino) and destino.exists()
+
+
+def test_con_dos_especificaciones_no_se_adivina_la_vigente(monkeypatch, tmp_path):
+    """La huella SHA-256 sella la medicion: elegir una al azar la invalida."""
+    from src.sim import escenario_b                          # noqa: PLC0415
+
+    _falsear_boto3(monkeypatch, _S3Falso(["sim/_spec/v1.yaml", "sim/_spec/v2.yaml"]))
+
+    with pytest.raises(escenario_b.EspecificacionInvalida, match="exactamente una"):
+        V.descargar_spec(str(tmp_path / "spec.yaml"), lake_uri="s3://lago-de-prueba")
+
+
+def test_sin_especificacion_en_el_prefijo_falla_en_vez_de_medir_sin_robos(monkeypatch, tmp_path):
+    from src.sim import escenario_b                          # noqa: PLC0415
+
+    _falsear_boto3(monkeypatch, _S3Falso([]))
+
+    with pytest.raises(escenario_b.EspecificacionInvalida, match="hay 0"):
+        V.descargar_spec(str(tmp_path / "spec.yaml"), lake_uri="s3://lago-de-prueba")
+
+
+def test_en_local_descargar_spec_dice_que_variable_apuntar(monkeypatch, tmp_path):
+    from src.sim import escenario_b                          # noqa: PLC0415
+
+    with pytest.raises(escenario_b.EspecificacionInvalida, match=escenario_b.VARIABLE_RUTA):
+        V.descargar_spec(str(tmp_path / "spec.yaml"), lake_uri=str(tmp_path))
