@@ -167,7 +167,8 @@ def test_scop_y_placa_divergente(lago, tmp_path):
         ["15/07/2023", 12345678901, "GLP-G", "prov", "callao", "T1A-123", "T1A123 (15/7/23)", "F1-1", "Atendido"],
         ["16/07/2023", 12345678902, "GLP-G", "prov", "callao", "T1A-123", "B2E-983", "F1-2", "ATENDIDO"],
         ["17/07/2023", None, "GLP-G", "prov", "callao", "T1A-123", "B2E-983", "F1-3", "ATENDIDO"]]})
-    r = procesar.procesar_archivo(ruta)[0]
+    # el archivo alimenta scop y pedidos_proveedor (A07): hay que elegir la fuente, no la posicion
+    r = next(x for x in procesar.procesar_archivo(ruta) if x["fuente"] == "scops_generados")
     assert r["filas_salida"] == 3 and r["calidad"]["ordenes_con_placa_divergente"] == 2      # la orden sin número se conserva
     df = procesar.leer_tabla("scop")
     assert df["nro_scop"].tolist() == ["12345678901", "12345678902", None]

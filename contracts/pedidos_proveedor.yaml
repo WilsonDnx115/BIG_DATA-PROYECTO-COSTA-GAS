@@ -1,0 +1,107 @@
+# Contrato de la tabla Silver pedidos_proveedor (informe v16, 4.3 y Tabla 3.6).
+# Es el lado de TESORERIA del cruce S12: se compara contra compras_glp, que es el
+# lado de logistica. El commit A07 la llamaba «tesoreria»; el nombre vigente es el
+# del informe y el que ya anuncia contracts/scop.yaml.
+tabla: pedidos_proveedor
+dominio: compras
+descripcion: Pedidos y pagos de GLP registrados por tesoreria, por proveedor y factura
+grano: factura de compra registrada por tesoreria
+llave: [proveedor, documento]
+
+fuentes:
+  - id: pedidos_petroperu
+    familia: F01
+    archivo: '^1\. PEDIDOS GLP\.xlsx$'
+    hojas: '^(?P<empresa>PETROPERU)$'
+    fila_encabezado: 3
+    exigir: [factura]
+    columnas:
+      FECHA: fecha
+      CANTIDAD: cantidad
+      PRODUCTO: producto
+      TOTAL: total
+      FACTURA: factura
+      VENCIMIENTO: fecha_vence
+      DEUDA: deuda
+      PAGOS: pagos
+  - id: pedidos_solgas
+    familia: F02
+    archivo: '^1\. PEDIDOS GLP\.xlsx$'
+    hojas: '^(?P<empresa>SOLGAS)$'
+    fila_encabezado: 4
+    exigir: [factura]
+    columnas:
+      FECHA: fecha
+      CANTIDAD: cantidad
+      PRODUCTO: producto
+      MONEDA: moneda
+      TOTAL: total
+      MAS PECERPCION: percepcion
+      FACTURA: factura
+      VENCE: fecha_vence
+      DEUDA DOLARES: deuda
+      PAGOS: pagos
+      fecha de pago: fecha_pago
+      banco: banco
+      modalidad: modalidad
+  - id: pedidos_pluspetrol
+    familia: F03
+    archivo: '^1\. PEDIDOS GLP\.xlsx$'
+    hojas: '^(?P<empresa>PLUSPETROL)$'
+    fila_encabezado: 4
+    exigir: [factura]
+    columnas:
+      GRUPO: grupo
+      SEDE: sede
+      FECHA FACT: fecha
+      SCOP: nro_scop
+      CANTIDAD CARGADA: cantidad
+      PRODUCTO: producto
+      FACTURA: factura
+      SALDO: deuda
+      PAGOS: pagos
+      fecha de pago: fecha_pago
+      BANCO: banco
+      T.C.: tipo_cambio
+      CON IMPUESTOS: total
+
+pendiente:
+  - "Hoja PRIMAX: el inventario no publica los nombres de sus 25 columnas (encabezados_raw.md). Falta declararla; mientras tanto ese proveedor no llega a Silver."
+  - "PETROPERU no registra fecha de pago ni moneda: fecha_pago queda nula y para esas facturas se usa fecha_vence (informe v16, 4.3)."
+  - "PETROPERU y SOLGAS no traen tipo de cambio; solo PLUSPETROL tiene la columna T.C."
+  - "Columnas de PLUSPETROL no declaradas: CANTIDAD ORDEN, S/, SOLES, SIN IGV SIN FISE y CON FISE. Son desgloses del mismo importe; se declaran cuando una metrica las necesite."
+  - "Columna CAMBISTA de PLUSPETROL: puede nombrar a una persona natural, asi que no pasa a Silver hasta definir su seudonimizacion."
+  - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de estas hojas por separado."
+  - "La hoja CALCULO PLUS PETROL es un resumen y no pasa a Silver."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje, regla: "id de la fuente del contrato"}
+  - {nombre: hoja, tipo: string, rol: linaje, regla: "hoja de Excel de origen"}
+  - {nombre: fila, tipo: int, rol: linaje, regla: "fila de Excel de origen"}
+  - {nombre: anio, tipo: int, rol: dimension, regla: "año de la fecha de la factura"}
+  - {nombre: mes, tipo: int, rol: dimension, regla: "mes de la fecha de la factura"}
+  - {nombre: proveedor, tipo: string, rol: llave, regla: "nombre de la hoja en mayúsculas"}
+  - {nombre: documento, tipo: string, rol: llave, regla: "SERIE-NUMERO sin ceros a la izquierda; así lo cruza cruce_s12"}
+  - {nombre: serie, tipo: string, rol: atributo, regla: "parte izquierda del documento"}
+  - {nombre: numero, tipo: string, rol: atributo, regla: "parte derecha del documento, sin ceros a la izquierda"}
+  - {nombre: documento_crudo, tipo: string, rol: calidad, regla: "texto original de FACTURA cuando no se pudo separar en serie y número"}
+  - {nombre: nro_scop, tipo: string, rol: atributo, regla: "solo dígitos; solo lo trae PLUSPETROL"}
+  - {nombre: producto, tipo: string, rol: atributo}
+  - {nombre: kg, tipo: double, rol: medida, regla: "CANTIDAD o CANTIDAD CARGADA, en kg"}
+  - {nombre: moneda, tipo: string, rol: atributo, regla: "solo la declara SOLGAS"}
+  - {nombre: total, tipo: double, rol: medida, regla: "importe de la factura con impuestos"}
+  - {nombre: percepcion, tipo: double, rol: medida}
+  - {nombre: tipo_cambio, tipo: double, rol: medida, regla: "solo lo trae PLUSPETROL"}
+  - {nombre: tc_valido, tipo: bool, rol: calidad, regla: "tipo de cambio entre TC_MIN y TC_MAX"}
+  - {nombre: usd_por_kg, tipo: double, rol: medida, regla: "total ÷ kg cuando la moneda es USD; nulo si faltan kg o no es USD"}
+  - {nombre: deuda, tipo: double, rol: medida}
+  - {nombre: pagos, tipo: double, rol: medida}
+  - {nombre: fecha, tipo: date, rol: dimension, regla: "fecha de la factura; lo no convertible queda nulo y se cuenta"}
+  - {nombre: fecha_pago, tipo: date, rol: dimension, regla: "solo SOLGAS y PLUSPETROL; lo no convertible queda nulo y se cuenta"}
+  - {nombre: fecha_vence, tipo: date, rol: dimension, regla: "VENCIMIENTO en PETROPERU y VENCE en SOLGAS; lo no convertible queda nulo y se cuenta"}
+  - {nombre: estado_fecha_vence, tipo: string, rol: calidad, regla: "ok, sin_fecha o no_convertible"}
+  - {nombre: grupo, tipo: string, rol: atributo, regla: "solo PLUSPETROL"}
+  - {nombre: sede, tipo: string, rol: atributo, regla: "solo PLUSPETROL"}
+  - {nombre: banco, tipo: string, rol: atributo}
+  - {nombre: modalidad, tipo: string, rol: atributo, regla: "solo SOLGAS"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

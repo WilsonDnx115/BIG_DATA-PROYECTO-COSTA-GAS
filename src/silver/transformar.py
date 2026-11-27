@@ -7,6 +7,8 @@ lo que no se puede convertir queda nulo y se cuenta.
 """
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 from src.common import limpieza as L
@@ -204,5 +206,96 @@ def ventas_detalle(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return o, calidad
 
 
+# --- pedidos_proveedor (A07) -------------------------------------------------
+_RE_DOCUMENTO = re.compile(r"^([A-Za-z0-9]+)\s*[-/]\s*0*(\d+)$")
+
+
+def _documento(valor) -> tuple[str | None, str | None, str | None, str | None]:
+    """«F001-00012345» → («F001-12345», «F001», «12345», None).
+
+    Devuelve (documento, serie, numero, crudo). Lo que no se puede separar en serie y
+    número se conserva tal cual en `documento` y se copia a `crudo` para poder contarlo:
+    sin serie, `cruce_s12` no encuentra su pareja en logística y la factura sale como
+    «solo_tesoreria». No se inventa una serie.
+    """
+    t = a_texto(valor)
+    if t is None:
+        return None, None, None, None
+    limpio = t.upper().replace(" ", "")
+    m = _RE_DOCUMENTO.match(limpio)
+    if not m:
+        return limpio, None, None, t          # `crudo` conserva el texto original de la celda
+    serie, numero = m.group(1), m.group(2)
+    return f"{serie}-{numero}", serie, numero, None
+
+
+def _fechas(serie: pd.Series) -> tuple[list, list]:
+    """Fechas convertidas y su estado: ok, sin_fecha o no_convertible. Nada se inventa."""
+    valores = [L.a_fecha(v) for v in serie]
+    crudos = [a_texto(v) for v in serie]
+    estados = ["sin_fecha" if c is None else ("ok" if f is not None else "no_convertible")
+               for f, c in zip(valores, crudos)]
+    return valores, estados
+
+
+def pedidos_proveedor(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Lado de tesorería del cruce S12: una fila por factura registrada en el pedido.
+
+    El proveedor es el nombre de la hoja (PETROPERU, SOLGAS o PLUSPETROL). El documento
+    se normaliza a «SERIE-NUMERO» porque así lo parte `cruce_s12` para cruzarlo contra
+    `compras_glp`. Las fechas que no se pueden convertir quedan nulas y se cuentan en
+    `silver/_control/`.
+    """
+    o = pd.DataFrame(index=df.index)
+    o["proveedor"] = _texto(_col(df, "_empresa"), mayus=True)
+
+    doc = _col(df, "factura").map(_documento)
+    o["documento"] = doc.str[0]
+    o["serie"] = doc.str[1]
+    o["numero"] = doc.str[2]
+    o["documento_crudo"] = doc.str[3]
+
+    o["nro_scop"] = _digitos(_col(df, "nro_scop"))
+    o["producto"] = _texto(_col(df, "producto"), mayus=True)
+    o["kg"] = _num(_col(df, "cantidad"))
+    o["moneda"] = _texto(_col(df, "moneda"), mayus=True)
+    o["total"] = _num(_col(df, "total"))
+    o["percepcion"] = _num(_col(df, "percepcion"))
+    o["tipo_cambio"] = _num(_col(df, "tipo_cambio"))
+    o["tc_valido"] = o["tipo_cambio"].map(L.tc_valido).astype("boolean")
+    en_usd = o["moneda"].isin(["USD", "US$", "DOLARES", "DÓLARES", "$"])
+    o["usd_por_kg"] = (o["total"] / o["kg"]).where(en_usd & (o["kg"] > 0))
+    o["deuda"] = _num(_col(df, "deuda"))
+    o["pagos"] = _num(_col(df, "pagos"))
+
+    o["fecha"], _ = _fechas(_col(df, "fecha"))
+    o["fecha_pago"], _ = _fechas(_col(df, "fecha_pago"))
+    o["fecha_vence"], estado_vence = _fechas(_col(df, "fecha_vence"))
+    o["estado_fecha_vence"] = estado_vence
+    fecha = pd.to_datetime(pd.Series(o["fecha"], index=o.index), errors="coerce")
+    o["anio"] = fecha.dt.year.astype("Int64")
+    o["mes"] = fecha.dt.month.astype("Int64")
+
+    o["grupo"] = _texto(_col(df, "grupo"), mayus=True)
+    o["sede"] = _texto(_col(df, "sede"), mayus=True)
+    o["banco"] = _texto(_col(df, "banco"), mayus=True)
+    o["modalidad"] = _texto(_col(df, "modalidad"), mayus=True)
+
+    con_tc = o["tipo_cambio"].notna()
+    calidad = {
+        "documento_presente": _tasa(o["documento"].notna()),
+        "documento_sin_serie": int(o["documento_crudo"].notna().sum()),
+        "fecha_valida": _tasa(pd.Series(o["fecha"], index=o.index).notna()),
+        "vence_no_convertible": int((o["estado_fecha_vence"] == "no_convertible").sum()),
+        "vence_sin_fecha": int((o["estado_fecha_vence"] == "sin_fecha").sum()),
+        "fecha_pago_registrada": int(pd.Series(o["fecha_pago"], index=o.index).notna().sum()),
+        "tc_registrados": int(con_tc.sum()),
+        "tc_fuera_de_rango": int((con_tc & ~o["tc_valido"].fillna(False)).sum()),
+        "kg_positivo": _tasa(o["kg"] > 0),
+    }
+    return o, calidad
+
+
 TRANSFORMACIONES = {"compras_glp": compras_glp, "scop": scop, "unidades": unidades,
-                    "ventas_unidad_mes": ventas_unidad_mes, "ventas_detalle": ventas_detalle}
+                    "ventas_unidad_mes": ventas_unidad_mes, "ventas_detalle": ventas_detalle,
+                    "pedidos_proveedor": pedidos_proveedor}
