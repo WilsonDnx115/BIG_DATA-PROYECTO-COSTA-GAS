@@ -2,6 +2,9 @@ version: 6
 fuente: Proyecto_BigData_CostaGas_Trujillo_final_v6.docx, Tabla 4.3
 paquete: WP 0.8
 nota: Valores de referencia del informe; no son resultados de esta ejecución ni etiquetas de robo.
+muestra_minima: >-
+  S1, S4 y S7 tienen de 2 a 9 casos (informe v16, Tablas 4.3 y 5.3): se calculan y abren
+  revisión, pero su grado es «indicio» y no entran a la precisión del modelo ni a las conclusiones.
 senales:
   S1:
     descripcion: Placa cargada distinta de la facturada
@@ -10,6 +13,7 @@ senales:
     ventana: ene–jul 2023
     estado: parcial
     evidencia: alta
+    muestra_minima: true
     implementacion: fuera_del_hito_wp_0.8
     hipotesis: [H1, H2]
     referencia: 3 de 9 órdenes con ambas placas
@@ -40,6 +44,7 @@ senales:
     ventana: 2020; 2022–23
     estado: parcial
     evidencia: alta_si_existe_dato_mtc
+    muestra_minima: true
     implementacion: fuera_del_hito_wp_0.8
     hipotesis: [H1, H2]
     referencia: Capacidad conocida en dos facturas; ambas la superan
@@ -70,6 +75,7 @@ senales:
     ventana: 2020
     estado: resoluble
     evidencia: media
+    muestra_minima: true
     implementacion: wp_0.8
     hipotesis: [H1, H2]
     referencia: Tres unidades no habilitadas con gastos; cero con ventas

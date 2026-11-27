@@ -23,20 +23,50 @@ def cargar_catalogo() -> dict:
     return senales
 
 
+# Ventanas de fecha de cada señal (catálogo, columna «ventana»). Las que no figuran aquí
+# se evalúan por año: 2020, el piloto. Lo usan las señales en pandas y en Spark.
+VENTANAS_FECHA = {
+    'S2': (('2020-01-01', '2020-12-31'), ('2022-02-01', '2023-08-31')),
+    'S3': (('2020-01-01', '2020-12-31'), ('2022-02-01', '2023-08-31')),
+    'S6': (('2022-02-01', '2023-08-31'),),
+    'S11': (('2018-10-01', '2018-10-31'),),
+    'S12': (('2022-02-01', '2023-07-31'),),
+}
+ANIO_VENTANA = 2020
+
+# Grado de evidencia de la señal (dim_senal) → grado que lleva cada alerta.
+GRADO_ALERTA = {'alta': 'alto', 'media': 'medio', 'indicio': 'indicio'}
+
+
+def grado_evidencia(regla: dict) -> str:
+    """Grado de evidencia de una señal según el catálogo: «indicio», «alta» o «media».
+
+    Las señales con muestra mínima (S1, S4 y S7: de 2 a 9 casos; informe v16,
+    Tablas 4.3 y 5.3) son «indicio» aunque su fuente sea fuerte. Las demás toman la
+    evidencia del catálogo; «alta_si_existe_…» cuenta como alta (S8).
+    """
+    if regla.get('muestra_minima'):
+        return 'indicio'
+    return 'alta' if str(regla['evidencia']).startswith('alta') else 'media'
+
+
+def grado_alerta(regla: dict) -> str:
+    """Grado con que sale cada alerta de la señal: «alto», «medio» o «indicio»."""
+    return GRADO_ALERTA[grado_evidencia(regla)]
+
+
 def _numero(s):
     n = pd.to_numeric(s, errors='coerce').astype(float)
     return n.where(np.isfinite(n)).mask(s.map(lambda v: isinstance(v, (bool, np.bool_))))
 
 
 def _ventana(df, senal):
-    if senal in ('S2', 'S3'):
-        f = df.fecha
-        return f.between('2020-01-01', '2020-12-31') | f.between('2022-02-01', '2023-08-31')
-    if senal == 'S6':
-        return df.fecha.between('2022-02-01', '2023-08-31')
-    if senal == 'S11':
-        return df.fecha.between('2018-10-01', '2018-10-31')
-    return df.anio.eq(2020)
+    if senal in VENTANAS_FECHA:
+        mascara = pd.Series(False, index=df.index)
+        for ini, fin in VENTANAS_FECHA[senal]:
+            mascara |= df.fecha.between(ini, fin)
+        return mascara
+    return df.anio.eq(ANIO_VENTANA)
 
 
 def _emitir(df, senal, motivo, puntaje=1.0, tipo='regla', valor=None):
@@ -51,7 +81,7 @@ def _emitir(df, senal, motivo, puntaje=1.0, tipo='regla', valor=None):
     out['kg'] = _numero(df.kg) if 'kg' in df else _numero(df.kg_base_rol) if 'kg_base_rol' in df else np.nan
     out['valor_soles'] = valor if valor is not None else np.nan  # no monetizar movimiento como pérdida
     out['puntaje'] = puntaje
-    out['grado_evidencia'] = 'alto' if regla['evidencia'] == 'alta' else 'medio'
+    out['grado_evidencia'] = grado_alerta(regla)
     out['estado_revision'], out['motivo'] = 'pendiente', motivo
     out['fuentes'] = ','.join(regla['fuentes'])
     out['anio'], out['mes'] = out.fecha.dt.year, out.fecha.dt.month

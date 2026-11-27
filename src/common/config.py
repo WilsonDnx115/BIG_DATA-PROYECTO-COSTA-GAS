@@ -93,13 +93,16 @@ SEMILLA = _env_int("SEMILLA", 42)
 PRECIO_REF_KG = _env_float("PRECIO_REF_KG", 2.10)      # S/ por kg; se reemplaza por referencia pública
 
 # --- KPI 1 · balance de planta (H5) ------------------------------------------
-# La empresa no ha fijado su merma técnica. Para que el KPI 1 se calcule y quede
-# evidencia, el equipo asume 0.5 % de lo comprado como SUPUESTO DE TRABAJO, no como
-# dato de la empresa. El tablero muestra el KPI con y sin la merma, y la etiqueta
-# «supuesto» mientras MERMA_TECNICA_ES_SUPUESTO sea verdadero. Si la empresa entrega
-# su tolerancia, se cambian el valor, la fuente y la marca en .env, sin tocar código.
+# Merma técnica de planta: 0.5 % de lo comprado (ADR 0027). Es la referencia de mercado
+# para pérdidas de masa en balances de hidrocarburos: menos de 0.5 % con buena
+# instrumentación, 0.7-1.5 % con instrumentación media y 1.5-2.5 % con instrumentación
+# deficiente (Emerson, 2019); 0.5 % es además el tope del índice Solomon. Se usa el valor
+# de buena práctica para no absorber como merma lo que podría ser pérdida. Osinergmin no
+# publica una tolerancia de merma para plantas envasadoras. Es un supuesto declarado, no
+# una medición de la planta: MERMA_TECNICA_ES_SUPUESTO hace que el tablero lo etiquete.
 MERMA_TECNICA_PCT = _env_float("MERMA_TECNICA_PCT", 0.005)
-MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE", "Supuesto de trabajo del equipo: 0.5 % de lo comprado")
+MERMA_TECNICA_FUENTE = _env("MERMA_TECNICA_FUENTE",
+                            "Referencia de mercado: en balances de masa de hidrocarburos la pérdida con buena instrumentación es menor que 0.5 % (Emerson, 2019; requisito del índice Solomon). ADR 0027")
 MERMA_TECNICA_ES_SUPUESTO = _env("MERMA_TECNICA_ES_SUPUESTO", "si").strip().lower() in ("si", "sí", "true", "1")
 
 # --- Modelo S12 y su operación (4.3) -----------------------------------------
@@ -119,10 +122,22 @@ PSI_BINS = _env_int("PSI_BINS", 10)                          # deciles fijados e
 
 # --- Detector de desvíos persistentes (4.3, Tabla 4.8h) ----------------------
 FALSAS_ALARMAS_ANIO = _env_int("FALSAS_ALARMAS_ANIO", 12)    # en todo el sistema y en cada granularidad
+# CUSUM y EWMA (Montgomery, «Introduction to Statistical Quality Control», 8.ª ed., caps. 9.1 y 9.2;
+# ADR 0028). k = 0.5 desviaciones detecta un corrimiento de 1 desviación; h = 5 con k = 0.5 da un ARL
+# en control cercano a 465 periodos y es el umbral inicial que calibrar_h ajusta con el escenario A.
+# Para el EWMA, λ entre 0.05 y 0.25 funciona bien y L = 3 es el límite habitual.
+DETECTOR_K = _env_float("DETECTOR_K", 0.5)
+DETECTOR_H = _env_float("DETECTOR_H", 5.0)
+DETECTOR_LAMBDA = _env_float("DETECTOR_LAMBDA", 0.2)
+DETECTOR_L = _env_float("DETECTOR_L", 3.0)
+# Periodos propios que necesita una entidad antes de evaluarla: con 4, la participación frente a sus
+# pares sale de una mediana y no de un solo periodo; en la serie mensual de 14 meses deja 10 evaluables.
+DETECTOR_PERIODOS_BASE = _env_int("DETECTOR_PERIODOS_BASE", 4)
 SEMILLAS_DETECTOR = _env_int("SEMILLAS_DETECTOR", 100)
 LOTE_SEMILLAS = _env_int("LOTE_SEMILLAS", 10)
 
 # --- Controles preventivos (Tabla 4.8i) --------------------------------------
+TOL_KG_S12 = _env_float("TOL_KG_S12", 1.0)                  # kg: menos es redondeo entre tesorería y logística
 TOL_PRECIO_PAGO = _env_float("TOL_PRECIO_PAGO", 0.05)        # USD/kg sobre la mediana móvil del proveedor
 
 

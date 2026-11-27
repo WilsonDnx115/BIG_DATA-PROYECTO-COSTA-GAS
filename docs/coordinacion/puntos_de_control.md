@@ -28,7 +28,7 @@ son valores de trabajo del equipo; rigen solo cuando la gerencia los firma en la
 | Verde | Se paga según el procedimiento habitual |
 | Ámbar | Se paga después de revisar el documento que originó el aviso, en el mismo día |
 | Rojo | Se retiene el pago hasta tener el segundo registro (orden SCOP o guía) que explique la diferencia; plazo de revisión: 2 días hábiles |
-| Umbral | S3: precio más de 5 % sobre lo pactado (`TOL_PRECIO_COMPRA`, propuesta). S6: tipo de cambio que difiere del oficial en más de 1 % (`TOL_TIPO_CAMBIO`, propuesta). S12: diferencia de kg entre tesorería y logística mayor que ____ % (a fijar por la gerencia; `config.py` aún no tiene este parámetro) |
+| Umbral | S3: precio más de 5 % sobre lo pactado (`TOL_PRECIO_COMPRA`, propuesta). S6: tipo de cambio que difiere del oficial en más de 1 % (`TOL_TIPO_CAMBIO`, propuesta). S12: diferencia de kg entre tesorería y logística mayor que 1 kg (`TOL_KG_S12`; menos es redondeo entre los dos registros) |
 
 ## 3. Punto 2 · Antes del despacho (jefatura de planta)
 
@@ -41,7 +41,7 @@ son valores de trabajo del equipo; rigen solo cuando la gerencia los firma en la
 | Verde | Despacho normal |
 | Ámbar | Despacho normal; la jefatura revisa el expediente de la unidad en la semana |
 | Rojo | Antes de cargar, la jefatura verifica la orden SCOP y la guía de la unidad; si la unidad no está habilitada para GLP (S7), no se carga |
-| Umbral | Rojo: \|z\| > 3.5 del log de S/ por tonelada dentro de su rol (`UMBRAL_Z_MAD`), propuesta del modelo base. Ámbar: ____ (a fijar por la gerencia) |
+| Umbral | Rojo: \|z\| > 3.5 del log de S/ por tonelada dentro de su rol (`UMBRAL_Z_MAD`), propuesta del modelo base. Ámbar: el desvío empieza; el EWMA pasa su límite y el CUSUM aún no cruza el umbral (Tabla 4.8i) |
 
 ## 4. Punto 3 · Antes de la siguiente entrega a un cliente (comercial)
 
@@ -54,17 +54,20 @@ son valores de trabajo del equipo; rigen solo cuando la gerencia los firma en la
 | Verde | Entrega normal |
 | Ámbar | Entrega normal; comercial confirma el precio o la capacidad antes del cierre de mes |
 | Rojo | Antes de la siguiente entrega, comercial revisa el contrato, la capacidad registrada y el precio pactado del cliente |
-| Umbral | S10: precio más de 10 % bajo la mediana del canal (`TOL_PRECIO_S10`, propuesta). S5: volumen del mes mayor que ____ veces la capacidad registrada (a fijar por la gerencia) |
+| Umbral | S10: precio más de 10 % bajo la mediana del canal (`TOL_PRECIO_S10`, propuesta). S5: volumen del mes mayor que la capacidad registrada del cliente (1 vez; `senales_spark.s5`) |
 
 ## 5. Umbral de planta (KPI 1) y conformidad
 
 | Indicador | Referencia propuesta | Valor que fija la gerencia |
 |---|---|---|
-| KPI 1 · diferencia no explicada de planta | 2 % de lo comprado (`UMBRAL_KPI_DIF`) | ____ % |
-| Merma técnica de planta | No fijada por la empresa; el equipo usa 0.5 % como supuesto de trabajo (`MERMA_TECNICA_PCT`) | ____ % · fuente: ____________ |
+| KPI 1 · diferencia no explicada de planta | 2 % de lo comprado (`UMBRAL_KPI_DIF`) | 2 % |
+| Merma técnica de planta | 0.5 % de lo comprado (`MERMA_TECNICA_PCT`): pérdida de masa con buena instrumentación en balances de hidrocarburos, menor que 0.5 % (Emerson, 2019; ADR 0027) | 0.5 % · referencia de mercado (supuesto declarado) |
 
-Mientras la gerencia no fije la merma técnica, el tablero muestra el KPI 1 sin merma y con la
-leyenda «sin merma fijada» en el valor con merma.
+El tablero muestra el KPI 1 sin merma y con merma; el valor con merma lleva la etiqueta
+«referencia de mercado: 0.5 %», porque es un supuesto declarado y no una medición de la planta.
+La diferencia bruta de mayo de 2020 (1.7 % a 2.0 %) cae en el rango que la misma referencia asocia
+a instrumentación deficiente (1.5 % a 2.5 %): por eso la planta debe medir su stock físico antes de
+aceptar una merma mayor.
 
 **Conformidad de la gerencia**
 

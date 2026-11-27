@@ -18,11 +18,14 @@ Las dos restas son opcionales a proposito, y cada una por un motivo distinto:
   La funcion acepta un DataFrame de produccion por si algun dia aparece; sin el,
   la columna queda nula, **no en cero**: un cero diria que el stock no se movio,
   y eso no lo sabemos.
-* **`merma_tecnica_kg` es un supuesto del equipo, no un dato de la empresa.**
-  `config.MERMA_TECNICA_PCT` vale 0.5 % y `MERMA_TECNICA_ES_SUPUESTO` lo marca
-  como tal. Pasando `merma_pct=None` la columna queda nula y el KPI se calcula
-  sin descontar nada, que es la version que el tablero muestra al lado de la
-  otra.
+* **`merma_tecnica_kg` es un supuesto declarado, no una medicion de la planta.**
+  `config.MERMA_TECNICA_PCT` vale 0.5 %, que es la referencia de mercado para
+  balances de masa de hidrocarburos con buena instrumentacion
+  ([ADR 0027](../../docs/adr/0027-merma-tecnica-referencia-de-mercado.md));
+  Osinergmin no publica una tolerancia para plantas envasadoras, y
+  `MERMA_TECNICA_ES_SUPUESTO` hace que el tablero lo etiquete como supuesto.
+  Pasando `merma_pct=None` la columna queda nula y el KPI se calcula sin
+  descontar nada, que es la version que el tablero muestra al lado de la otra.
 
 Sobre `valor_soles`: valoriza **los kg no explicados** al precio de compra del
 propio mes, calculado de las facturas (`monto_usd * tipo_cambio / kg`), nunca

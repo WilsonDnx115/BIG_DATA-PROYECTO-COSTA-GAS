@@ -170,7 +170,7 @@
       {
         "name": "umbral_kpi1",
         "label": "Umbral KPI 1",
-        "description": "Referencia del KPI 1 (UMBRAL_KPI_DIF de src/common/config.py). La fija la gerencia (B18).",
+        "description": "Referencia del KPI 1: 2 % de lo comprado (UMBRAL_KPI_DIF de src/common/config.py), acordada en los puntos de control (B18).",
         "type": "constant",
         "query": "0.02",
         "hide": 2,
@@ -206,7 +206,7 @@
       "id": 1,
       "type": "stat",
       "title": "KPI 1 · Diferencia bruta (sin merma)",
-      "description": "(kg comprados - kg vendidos) / kg comprados, por planta y mes (fact_balance_planta). Mensual. Semáforo: verde bajo el umbral de referencia (2 %), rojo en o sobre él. Responsable: gerencia de planta (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "description": "(kg comprados - kg vendidos) / kg comprados, por planta y mes (fact_balance_planta). Mensual. Semáforo: verde bajo el umbral de referencia (2 %), rojo en o sobre él. Responsable: gerencia de planta (Tabla 4.10).",
       "gridPos": {
         "x": 0,
         "y": 1,
@@ -310,7 +310,7 @@
       "id": 2,
       "type": "stat",
       "title": "KPI 1 · Diferencia no explicada (con merma)",
-      "description": "KPI 1 sin merma - merma técnica. Si la empresa no fijó la merma técnica, no se calcula y se muestra «sin merma fijada». Mensual. Mismo semáforo que el KPI 1 sin merma. Responsable: gerencia de planta (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "description": "KPI 1 sin merma - merma técnica de 0.5 %: referencia de mercado para pérdidas de masa con buena instrumentación (Emerson, 2019; ADR 0027). Mensual. Mismo semáforo que el KPI 1 sin merma. Responsable: gerencia de planta (Tabla 4.10).",
       "gridPos": {
         "x": 5,
         "y": 1,
@@ -356,14 +356,14 @@
         "defaults": {
           "unit": "percentunit",
           "decimals": 2,
-          "noValue": "sin merma fijada",
+          "noValue": "sin dato del mes",
           "mappings": [
             {
               "type": "special",
               "options": {
                 "match": "null",
                 "result": {
-                  "text": "sin merma fijada",
+                  "text": "sin dato del mes",
                   "color": "text"
                 }
               }
@@ -408,7 +408,7 @@
       "id": 3,
       "type": "stat",
       "title": "Merma técnica aplicada",
-      "description": "merma_tecnica_pct de v_kpi_1. Nula mientras la empresa no la fije; el valor de trabajo del equipo es un supuesto, no un dato de la empresa.",
+      "description": "merma_tecnica_pct de v_kpi_1: 0.5 % de lo comprado. Referencia de mercado: pérdidas de masa menores que 0.5 % con buena instrumentación (Emerson, 2019; ADR 0027). Supuesto declarado, no una medición de la planta.",
       "gridPos": {
         "x": 10,
         "y": 1,
@@ -454,14 +454,14 @@
         "defaults": {
           "unit": "percentunit",
           "decimals": 2,
-          "noValue": "sin merma fijada",
+          "noValue": "sin dato del mes",
           "mappings": [
             {
               "type": "special",
               "options": {
                 "match": "null",
                 "result": {
-                  "text": "sin merma fijada",
+                  "text": "sin dato del mes",
                   "color": "text"
                 }
               }
@@ -502,7 +502,7 @@
       "id": 4,
       "type": "stat",
       "title": "KPI 2 · Valor de la diferencia",
-      "description": "Suma del valor de la diferencia en soles (fact_balance_planta). Mensual. No equivale a una pérdida confirmada. Responsable: gerencia de planta (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "description": "Suma del valor de la diferencia en soles (fact_balance_planta). Mensual. No equivale a una pérdida confirmada. Responsable: gerencia de planta (Tabla 4.10).",
       "gridPos": {
         "x": 14,
         "y": 1,
@@ -596,7 +596,7 @@
       "id": 5,
       "type": "stat",
       "title": "KPI 3 · Compras con segundo registro",
-      "description": "Compras con un segundo registro coincidente / compras (modelo_factura). Mensual. Responsable: tesorería (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "description": "Compras con un segundo registro coincidente / compras (modelo_factura). Mensual. Responsable: administración, que regulariza cada factura sin pareja antes del pago (Tabla 4.10).",
       "gridPos": {
         "x": 19,
         "y": 1,
@@ -690,7 +690,7 @@
       "id": 6,
       "type": "stat",
       "title": "KPI 4 · Combustible por tonelada",
-      "description": "Combustible (S/) / (kg / 1000), con kg vendidos en reparto y transportados en transporte (fact_unidad_mes). Respeta el filtro de rol. Mensual. Responsable: operaciones (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "description": "Combustible (S/) / (kg / 1000), con kg vendidos en reparto y transportados en transporte (fact_unidad_mes). Respeta el filtro de rol. Mensual. Responsable: operaciones (Tabla 4.10).",
       "gridPos": {
         "x": 0,
         "y": 6,
@@ -784,7 +784,7 @@
       "id": 7,
       "type": "stat",
       "title": "KPI 5 · Confirmación documental de alertas",
-      "description": "Alertas confirmadas / alertas revisadas en la validación documental ciega (v_alerta y revision_alerta). Mensual. Una alerta no es un robo confirmado. Responsable: control interno (por confirmar con la columna «Responsable · decisión» de la Tabla 4.10).",
+      "description": "Alertas confirmadas / alertas revisadas en la validación documental ciega (v_alerta y revision_alerta). Mensual. Una alerta no es un robo confirmado. Responsable: control interno (Tabla 4.10).",
       "gridPos": {
         "x": 12,
         "y": 6,
