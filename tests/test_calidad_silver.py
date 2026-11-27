@@ -108,3 +108,85 @@ def test_una_meta_sin_su_metrica_no_se_incumple(spark, control):
     assert "META_SCOP_COMPRAS" not in fila["metas_incumplidas"]
     assert fila["kg_positivo"] is None and fila["scop_presente"] is None
     assert fila["fecha_valida"] == 1.0
+
+
+# --- Bloqueo de metricas de Gold (commit AR09) --------------------------------
+# Estas no necesitan Spark: `bloqueos` trabaja sobre las filas, asi que la regla de
+# CLAUDE.md queda probada tambien donde Spark no corre.
+def _fila(tabla, fuente="f1", cumple=True, metas=()):
+    return {"tabla": tabla, "fuente": fuente, "cumple": cumple,
+            "metas_incumplidas": list(metas)}
+
+
+def _todas_cumplen():
+    tablas = {t for cfg in cs.KPI_FUENTES.values() for t in cfg["exigidas"]}
+    return [_fila(t) for t in sorted(tablas)]
+
+
+def test_con_todo_en_regla_los_cinco_kpi_se_publican():
+    resultado = cs.bloqueos(_todas_cumplen())
+    assert set(resultado) == {"kpi_1", "kpi_2", "kpi_3", "kpi_4", "kpi_5"}
+    assert all(v["publicable"] for v in resultado.values())
+    assert cs.kpi_bloqueados(_todas_cumplen()) == []
+
+
+def test_una_meta_incumplida_bloquea_su_kpi_y_lo_informa():
+    """La prueba que pide el AR09: bloquea y dice qué tabla y qué meta."""
+    filas = [f for f in _todas_cumplen() if f["tabla"] != "compras_glp"]
+    filas.append(_fila("compras_glp", cumple=False, metas=["META_SCOP_COMPRAS"]))
+
+    resultado = cs.bloqueos(filas)
+    kpi1 = resultado["kpi_1"]
+    assert kpi1["estado"] == cs.BLOQUEADO and kpi1["publicable"] is False
+    assert kpi1["tablas_que_incumplen"] == ["compras_glp"]
+    assert kpi1["metas_incumplidas"] == ["META_SCOP_COMPRAS"]
+    assert "META_SCOP_COMPRAS" in kpi1["motivo"] and "Tabla 3.7" in kpi1["motivo"]
+    # El KPI 4 no lee compras_glp: no tiene por qué caerse con él.
+    assert resultado["kpi_4"]["publicable"] is True
+
+
+def test_el_kpi_que_no_usa_esa_tabla_sigue_publicandose():
+    filas = [f for f in _todas_cumplen() if f["tabla"] != "gastos"]
+    filas.append(_fila("gastos", cumple=False, metas=["META_KG_EN_RANGO"]))
+
+    resultado = cs.bloqueos(filas)
+    assert resultado["kpi_4"]["publicable"] is False
+    assert [k for k, v in resultado.items() if not v["publicable"]] == ["kpi_4"]
+
+
+def test_una_tabla_sin_corrida_no_es_lo_mismo_que_una_que_incumple():
+    """Sin medicion no hay cifra; con medicion mala hay cifra y no se publica."""
+    sin_gastos = [f for f in _todas_cumplen() if f["tabla"] != "gastos"]
+    resultado = cs.bloqueos(sin_gastos)["kpi_4"]
+    assert resultado["estado"] == cs.SIN_MEDIR and resultado["publicable"] is False
+    assert resultado["tablas_sin_medir"] == ["gastos"]
+    assert resultado["metas_incumplidas"] == []
+    assert "no hay nada medido que publicar" in resultado["motivo"]
+
+
+def test_una_sola_fuente_que_incumple_arrastra_a_su_tabla():
+    """La metrica se calcula sobre la tabla entera, no sobre la hoja que sí pasó."""
+    filas = _todas_cumplen() + [_fila("compras_glp", fuente="f2", cumple=False,
+                                      metas=["META_PLACA_VALIDA"])]
+    assert cs.bloqueos(filas)["kpi_1"]["tablas_que_incumplen"] == ["compras_glp"]
+
+
+def test_una_fuente_opcional_no_bloquea_pero_se_informa():
+    """El stock físico no está medido: el KPI 1 lo declara como supuesto, no se calla."""
+    resultado = cs.bloqueos(_todas_cumplen())["kpi_1"]
+    assert resultado["publicable"] is True
+    assert resultado["fuentes_opcionales_ausentes_o_incumplidas"] == ["produccion_diaria"]
+
+
+def test_el_estado_sin_datos_bloquea_todo_y_no_falla():
+    resultado = cs.bloqueos([])
+    assert all(v["estado"] == cs.SIN_MEDIR for v in resultado.values())
+    assert cs.kpi_bloqueados([]) == ["kpi_1", "kpi_2", "kpi_3", "kpi_4", "kpi_5"]
+
+
+def test_cada_kpi_declara_la_tabla_de_gold_que_lee_su_vista():
+    """Si una vista cambia de tabla, el mapa de fuentes tiene que cambiar con ella."""
+    for kpi, info in cs.bloqueos(_todas_cumplen()).items():
+        vista = Path("sql/athena/vistas") / f"v_{kpi}.sql"
+        assert vista.exists(), vista
+        assert info["tabla_gold"] in vista.read_text(encoding="utf-8")
