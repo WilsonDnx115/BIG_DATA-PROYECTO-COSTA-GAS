@@ -12,10 +12,9 @@ asistente.
 
 | Quién | Qué necesito | Qué desbloquea |
 |---|---|---|
-| **Wilson o quien tenga los archivos** | La carpeta `DATASETS` con los 35 Excel, y describir en prosa qué mide cada posición de `GASTOS FLOTA` y de `CO01/Sheet1` | **AR01** (contrato de gastos) y con él **AR21**, el `fact_unidad_mes` del W07 y el combustible del KPI 4 |
+| **Wilson o quien tenga los archivos** | La carpeta `DATASETS` con los 35 Excel (hoy **no está en ninguna de nuestras máquinas**, ver 4.1), y describir en prosa qué mide cada posición de `GASTOS FLOTA` y de `CO01/Sheet1` | **AR01** (contrato de gastos) y con él **AR21**, el `fact_unidad_mes` del W07 y el combustible del KPI 4 |
 | **Wilson** | WR07-WR10: despliegue, carga inicial a S3 y primera corrida | **AR16, AR17 y AR22**, y todas las cifras reales del informe |
 | **Wilson** | WR17: la Lambda del detector | **AR18 y AR19** (la medición ciega) |
-| **Wilson** | WR06 y WR12 | **AR15** (técnicas del curso con archivo y línea) |
 | **Frank** | Fusionar `dev-frank`: tiene **10 commits sin entrar a `main`** | El ADR 0028, las métricas con bootstrap y las columnas de `modelo_factura` |
 | **Frank** | Revisar la cita de S11 y F36 (abajo, punto 5.1) | Que el informe v17 no publique una cifra que los archivos no sostienen |
 | **Bruno y Wilson** | Decidir el ADR 0014 de EMR y la evidencia de Hadoop Streaming | **AR10** y un requisito del curso |
@@ -23,8 +22,9 @@ asistente.
 | **Bruno o Wilson** | Proteger la rama `main` (abajo, punto 6.3) | Que CODEOWNERS sirva de algo y que no se pueda fusionar en rojo |
 | **Titular de AWS** | MFA del usuario raíz y de los cuatro usuarios de IAM, y rotar claves | La seguridad de la cuenta |
 
-**No me queda nada que pueda hacer sin ustedes.** Los 15 commits que no dependían de nadie están
-hechos y probados; los 9 que faltan esperan alguna de las filas de arriba.
+**Lo único que me queda por mi cuenta es el AR15**, y ya no está bloqueado: las diez técnicas que
+tiene que documentar están en `main` desde los merges del 27/11 (punto 1.3). Los otros 8 commits
+esperan alguna de las filas de arriba.
 
 ---
 
@@ -64,10 +64,30 @@ donde las de Spark sí corren: el `ci.yml` falla a propósito si alguna queda om
 | **AR01** contrato de gastos | Los 35 Excel (4.1) |
 | **AR21** estado de los contratos | AR01 |
 | **AR10** CLAUDE.md al v16 | La decisión sobre EMR (6.2) |
-| **AR15** técnicas con archivo y línea | WR06 y WR12 |
 | **AR16, AR17, AR22** | La carga inicial (WR09) |
 | **AR18, AR19** | La Lambda del detector (WR17) |
 | **AR24** insumos del informe v17 | FR24, WR21 y mi AR17 |
+
+### 1.3 · Lo siguiente que hago, y no necesito a nadie
+
+**AR15 · técnicas de ingeniería con archivo y línea.** El plan lo daba como bloqueado por WR06 y
+WR12, y eso ya no es cierto: las diez técnicas que faltaba documentar están en `main`.
+
+| Técnica | Dónde está |
+|---|---|
+| MapReduce SQL | `src/glue/mapreduce_sql.py:62` (`mapear`) y `:71` (`reducir`) |
+| MapReduce sobre RDD | `src/silver_to_gold/mapreduce.py:53` (`reduceByKey`) y `:59` (`groupByKey`) |
+| `MERGE` de Iceberg | `src/glue/iceberg.py:70` (`escribir_merge`) |
+| Lectura incremental | `infra/cloudformation/stack.yaml:360` y `:1002` (`job-bookmark-enable`) |
+| AQE y `broadcast()` | ya están en la tabla de `docs/tecnicas_curso.md` |
+| EventBridge Events | `infra/cloudformation/stack.yaml:515` y `:562` |
+| EventBridge Scheduler | `infra/cloudformation/stack.yaml:877` |
+| Flujos de Glue | `infra/cloudformation/stack.yaml` |
+| LDA | `src/glue/externos_job.py:248` (`temas`) |
+| pdfplumber | `src/extractores/resoluciones.py` |
+
+Hoy [`docs/tecnicas_curso.md`](tecnicas_curso.md) cubre S1-S5 con 27 filas, todas con su archivo y
+su línea. Faltan estas diez, que entraron después.
 
 ---
 
@@ -121,8 +141,15 @@ PLACA, ÁREA, DESCRIPCIÓN, COMENTARIOS, MONTO, PROVEEDOR, PLANTA) y `GASTOS FLO
 > «F: monto en soles», «H: texto libre del concepto». Y sobre todo **cuál columna dice si el
 > gasto es combustible**, que es la que necesita `gasto_combustible` de `fact_unidad_mes`.
 
-Escribiste que lo harías cuando tengas `../DATASETS` otra vez a mano. Es el cuello de botella
-real del proyecto: sin eso no hay AR01, y sin AR01 no hay `fact_unidad_mes` (tu W07), ni
+**Dónde están los archivos hoy: en ninguna de nuestras dos máquinas.** Los busqué en la mía por
+nombre de libro (`GASTOS 2020.xls`, `1. PEDIDOS GLP.xlsx`, `COMPRAS TOTAL 2020.xlsx`,
+`Reporte de Produccion CGT 2018.xlsx`) y por carpeta, y no aparecen; `C:\BIG DATA\DATASETS` no
+existe. Lo único que tengo son los Excel sintéticos de los escenarios A y B, que son míos. Tú
+escribiste que lo harías cuando tengas `../DATASETS` otra vez a mano. Así que el primer paso de
+todo esto es que alguien recupere la entrega y la ponga en `C:\BIG DATA\DATASETS`, fuera del
+repositorio, y por un canal privado: nunca por WhatsApp ni por correo.
+
+Es el cuello de botella real del proyecto: sin eso no hay AR01, y sin AR01 no hay `fact_unidad_mes` (tu W07), ni
 combustible en el KPI 4, ni señal S9 sobre datos reales, ni AR21.
 
 Lo que **no** hace falta: que publiques los valores de la primera fila. Tienes razón en no
