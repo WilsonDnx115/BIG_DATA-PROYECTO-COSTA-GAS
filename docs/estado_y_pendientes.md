@@ -220,7 +220,7 @@ porque cuenta 31 días de un mes de 31.
 Lo que el inventario muestra de 2018 es `Reporte de Produccion CGT 2018.xlsx`, y sus hojas son
 cuadros **cruzados por mes**. Son dos afirmaciones que no encajan, y la que está verificada contra
 los archivos es la del inventario. La búsqueda completa está en
-[`evidencias/produccion_no_cubierta.md`](evidencias/produccion_no_cubierta.md).
+[`evidencias/produccion_diaria_en_la_entrega.md`](evidencias/produccion_diaria_en_la_entrega.md).
 
 Lo que propongo, y que decides tú:
 

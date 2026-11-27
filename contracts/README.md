@@ -12,7 +12,7 @@ Un archivo YAML por tabla. Es la única fuente de verdad del esquema (base B5 y 
 | `ventas_unidad_mes` | `VENTAS FLOTA 2020.xlsx` y `2021.xlsx`, hoja VENTAS | Confirmar las hojas MAYO, JUNIO y Hoja3 |
 | `ventas_detalle` | `VENTAS MAYO 2020.xlsx`, `Ventas Por Proyecto.xlsx` | Reportes mensuales de 2019, sin encabezado |
 | `gastos` | Sin contrato todavía | `GASTOS FLOTA` y `CO01/Sheet1` empiezan en datos: no hay encabezado que emparejar. Se declara `OTROS GASTOS` con nombres y las otras dos por posición, con la descripción de cada posición ([hojas_sin_encabezado.md](../docs/evidencias/hojas_sin_encabezado.md), sección 2) |
-| `produccion_diaria` | **No cubierta por la entrega** | Ninguna de las 199 hojas tiene stock por día ni stock de planta de ningún grano. No es un pendiente: es un resultado, con su búsqueda en [produccion_no_cubierta.md](../docs/evidencias/produccion_no_cubierta.md). S11 queda sin fuente y el KPI 1 toma la variación de stock como 0, marcada con `stock_es_supuesto` |
+| `produccion_diaria` | Fuente localizada, sin contrato todavía | El stock por día **sí existe**: `Reporte de Produccion CGT 2018.xlsx`, hoja `ProduccionReal-Cap Efec (Octub)`, una fila por día y los 31 días de oct-2018, con los cinco conceptos de la interfaz `produccion` ([evidencia](../docs/evidencias/produccion_diaria_en_la_entrega.md)). No se carga todavía porque su encabezado son dos filas con bloques repetidos y el lector empareja por nombre de una sola fila. Es de 2018: el KPI 1 del piloto 2020 sigue tomando la variación de stock como 0, marcada con `stock_es_supuesto` |
 
 Cada contrato lista su propio pendiente en la clave `pendiente`.
 
