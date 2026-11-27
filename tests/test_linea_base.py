@@ -68,7 +68,7 @@ def test_cinco_metricas_desde_bronze_y_json_sin_identificadores(lago):
     assert r["incidencias"]["por_campo"]["red_02"]["documento_raw"] == 4
     assert {c["estado"] for c in r["comparacion"]} >= {"difiere", "no_comparable"}
     p = linea_base.guardar(r, lago / "evidencia" / "linea_base.json")
-    texto = p.read_text()
+    texto = p.read_text(encoding="utf-8")   # sin encoding, Windows lo lee en cp1252 y rompe las tildes
     assert json.loads(texto) == r
     for identificador in ("20131312955", "01234567", "T1A123"):
         assert identificador not in texto
