@@ -75,24 +75,30 @@ def test_lo_no_cubierto_esta_declarado_con_su_motivo():
 
 
 # --- Lo que todavia no puede correr, y por que ---------------------------------
-def test_la_tabla_espera_su_transformacion_en_ingenieria_de_datos():
-    """`procesar` despacha por tabla a `transformar.TRANSFORMACIONES`.
-
-    `gastos` todavia no esta ahi, y ese archivo es de ingenieria de datos. El contrato
-    y su DDL quedan listos; la lectura por posicion y la transformacion las agrega
-    quien cuida `src/silver/`. Esta prueba deja el estado escrito en vez de suponerlo:
-    si alguien agrega la transformacion y no actualiza esto, se entera aqui.
-    """
+def test_la_tabla_tiene_su_transformacion():
+    """`procesar` despacha por tabla a `transformar.TRANSFORMACIONES`."""
     from src.silver.transformar import TRANSFORMACIONES      # noqa: PLC0415
 
-    assert "gastos" not in TRANSFORMACIONES
-    assert "gastos" in contratos.cargar()                    # el contrato si existe
+    assert "gastos" in TRANSFORMACIONES
 
 
-def test_la_unica_fuente_declarada_es_la_que_tiene_encabezado():
+def test_las_tres_hojas_de_gasto_estan_declaradas():
+    """La que tiene encabezado, por nombre; las dos que empiezan en datos, por posicion."""
     c = contratos.cargar()["gastos"]
-    assert [f.id for f in c.fuentes] == ["otros_gastos_2020"]
-    assert c.fuentes[0].fila_encabezado == 1
+    por_id = {f.id: f for f in c.fuentes}
+    assert set(por_id) == {"otros_gastos_2020", "gastos_flota_2020", "gastos_proyecto_2019"}
+
+    assert por_id["otros_gastos_2020"].fila_encabezado == 1
+    assert not por_id["otros_gastos_2020"].por_posicion
+
+    flota = por_id["gastos_flota_2020"]
+    assert flota.por_posicion and flota.primera_fila == 3
+    # La C es la placa y la E la categoria: de ahi sale es_combustible (evidencia, seccion 1).
+    assert flota.posiciones["placa_norm"] == 2
+    assert flota.posiciones["categoria"] == 4
+
+    co01 = por_id["gastos_proyecto_2019"]
+    assert co01.por_posicion and "placa_norm" not in co01.posiciones   # no tiene placa
 
 
 def test_el_ddl_versionado_es_el_del_contrato():

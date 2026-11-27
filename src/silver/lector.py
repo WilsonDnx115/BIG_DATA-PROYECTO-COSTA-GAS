@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+import itertools
 from pathlib import Path
 
 import pandas as pd
@@ -93,23 +94,38 @@ def _filas_xls(ruta: str, hoja: str, desde: int):
 def leer_hoja(ruta: str, hoja: str, fuente: Fuente, max_vacias: int | None = None) -> Lectura:
     """Lee una hoja según el contrato y devuelve las columnas declaradas con su nombre estándar."""
     max_vacias = config.MAX_FILAS_VACIAS if max_vacias is None else max_vacias
-    filas = (_filas_xls if Path(ruta).suffix.lower() == ".xls" else _filas_xlsx)(ruta, hoja, fuente.fila_encabezado)
-    try:
-        encabezado = next(filas)
-    except StopIteration:
-        raise HojaRechazada(f"{hoja}: no tiene la fila de encabezado {fuente.fila_encabezado}") from None
+    leer_filas = _filas_xls if Path(ruta).suffix.lower() == ".xls" else _filas_xlsx
 
-    posiciones: dict[str, int] = {}
-    for i, celda in enumerate(encabezado):
-        nombre = fuente.columnas.get(normalizar_encabezado(celda))
-        if nombre and nombre not in posiciones:            # ante encabezados repetidos se toma el primero
-            posiciones[nombre] = i
-    faltan = sorted(set(fuente.columnas.values()) - set(posiciones))
-    if faltan:
-        raise HojaRechazada(f"{hoja}: no cumple el contrato {fuente.id}; faltan las columnas {faltan}")
+    if fuente.por_posicion:
+        # La hoja empieza en datos: no hay encabezado que consumir ni que emparejar.
+        # La referencia es la posicion de la columna, que declara el contrato.
+        filas = leer_filas(ruta, hoja, fuente.primera_fila)
+        posiciones = dict(fuente.posiciones)
+        primera = fuente.primera_fila
+        try:
+            filas = itertools.chain([next(filas)], filas)
+        except StopIteration:
+            raise HojaRechazada(
+                f"{hoja}: no llega a la primera fila de datos {fuente.primera_fila}") from None
+    else:
+        filas = leer_filas(ruta, hoja, fuente.fila_encabezado)
+        primera = fuente.fila_encabezado + 1
+        try:
+            encabezado = next(filas)
+        except StopIteration:
+            raise HojaRechazada(f"{hoja}: no tiene la fila de encabezado {fuente.fila_encabezado}") from None
+
+        posiciones = {}
+        for i, celda in enumerate(encabezado):
+            nombre = fuente.columnas.get(normalizar_encabezado(celda))
+            if nombre and nombre not in posiciones:        # ante encabezados repetidos se toma el primero
+                posiciones[nombre] = i
+        faltan = sorted(set(fuente.columnas.values()) - set(posiciones))
+        if faltan:
+            raise HojaRechazada(f"{hoja}: no cumple el contrato {fuente.id}; faltan las columnas {faltan}")
 
     registros, leidas, vacias, cortada = [], 0, 0, False
-    for n, fila in enumerate(filas, start=fuente.fila_encabezado + 1):
+    for n, fila in enumerate(filas, start=primera):
         leidas += 1
         valores = {nombre: (fila[i] if i < len(fila) else None) for nombre, i in posiciones.items()}
         if all(_vacia(v) for v in valores.values()):
