@@ -62,20 +62,21 @@
       {
         "name": "producto",
         "label": "Producto",
-        "description": "Productos de dim_producto. Se usa con IN (${producto:sqlstring}).",
+        "description": "GLP-E o GLP-G, de dim_producto. «All» vale __all e incluye también los productos sin clasificar del balance.",
         "type": "query",
         "datasource": { "type": "grafana-athena-datasource", "uid": "${ds_athena}" },
         "query": {
           "refId": "producto",
           "format": 1,
-          "rawSQL": "SELECT DISTINCT id_producto AS __value, COALESCE(producto, id_producto) AS __text FROM costagas_gold.dim_producto WHERE id_producto IS NOT NULL ORDER BY 2",
+          "rawSQL": "SELECT DISTINCT producto FROM costagas_gold.dim_producto WHERE producto IS NOT NULL ORDER BY producto",
           "connectionArgs": { "region": "__default", "catalog": "__default", "database": "__default", "resultReuseEnabled": false }
         },
-        "definition": "SELECT DISTINCT id_producto, producto FROM costagas_gold.dim_producto",
+        "definition": "SELECT DISTINCT producto FROM costagas_gold.dim_producto",
         "refresh": 1,
         "sort": 1,
         "hide": 0,
         "includeAll": true,
+        "allValue": "__all",
         "multi": true,
         "current": {},
         "options": [],
@@ -84,7 +85,7 @@
       {
         "name": "rol",
         "label": "Rol de la unidad",
-        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. Se usa con IN (${rol:sqlstring}).",
+        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. «All» vale __all e incluye las unidades sin rol.",
         "type": "query",
         "datasource": { "type": "grafana-athena-datasource", "uid": "${ds_athena}" },
         "query": {
@@ -98,6 +99,7 @@
         "sort": 1,
         "hide": 0,
         "includeAll": true,
+        "allValue": "__all",
         "multi": true,
         "current": {},
         "options": [],

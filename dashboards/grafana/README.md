@@ -43,16 +43,20 @@ Todas las páginas usan las mismas variables, en este orden:
 | `ds_athena` | Origen de datos Athena | una | `"datasource": {"type": "grafana-athena-datasource", "uid": "${ds_athena}"}` |
 | `anio` | `dim_tiempo` | una (el más reciente por defecto) | `anio = ${anio}` |
 | `mes` | `dim_tiempo` del año elegido | una (el más reciente por defecto) | `mes = ${mes}` |
-| `producto` | `dim_producto` | varias o «All» | `id_producto IN (${producto:sqlstring})` |
-| `rol` | `dim_unidad` | varias o «All» (`reparto`, `transporte`) | `rol IN (${rol:sqlstring})` |
+| `producto` | `dim_producto` (`GLP-E`, `GLP-G`) | varias o «All» | `('__all' IN (${producto:sqlstring}) OR producto IN (${producto:sqlstring}))` |
+| `rol` | `dim_unidad` (`reparto`, `transporte`) | varias o «All» | `('__all' IN (${rol:sqlstring}) OR rol IN (${rol:sqlstring}))` |
 
-Columnas que se suponen en las dimensiones (las usa ya el código de Gold): `dim_tiempo.anio`,
-`dim_tiempo.mes`, `dim_producto.id_producto`, `dim_producto.producto` y `dim_unidad.rol`.
+«All» vale `__all` en lugar de la lista de valores: así no se pierden las filas que no están en
+la dimensión (el balance de 2020 trae productos sin clasificar y hay placas sin rol en el maestro).
+
+Columnas de las dimensiones según `src/glue/dimensiones.py` (W08, rama `dev-wilson`):
+`dim_tiempo.anio` y `mes`; `dim_producto.producto` (`GLP-E` o `GLP-G`); `dim_unidad.rol`.
 **Pendiente:** confirmarlas con el DDL de Gold (`sql/athena/ddl/gold_*.sql`, W09). Si cambian,
 se corrige este archivo y las páginas en el mismo pull request.
 
-Si `dim_tiempo` es un calendario completo, un mes elegido puede no tener cobertura en alguna fuente.
-Las páginas deben mostrar «sin cobertura» o vacío en ese caso, nunca un cero como si fuera una medición.
+`dim_tiempo` es un calendario completo (todos los meses de 2016 a 2024), así que un mes elegido
+puede no tener cobertura en alguna fuente. Las páginas muestran «sin dato» o un hueco en ese caso,
+nunca un cero como si fuera una medición.
 
 ## Regla de costo: filtrar siempre por `anio` y `mes`
 
@@ -66,6 +70,9 @@ por consulta (a US$ 5 por TB, menos de US$ 0.005).
   más `anio BETWEEN ${anio} - 1 AND ${anio}`, para que la poda de particiones funcione.
 - Las variables leen las dimensiones, que no están particionadas y pesan kilobytes; la de `mes` ya filtra por `anio`.
 - Nunca `SELECT *` sobre un hecho; solo las columnas del panel.
+- Una sola consulta por página y refresco (ADR 0016); los demás paneles la reutilizan con el
+  origen `-- Dashboard --`. Refresco automático cada **5 min**: Athena cobra como mínimo 10 MB por
+  consulta, así que una página abierta 8 h al día cuesta unos US$ 0.005 diarios; con 1 min, cinco veces más.
 - Antes de subir una página, cada consulta se prueba en Athena y se anota el dato escaneado
   («Data scanned») en el pull request.
 
