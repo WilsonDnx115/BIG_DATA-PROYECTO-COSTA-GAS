@@ -26,6 +26,23 @@ nada que dependa solo de mí, con una excepción que dejo a decisión del equipo
 
 ---
 
+## 0. Por qué parecía que no había avanzado
+
+Si el estado que ven de mi parte dice que todo está pendiente, es por esto, y ya está corregido:
+
+- **`PLAN.md` tenía 22 de mis 24 casillas sin marcar**, aunque el trabajo estaba en `main` desde
+  hace días. `CLAUDE.md` dice que cada dueño marca `[x]` su propia casilla en el commit que la
+  cumple, y yo no lo había hecho. Ahora están marcadas **19**, una por una contra el archivo que
+  las cumple; las 5 que siguen sin marcar llevan escrito su motivo en la misma línea.
+- **`docs/coordinacion/cronograma_cierre.md` copia su estado de `PLAN.md`** y quedó congelado en
+  el corte del **26/11, con `main` en `6f636c1`**: 94 filas en «pendiente» y 2 en «hecho», para
+  los cuatro. No es solo mi parte: están igual las 24 de Wilson, las 24 de Frank y las 24 de
+  Bruno. Ese archivo es de coordinación; **Bruno, con volver a leer `PLAN.md` queda al día.**
+
+Lo que de verdad falta de mi lado es una sola cosa, y está en la sección 4.1.
+
+---
+
 ## 1. Lo que hice
 
 ### En `main`
