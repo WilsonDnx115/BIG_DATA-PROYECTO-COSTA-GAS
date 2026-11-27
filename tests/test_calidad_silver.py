@@ -59,6 +59,12 @@ def test_las_metas_salen_de_config_y_no_de_numeros_sueltos():
 
 
 def test_el_esquema_declara_lo_que_escribe_procesar():
+    # `cs.esquema()` construye un StructType, asi que importa pyspark aunque esta prueba
+    # no abra ninguna sesion de Spark. No usa el fixture `spark`, que es quien omite por
+    # su cuenta, y por eso donde no hay pyspark instalado fallaba con ModuleNotFoundError
+    # en vez de omitirse: el workflow cd instala requirements.txt, sin Spark.
+    pytest.importorskip("pyspark", reason="pyspark no instalado (requirements-spark.txt)")
+
     campos = {c.name: c.dataType.simpleString() for c in cs.esquema()}
     assert campos["tabla"] == "string" and campos["filas_salida"] == "bigint"
     assert campos["celdas_con_dato"] == "map<string,bigint>"
