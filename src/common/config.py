@@ -122,6 +122,17 @@ PSI_BINS = _env_int("PSI_BINS", 10)                          # deciles fijados e
 
 # --- Detector de desvíos persistentes (4.3, Tabla 4.8h) ----------------------
 FALSAS_ALARMAS_ANIO = _env_int("FALSAS_ALARMAS_ANIO", 12)    # en todo el sistema y en cada granularidad
+# CUSUM y EWMA (Montgomery, «Introduction to Statistical Quality Control», 8.ª ed., caps. 9.1 y 9.2;
+# ADR 0028). k = 0.5 desviaciones detecta un corrimiento de 1 desviación; h = 5 con k = 0.5 da un ARL
+# en control cercano a 465 periodos y es el umbral inicial que calibrar_h ajusta con el escenario A.
+# Para el EWMA, λ entre 0.05 y 0.25 funciona bien y L = 3 es el límite habitual.
+DETECTOR_K = _env_float("DETECTOR_K", 0.5)
+DETECTOR_H = _env_float("DETECTOR_H", 5.0)
+DETECTOR_LAMBDA = _env_float("DETECTOR_LAMBDA", 0.2)
+DETECTOR_L = _env_float("DETECTOR_L", 3.0)
+# Periodos propios que necesita una entidad antes de evaluarla: con 4, la participación frente a sus
+# pares sale de una mediana y no de un solo periodo; en la serie mensual de 14 meses deja 10 evaluables.
+DETECTOR_PERIODOS_BASE = _env_int("DETECTOR_PERIODOS_BASE", 4)
 SEMILLAS_DETECTOR = _env_int("SEMILLAS_DETECTOR", 100)
 LOTE_SEMILLAS = _env_int("LOTE_SEMILLAS", 10)
 
