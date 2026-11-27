@@ -304,6 +304,67 @@ _RE_PERSONA_JURIDICA = re.compile(
     re.IGNORECASE)
 
 
+# Categorias de gasto que son combustible. La posicion E de `GASTOS FLOTA` trae 13
+# categorias y una de ellas es de combustible; cubre el 15.6 % de las filas, y el texto
+# libre de la posicion F confirma la misma proporcion (15.8 %). La medicion esta en
+# docs/evidencias/gastos_posiciones.md.
+RE_COMBUSTIBLE = re.compile(r"COMBUSTIBLE|PETROLEO|DIESEL|GASOLINA|GASOHOL|GRIFO|GLP|GNV")
+# Un documento de 8 a 11 digitos pegado a la razon social: DNI, RUC de empresa o de
+# persona natural. No pasa a Silver (CLAUDE.md, privacidad).
+RE_DOCUMENTO = re.compile(r"\b\d{8,11}\b")
+
+
+def _sin_documento(s: pd.Series) -> pd.Series:
+    """Quita del texto cualquier documento pegado, y deja la razon social."""
+    def limpiar(v):
+        if not isinstance(v, str):
+            return v
+        limpio = re.sub(r"\s{2,}", " ", RE_DOCUMENTO.sub(" ", v)).strip(" -,;")
+        return limpio or None
+    return s.map(limpiar)
+
+
+def gastos(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Gastos de la operacion. De aqui sale `gasto_combustible` de `fact_unidad_mes`.
+
+    `es_combustible` queda **nulo** cuando la fuente no trae categoria: un falso diria
+    que ese gasto no es combustible, y lo que pasa es que no se sabe. La agregacion de
+    Gold se queda con las filas en verdadero, asi que un nulo no infla el KPI 4.
+    """
+    o = pd.DataFrame(index=df.index)
+    o["mes_texto"] = _texto(_col(df, "mes_texto"), mayus=True)
+    o["fecha"] = _col(df, "fecha").map(L.a_fecha)
+
+    fecha = pd.to_datetime(o["fecha"], errors="coerce")
+    o["anio"] = fecha.dt.year.astype("Int64")
+    mes_de_la_fecha = fecha.dt.month.astype("Int64")
+    mes_del_texto = o["mes_texto"].map(L.mes_a_numero).astype("Int64")
+    o["mes"] = mes_de_la_fecha.where(mes_de_la_fecha.notna(), mes_del_texto)
+
+    o["unidad_codigo"] = _texto(_col(df, "unidad_codigo"), mayus=True)
+    o["placa_norm"], _, _ = _placas(_col(df, "placa_norm"))
+    o["area"] = _texto(_col(df, "area"), mayus=True)
+    o["proyecto"] = _texto(_col(df, "proyecto"), mayus=True)
+    o["documento_gasto"] = _texto(_col(df, "documento_gasto"), mayus=True)
+    o["categoria"] = _texto(_col(df, "categoria"), mayus=True)
+    o["es_combustible"] = o["categoria"].map(
+        lambda v: None if not isinstance(v, str) else bool(RE_COMBUSTIBLE.search(v))).astype("boolean")
+    o["descripcion"] = _texto(_col(df, "descripcion"))
+    o["comentarios"] = _texto(_col(df, "comentarios"))
+    o["monto_soles"] = _num(_col(df, "monto_soles"))
+    o["proveedor"] = _sin_documento(_texto(_col(df, "proveedor"), mayus=True))
+    o["planta"] = _texto(_col(df, "planta"), mayus=True)
+
+    calidad = {
+        "placa_valida": _tasa(o["placa_norm"].notna()),
+        "monto_valido": _tasa(o["monto_soles"].notna()),
+        "fecha_valida": _tasa(o["fecha"].notna()),
+        "con_categoria": _tasa(o["categoria"].notna()),
+        "filas_de_combustible": int(o["es_combustible"].fillna(False).sum()),
+    }
+    return o, calidad
+
+
 def _identidad(documento, nombre_razon, codigo_sn=None) -> dict:
     """Separa empresa de persona natural y seudonimiza lo que identifica a una persona.
 
@@ -390,4 +451,5 @@ def clientes(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 TRANSFORMACIONES = {"compras_glp": compras_glp, "scop": scop, "unidades": unidades,
                     "ventas_unidad_mes": ventas_unidad_mes, "ventas_detalle": ventas_detalle,
                     "pedidos_proveedor": pedidos_proveedor,
-                    "distribuidores": distribuidores, "clientes": clientes}
+                    "distribuidores": distribuidores, "clientes": clientes,
+                    "gastos": gastos}
