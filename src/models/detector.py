@@ -173,8 +173,8 @@ def detectar(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: st
     d = desvios(df, entidad, valor, periodo, grupo, sigma, periodos_base)
     limite = limite_ewma(lam, L)
 
-    partes = []
-    for _, g in d.sort_values([entidad, periodo], kind="stable").groupby(entidad, sort=False):
+    partes, inicios = [], {}
+    for ent, g in d.sort_values([entidad, periodo], kind="stable").groupby(entidad, sort=False):
         g = g.copy()
         faltante = -g["z"].to_numpy(dtype=float)          # un faltante es un desvío negativo
         s, e = cusum(faltante, k), ewma(faltante, lam)
@@ -183,16 +183,17 @@ def detectar(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: st
         estado = np.where(s > h, "rojo", np.where(e > limite, "ambar", "verde"))
         g["estado"] = np.where(evaluable, estado, "no_evaluable")
         inicio = punto_cambio(s, h)
-        g["periodo_inicio"] = None
         g["kg_acumulados"] = 0.0
         if inicio is not None:
-            g["periodo_inicio"] = g[periodo].iloc[inicio]
+            inicios[ent] = g[periodo].iloc[inicio]
             desde = np.arange(len(g)) >= inicio
             faltante_kg = (-g["residuo"]).where(desde, 0.0).fillna(0.0)
             g["kg_acumulados"] = faltante_kg.cumsum().where(desde, 0.0)
         g["soles_acumulados"] = g["kg_acumulados"] * precio
         partes.append(g)
     salida = pd.concat(partes).sort_index() if partes else d
+    # El inicio se asigna al final: así ninguna parte llega a concat con la columna vacía.
+    salida["periodo_inicio"] = salida[entidad].map(inicios)
     return salida.drop(columns=["_sigma"])
 
 
