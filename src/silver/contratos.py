@@ -31,16 +31,51 @@ def normalizar_encabezado(texto) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^A-Z0-9#]+", " ", s)).strip()
 
 
+def indice_de_columna(letra: str) -> int:
+    """'A' → 0, 'G' → 6, 'AA' → 26. Es la posición de la columna en la hoja.
+
+    Lo usan las fuentes de hojas que empiezan en datos: ahí no hay encabezado que
+    emparejar, así que la única referencia estable es en qué columna está el dato.
+    """
+    s = str(letra).strip().upper()
+    if not s or not s.isalpha():
+        raise ValueError(f"«{letra}» no es una letra de columna de Excel")
+    n = 0
+    for c in s:
+        n = n * 26 + (ord(c) - ord("A") + 1)
+    return n - 1
+
+
 @dataclass(frozen=True)
 class Fuente:
+    """Una hoja de la entrega y cómo se leen sus columnas.
+
+    Dos formas, excluyentes entre sí:
+
+    * **por nombre**, lo habitual: `fila_encabezado` y `columnas`, que empareja el
+      encabezado normalizado con el nombre estándar;
+    * **por posición**, para las hojas que empiezan en datos: `primera_fila` y
+      `posiciones`, que empareja la letra de la columna con el nombre estándar.
+    """
+
     id: str
     familia: str
     archivo: re.Pattern
     hojas: re.Pattern
-    fila_encabezado: int
-    columnas: dict[str, str]              # encabezado normalizado → nombre estándar
+    fila_encabezado: int = 0
+    columnas: dict[str, str] = field(default_factory=dict)   # encabezado normalizado → estándar
+    primera_fila: int = 0
+    posiciones: dict[str, int] = field(default_factory=dict)  # nombre estándar → índice de columna
     exigir: tuple[str, ...] = ()
     anio: int | None = None
+
+    @property
+    def por_posicion(self) -> bool:
+        return bool(self.posiciones)
+
+    def destinos(self) -> set[str]:
+        """Nombres estándar que esta fuente produce, se lea como se lea."""
+        return set(self.posiciones) or set(self.columnas.values())
 
 
 @dataclass(frozen=True)
@@ -83,13 +118,34 @@ class Contrato:
                 f"LOCATION '{lake}/silver/{self.dominio}/{self.tabla}/';\n")
 
 
+def _fuente(ruta: Path, f: dict) -> Fuente:
+    """Una fuente del YAML. Declara sus columnas por nombre o por posición, nunca las dos."""
+    tiene_nombres = bool(f.get("columnas"))
+    tiene_posiciones = bool(f.get("posiciones"))
+    if tiene_nombres == tiene_posiciones:
+        raise ValueError(f"{ruta.name}: la fuente «{f['id']}» declara sus columnas "
+                         f"por nombre o por posicion, y tiene que ser una de las dos")
+
+    posiciones = {}
+    if tiene_posiciones:
+        for letra, destino in f["posiciones"].items():
+            try:
+                posiciones[destino] = indice_de_columna(letra)
+            except ValueError as e:
+                raise ValueError(f"{ruta.name}, fuente «{f['id']}»: {e}") from None
+
+    return Fuente(
+        id=f["id"], familia=f.get("familia", ""), archivo=re.compile(f["archivo"], re.IGNORECASE),
+        hojas=re.compile(f["hojas"], re.IGNORECASE),
+        fila_encabezado=int(f.get("fila_encabezado", 0)),
+        columnas={normalizar_encabezado(k): v for k, v in (f.get("columnas") or {}).items()},
+        primera_fila=int(f.get("primera_fila", 0)), posiciones=posiciones,
+        exigir=tuple(f.get("exigir", ())), anio=f.get("anio"))
+
+
 def _leer(ruta: Path) -> Contrato:
     d = yaml.safe_load(ruta.read_text(encoding="utf-8"))
-    fuentes = tuple(Fuente(
-        id=f["id"], familia=f.get("familia", ""), archivo=re.compile(f["archivo"], re.IGNORECASE),
-        hojas=re.compile(f["hojas"], re.IGNORECASE), fila_encabezado=int(f["fila_encabezado"]),
-        columnas={normalizar_encabezado(k): v for k, v in f["columnas"].items()},
-        exigir=tuple(f.get("exigir", ())), anio=f.get("anio")) for f in d["fuentes"])
+    fuentes = tuple(_fuente(ruta, f) for f in d["fuentes"])
     columnas = tuple(Columna(**c) for c in d["columnas"])
     tipos = {c.tipo for c in columnas} - set(_PA)
     if tipos:
@@ -172,7 +228,7 @@ def validar() -> list[str]:
                 problemas.append(f"{tabla}.{col.nombre}: tipo «{col.tipo}» no admitido")
 
         for f in c.fuentes:
-            if not f.columnas:
+            if not f.destinos():            # por nombre o por posición, pero alguna
                 problemas.append(f"{tabla}/{f.id}: no declara ninguna columna")
 
         versionado = config.RAIZ_REPO / "sql" / "athena" / "ddl" / f"silver_{c.tabla}.sql"
