@@ -44,7 +44,6 @@ CATALOGO: dict[str, tuple[str, str]] = {
     for codigo, regla in sorted(REGLAS.items(), key=lambda kv: int(kv[0][1:]))}
 
 COLUMNAS_ALERTA = schemas.CONTRATOS["fact_alerta_base"].columnas()
-TOL_KG_S12 = 1.0   # kg: diferencias menores son redondeo entre tesorería y logística
 
 
 # --- Piezas comunes -----------------------------------------------------------
@@ -433,7 +432,7 @@ def cruce_s12(tesoreria, compras):
 
     tesoreria: Silver `pedidos_proveedor` (proveedor, documento «SERIE-NUMERO», kg,
     fecha_pago, fecha_vence). compras: interfaz `compras` (normalizar_compras).
-    Clases: coincide, kg_distinto (|Δkg| > TOL_KG_S12), solo_logistica, solo_tesoreria y
+    Clases: coincide, kg_distinto (|Δkg| > config.TOL_KG_S12), solo_logistica, solo_tesoreria y
     kg_desconocido (los dos registros existen, pero a uno le faltan los kg: no se afirma
     que coincidan ni que difieran, y no genera alerta). Lo usan s12() y modelo_factura (F07).
     """
@@ -451,7 +450,7 @@ def cruce_s12(tesoreria, compras):
     clase = (F.when(F.col("_llave_t").isNull(), "solo_logistica")
              .when(F.col("_llave_l").isNull(), "solo_tesoreria")
              .when(F.col("kg_logistica").isNull() | F.col("kg_tesoreria").isNull(), "kg_desconocido")
-             .when(F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) > F.lit(TOL_KG_S12), "kg_distinto")
+             .when(F.abs(F.col("kg_logistica") - F.col("kg_tesoreria")) > F.lit(config.TOL_KG_S12), "kg_distinto")
              .otherwise("coincide"))
     fecha = F.coalesce(F.col("_fecha_l"), F.col("fecha_pago"), F.col("fecha_vence"))
     return (j.withColumn("factura_id", F.coalesce(F.col("_llave_l"), F.col("_llave_t")))

@@ -4,8 +4,8 @@
 --   kpi1_bruto: (kg comprados − kg vendidos) ÷ kg comprados.
 --   kpi1_neto:  además resta la variación de stock y la merma técnica.
 -- Supuestos declarados: sin stock físico medido (delta_stock_kg nulo) la variación se toma como 0 y
--- stock_es_supuesto es verdadero; la merma es MERMA_TECNICA_PCT de config.py (0.5 %, supuesto del
--- equipo) y merma_es_supuesto lo indica. El tablero etiqueta ambos.
+-- stock_es_supuesto es verdadero; la merma es MERMA_TECNICA_PCT de config.py (0.5 %, referencia de
+-- mercado adoptada por el equipo) y merma_es_supuesto lo indica. El tablero etiqueta ambos.
 CREATE OR REPLACE VIEW costagas_gold.v_kpi_1 AS
 SELECT producto, anio, mes,
        kg_comprados,

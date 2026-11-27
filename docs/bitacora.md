@@ -70,7 +70,7 @@ la cuenta; hay que verificarlo en el recurso después de desplegar.
 
 | Tema | Estado | Quién decide |
 |---|---|---|
-| **Merma técnica.** 0.5 % es un supuesto de trabajo del equipo, no un dato de la empresa. Está declarado así en `.env.example` (`MERMA_TECNICA_ES_SUPUESTO=si`) y no debe presentarse como medición | Sin fijar | Análisis y modelado, con la empresa |
+| **Merma técnica.** 0.5 % de lo comprado: pérdida de masa con buena instrumentación en balances de hidrocarburos, menor que 0.5 % (Emerson, 2019), y tope del índice Solomon. Osinergmin no publica una tolerancia de merma para plantas envasadoras. Está declarada como supuesto en `.env.example` (`MERMA_TECNICA_ES_SUPUESTO=si`) y no se presenta como medición ([ADR 0027](adr/0027-merma-tecnica-referencia-de-mercado.md)) | Resuelto con referencia de mercado | Análisis y modelado |
 | **Stock físico.** El balance de planta necesita el stock medido físicamente; con los archivos actuales los cierres de stock no son mediciones físicas | Sin cubrir | Coordinación, con la empresa |
 | **EMR y la evidencia de Hadoop Streaming.** El v16 descarta EMR y hace MapReduce con Spark, pero `CLAUDE.md` todavía cita la excepción del [ADR 0014](adr/0014-emr-transitorio-reglas-v6.md) y exige Hadoop Streaming. Es un requisito del curso | Anotado en el ADR 0014 | Coordinación con Ingeniería de datos |
 | **Roles de la Semana 8.** [`docs/equipo.md`](equipo.md) rotó los roles en sentido contrario al del informe v16 (0.1) y al reparto real del trabajo | Sin corregir | Coordinación |

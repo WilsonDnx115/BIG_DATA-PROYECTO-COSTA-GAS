@@ -6,16 +6,16 @@ Proyecto Costa Gas Trujillo · mantiene: Coordinación.
 
 **Corte:** 26/11/2026 (main en 6f636c1) · **avance:** 2 de 96 commits marcados `[x]` en `PLAN.md`.
 
-**Fechas objetivo:** las fija Coordinación por fase. Una fase empieza cuando su fase previa entregó lo que la siguiente necesita; el campo «Requiere» de cada commit está en el plan de cada integrante.
+**Fechas objetivo:** por fase, dentro de la Semana 14 del informe (23/11 - 27/11/2026, hito final y sustentación). Una fase empieza cuando su fase previa entregó lo que la siguiente necesita; el campo «Requiere» de cada commit está en el plan de cada integrante.
 
 | Fase | Wilson | Frank | Anghelo | Bruno | Fecha objetivo | Estado |
 |---|---|---|---|---|---|---|
-| 1 · Base | W01-W03 | F01-F04 | A01-A09 | B01-B02 | por fijar | 2 de 18 |
-| 2 · Gold y demostración | W04-W11 | F05-F07 | A10-A13 | B03-B09 | por fijar | 0 de 22 |
-| 3 · Aprendizaje automático | W12-W15 | F08-F17 | A14-A19 | - | por fijar | 0 de 20 |
-| 4 · Controles y operación | W16-W19 | F18 | - | B10-B17 | por fijar | 0 de 13 |
-| 5 · Externos, portal y CD | W20-W23 | - | A20-A22 | B18-B21 | por fijar | 0 de 11 |
-| 6 · Resultados y cierre | W24 | F19-F24 | A23-A24 | B22-B24 | por fijar | 0 de 12 |
+| 1 · Base | W01-W03 | F01-F04 | A01-A09 | B01-B02 | 26/11/2026 | 2 de 18 |
+| 2 · Gold y demostración | W04-W11 | F05-F07 | A10-A13 | B03-B09 | 27/11/2026 | 0 de 22 |
+| 3 · Aprendizaje automático | W12-W15 | F08-F17 | A14-A19 | - | 27/11/2026 | 0 de 20 |
+| 4 · Controles y operación | W16-W19 | F18 | - | B10-B17 | 27/11/2026 | 0 de 13 |
+| 5 · Externos, portal y CD | W20-W23 | - | A20-A22 | B18-B21 | 27/11/2026 | 0 de 11 |
+| 6 · Resultados y cierre | W24 | F19-F24 | A23-A24 | B22-B24 | 27/11/2026 | 0 de 12 |
 
 ## Detalle por commit
 

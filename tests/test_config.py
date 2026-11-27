@@ -8,7 +8,7 @@ from src.common import config
 
 NUEVAS = ("MERMA_TECNICA_PCT", "MERMA_TECNICA_FUENTE", "MERMA_TECNICA_ES_SUPUESTO", "MADUREZ_DIAS",
           "VENTANA_MEDIANA_DIAS", "PSI_UMBRAL", "PSI_MIN_OBS", "FALSAS_ALARMAS_ANIO", "TOL_PRECIO_PAGO",
-          "RECALL_MIN_RETADOR")
+          "RECALL_MIN_RETADOR", "TOL_KG_S12")
 
 
 @pytest.fixture
@@ -31,15 +31,16 @@ def test_merma_tiene_valor_supuesto_por_defecto(recargar):
     c = recargar()
     assert c.MERMA_TECNICA_PCT == 0.005
     assert c.MERMA_TECNICA_ES_SUPUESTO is True
-    assert "supuesto" in c.MERMA_TECNICA_FUENTE.lower()
+    assert "referencia de mercado" in c.MERMA_TECNICA_FUENTE.lower()
+    assert "ADR 0027" in c.MERMA_TECNICA_FUENTE
 
 
-def test_merma_de_la_empresa_reemplaza_el_supuesto(recargar):
-    c = recargar(MERMA_TECNICA_PCT="0.008", MERMA_TECNICA_FUENTE="Tolerancia de la empresa",
+def test_otra_referencia_reemplaza_la_merma(recargar):
+    c = recargar(MERMA_TECNICA_PCT="0.008", MERMA_TECNICA_FUENTE="Balance de masa propio",
                  MERMA_TECNICA_ES_SUPUESTO="no")
     assert c.MERMA_TECNICA_PCT == 0.008
     assert c.MERMA_TECNICA_ES_SUPUESTO is False
-    assert c.MERMA_TECNICA_FUENTE == "Tolerancia de la empresa"
+    assert c.MERMA_TECNICA_FUENTE == "Balance de masa propio"
 
 
 def test_valores_por_defecto(recargar):
@@ -51,10 +52,11 @@ def test_valores_por_defecto(recargar):
     assert c.FALSAS_ALARMAS_ANIO == 12
     assert c.TOL_PRECIO_PAGO == 0.05
     assert c.RECALL_MIN_RETADOR == 0.50
+    assert c.TOL_KG_S12 == 1.0
 
 
 def test_ningun_parametro_queda_vacio(recargar):
-    """Todo parámetro tiene un valor: los que no vienen de la empresa son supuestos declarados."""
+    """Todo parámetro tiene un valor: lo que la planta no mide se toma de una referencia declarada."""
     c = recargar()
     for nombre in NUEVAS:
         valor = getattr(c, nombre)
