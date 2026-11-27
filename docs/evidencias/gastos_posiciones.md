@@ -77,7 +77,33 @@ es una llave.
 El mapeo que suponía la guía (`PLACA` → `placa_norm`) no se sostiene con los archivos. La única
 fuente de gasto atribuible a una unidad es `GASTOS FLOTA`.
 
-## 4 · Lo que falta para leer las dos hojas por posición
+## 4 · Resultado de leerlas: las tres hojas ya entran a Silver
+
+El lector de contratos admite ahora fuentes **por posición** (`primera_fila` y `posiciones`), y
+las tres hojas de gasto están declaradas en [`contracts/gastos.yaml`](../../contracts/gastos.yaml).
+Esto es lo que devuelve el pipeline sobre los archivos reales, **sin escribir nada y sin publicar
+ningún valor**: solo conteos y tasas.
+
+```powershell
+python -c "from src.silver import procesar; procesar.procesar_archivo('<ruta>/GASTOS 2020.xls', escribir=False)"
+```
+
+| Fuente | Filas de salida | Placa válida | Monto válido | Con categoría | Filas de combustible |
+|---|---|---|---|---|---|
+| `otros_gastos_2020` | 1 043 de 1 043 leídas | 0 % | 100 % | 0 % | 0 |
+| `gastos_flota_2020` | 13 600 de 13 600 | **94.7 %** | 100 % | **100 %** | **2 126** |
+| `gastos_proyecto_2019` | 1 679 de 1 785 | 0 % | 100 % | 100 % | 253 |
+
+Tres cosas que esta corrida confirma, y que antes eran una previsión:
+
+- **`GASTOS FLOTA` es la fuente del combustible por unidad.** 2 126 filas de combustible con
+  94.7 % de placas válidas: eso es lo que agrega `gasto_combustible` en `fact_unidad_mes`.
+- **`OTROS GASTOS` no aporta ni placa ni categoría**, tal como decía el perfilado: su
+  `es_combustible` queda **nulo**, nunca falso.
+- **`CO01` descarta 106 filas** por no traer monto, y no tiene ni una placa válida: su gasto es de
+  planta, no de unidad.
+
+## 5 · Cómo se declara una hoja que empieza en datos
 
 El lector de contratos ([`src/silver/contratos.py`](../../src/silver/contratos.py)) empareja
 **por nombre de encabezado normalizado**: cada fuente declara `fila_encabezado` y un mapa
@@ -85,8 +111,8 @@ El lector de contratos ([`src/silver/contratos.py`](../../src/silver/contratos.p
 y apuntar `fila_encabezado` a la primera fila de datos sería peor que no leerla: los nombres de
 columna saldrían de una fila que trae una placa y un proveedor con su RUC.
 
-Leer por posición necesita un modo nuevo en ese lector, y ese archivo es de Ingeniería de datos.
-Lo que se necesita es poder escribir una fuente así:
+El modo por posición se agregó de forma **aditiva**: las fuentes con nombre no cambian en nada, y
+hay una prueba que lo comprueba. Una fuente se declara así:
 
 ```yaml
   - id: gastos_flota_2020
@@ -100,6 +126,6 @@ Lo que se necesita es poder escribir una fuente así:
       ...
 ```
 
-Con ese modo, las dos hojas entran con las descripciones de las tablas de arriba y sin tocar
-nada más. Mientras tanto, el contrato declara la fuente con nombres (`OTROS GASTOS`) y deja las
-otras dos como no cubiertas, con este documento como evidencia.
+Una fuente declara sus columnas **por nombre o por posición**, nunca las dos: el lector lo
+rechaza al cargar el contrato. Y en una fuente por posición no se busca el encabezado repetido en
+medio de los datos, porque no hay título con el que comparar.
