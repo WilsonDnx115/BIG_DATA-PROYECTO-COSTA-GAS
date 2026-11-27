@@ -24,7 +24,7 @@ fuentes:
       ESTADO: estado
 
 pendiente:
-  - "Las hojas PETROPERU, SOLGAS, PRIMAX y PLUSPETROL del mismo archivo alimentan la tabla pedidos_proveedor (WP 1.2)."
+  - "Las hojas PETROPERU, SOLGAS y PLUSPETROL del mismo archivo alimentan la tabla pedidos_proveedor (A07). PRIMAX sigue pendiente: el inventario no publica los nombres de sus 25 columnas."
 
 columnas:
   - {nombre: origen, tipo: string, rol: linaje}

@@ -1,0 +1,35 @@
+-- Generado desde contracts/pedidos_proveedor.yaml. No editar a mano: python -m src.silver.contratos --ddl
+CREATE EXTERNAL TABLE IF NOT EXISTS costagas_silver.pedidos_proveedor (
+  origen string COMMENT 'id de la fuente del contrato',
+  hoja string COMMENT 'hoja de Excel de origen',
+  fila bigint COMMENT 'fila de Excel de origen',
+  anio bigint COMMENT 'año de la fecha de la factura',
+  mes bigint COMMENT 'mes de la fecha de la factura',
+  proveedor string COMMENT 'nombre de la hoja en mayúsculas',
+  documento string COMMENT 'SERIE-NUMERO sin ceros a la izquierda; así lo cruza cruce_s12',
+  serie string COMMENT 'parte izquierda del documento',
+  numero string COMMENT 'parte derecha del documento, sin ceros a la izquierda',
+  documento_crudo string COMMENT 'texto original de FACTURA cuando no se pudo separar en serie y número',
+  nro_scop string COMMENT 'solo dígitos; solo lo trae PLUSPETROL',
+  producto string,
+  kg double COMMENT 'CANTIDAD o CANTIDAD CARGADA, en kg',
+  moneda string COMMENT 'solo la declara SOLGAS',
+  total double COMMENT 'importe de la factura con impuestos',
+  percepcion double,
+  tipo_cambio double COMMENT 'solo lo trae PLUSPETROL',
+  tc_valido boolean COMMENT 'tipo de cambio entre TC_MIN y TC_MAX',
+  usd_por_kg double COMMENT 'total ÷ kg cuando la moneda es USD; nulo si faltan kg o no es USD',
+  deuda double,
+  pagos double,
+  fecha date COMMENT 'fecha de la factura; lo no convertible queda nulo y se cuenta',
+  fecha_pago date COMMENT 'solo SOLGAS y PLUSPETROL; lo no convertible queda nulo y se cuenta',
+  fecha_vence date COMMENT 'VENCIMIENTO en PETROPERU y VENCE en SOLGAS; lo no convertible queda nulo y se cuenta',
+  estado_fecha_vence string COMMENT 'ok, sin_fecha o no_convertible',
+  grupo string COMMENT 'solo PLUSPETROL',
+  sede string COMMENT 'solo PLUSPETROL',
+  banco string,
+  modalidad string COMMENT 'solo SOLGAS',
+  llave_repetida boolean COMMENT 'la llave natural aparece en más de una fila; se conserva y se marca')
+COMMENT 'Pedidos y pagos de GLP registrados por tesoreria, por proveedor y factura'
+STORED AS PARQUET
+LOCATION '${LAKE}/silver/compras/pedidos_proveedor/';

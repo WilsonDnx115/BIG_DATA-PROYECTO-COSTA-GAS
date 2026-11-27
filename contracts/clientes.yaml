@@ -1,0 +1,57 @@
+# Contrato de la tabla Silver clientes (maestro, commit A08).
+# Misma regla de identidad que distribuidores: el RUC de empresa se conserva y el
+# documento de persona natural se seudonimiza.
+tabla: clientes
+dominio: maestros
+descripcion: Maestro de clientes con su documento y su razon social
+grano: cliente
+llave: [entidad_id]
+
+fuentes:
+  - id: clientes_ruc_cliente
+    familia: F33
+    archivo: '^CLIENTES TOTAL\.xlsx$'
+    hojas: '^Hoja3$'
+    fila_encabezado: 1
+    exigir: [nombre_razon]
+    columnas:
+      RUC: documento
+      CLIENTE: nombre_razon
+  - id: clientes_razon_social
+    familia: F34
+    archivo: '^CLIENTES TOTAL\.xlsx$'
+    hojas: '^Hoja1$'
+    fila_encabezado: 1
+    exigir: [nombre_razon]
+    columnas:
+      Name: nombre_sistema
+      RUC: documento
+      Nombre/Razón Social: nombre_razon
+  - id: clientes_codigo_sn
+    familia: F35
+    archivo: '^CLIENTES TOTAL\.xlsx$'
+    hojas: '^Hoja2$'
+    fila_encabezado: 1
+    exigir: [nombre_razon]
+    columnas:
+      Código SN: codigo_sn
+      Nombre SN: nombre_razon
+
+pendiente:
+  - "CLIENTES AGOSTO.xls, hoja Sheet1: el inventario no publica los nombres de sus 8 columnas."
+  - "CLIENTES CGT.xlsx, hoja Hoja1: no es un maestro, es detalle de venta con el mismo layout que Ventas Por Proyecto. Corresponde a ventas_detalle, no a esta tabla."
+  - "La hoja Hoja2 no trae documento: su entidad_id sale del Código SN."
+  - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de estas hojas por separado."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje, regla: "id de la fuente del contrato"}
+  - {nombre: hoja, tipo: string, rol: linaje, regla: "hoja de Excel de origen"}
+  - {nombre: fila, tipo: int, rol: linaje, regla: "fila de Excel de origen"}
+  - {nombre: entidad_id, tipo: string, rol: llave, regla: "RUC si es empresa; si no, el hash del documento, el Código SN o el hash del nombre"}
+  - {nombre: tipo_persona, tipo: string, rol: dimension, regla: "JURIDICA, NATURAL, INVALIDO o VACIO"}
+  - {nombre: ruc, tipo: string, rol: llave, regla: "solo RUC válido de persona jurídica (prefijo 20); se conserva para cruzar con SUNAT"}
+  - {nombre: documento_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal del DNI o del RUC 10; el número no pasa a Silver"}
+  - {nombre: razon_social, tipo: string, rol: atributo, regla: "solo de persona jurídica; en persona natural queda nulo"}
+  - {nombre: nombre_hash, tipo: string, rol: persona, personal: true, regla: "SHA-256 con sal del nombre cuando el titular es persona natural"}
+  - {nombre: codigo_sn, tipo: string, rol: atributo, regla: "código del socio de negocio en el sistema; solo la hoja Hoja2"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en más de una fila; se conserva y se marca"}

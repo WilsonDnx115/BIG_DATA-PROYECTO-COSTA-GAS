@@ -128,7 +128,10 @@ def transformar_red_02(df, rep, rechazos):
     clas = df["documento_raw"].map(limpieza.clasificar_documento)
     df["documento_norm"] = clas.str[0]
     df["clase_documento"] = clas.str[1]
-    df["ruc"] = df["documento_norm"].where(df["clase_documento"] == "RUC")
+    # Solo el RUC de persona juridica (prefijo 20) llega a Silver: el de persona natural
+    # (10, 15 y 17) es dato personal y queda unicamente en documento_hash (CLAUDE.md, 3.8.4).
+    es_empresa = (df["clase_documento"] == "RUC") & df["documento_norm"].str.startswith("20", na=False)
+    df["ruc"] = df["documento_norm"].where(es_empresa)
     df["ruc_valido"] = df["clase_documento"] == "RUC"
     df["documento_hash"] = df["documento_norm"].map(limpieza.seudonimizar)
     df["estado"] = df["estado"].map(limpieza.normalizar_estado)
