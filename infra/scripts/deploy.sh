@@ -89,7 +89,9 @@ aws cloudformation deploy --stack-name "$STACK" --template-file "$PLANTILLA" \
 for f in costagas-bronze-to-silver costagas-ingesta \
          costagas-extractor-bcrp costagas-extractor-facilito \
          costagas-extractor-youtube costagas-extractor-gdelt \
-         costagas-extractor-resoluciones; do
+         costagas-extractor-resoluciones \
+         costagas-portal-firmar costagas-portal-estado \
+         costagas-portal-kpis costagas-portal-revision; do
   aws lambda update-function-code --function-name "$f" \
     --s3-bucket "$CODE_BUCKET" --s3-key _code/costagas_src.zip > /dev/null
 done
@@ -99,6 +101,47 @@ for p in landing/ landing/interno/ landing/externo/ bronze/ silver/ gold/ _manif
          op/landing/ scaletest/ athena-results/ sparkui/; do
   aws s3api put-object --bucket "$LAGO" --key "$p" --server-side-encryption AES256 > /dev/null
 done
+
+echo ">> Publicando el portal (W22)"
+# Las URL y los identificadores salen de las salidas del stack: el portal no
+# lleva ningún valor fijo en el repositorio y config.js no se versiona.
+salida() { aws cloudformation describe-stacks --stack-name "$STACK" \
+  --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+
+PORTAL_BUCKET="$(salida BucketPortal)"
+DISTRIBUCION="$(aws cloudfront list-distributions \
+  --query "DistributionList.Items[?Comment=='Portal web costagas (solo HTTPS)'].Id" \
+  --output text 2>/dev/null || true)"
+
+if [[ -d portal ]]; then
+  cat > portal/config.js <<CONFIG
+// Generado por infra/scripts/deploy.sh. No editar ni versionar.
+window.COSTAGAS = {
+  region: "${AWS_REGION}",
+  cognito: {
+    grupoUsuarios: "$(salida CognitoUserPoolId)",
+    cliente: "$(salida CognitoClientId)"
+  },
+  funciones: {
+    firmar: "$(salida UrlPortalFirmar)",
+    estado: "$(salida UrlPortalEstado)",
+    kpis: "$(salida UrlPortalKpis)",
+    revision: "$(salida UrlPortalRevision)"
+  },
+  dominio: "$(salida PortalUrl)"
+};
+CONFIG
+  aws s3 sync portal/ "s3://${PORTAL_BUCKET}/" --delete --sse AES256 --only-show-errors
+  if [[ -n "$DISTRIBUCION" && "$DISTRIBUCION" != "None" ]]; then
+    aws cloudfront create-invalidation --distribution-id "$DISTRIBUCION" \
+      --paths "/*" --query 'Invalidation.Id' --output text > /dev/null
+    echo ">> Portal sincronizado e invalidado en CloudFront"
+  fi
+else
+  # La página es de Bruno (B13). Sin ella, las funciones quedan desplegadas y
+  # el bucket vacío: no se publica un portal inventado.
+  echo ">> Sin carpeta portal/: solo se desplegaron las funciones (B13 pendiente)"
+fi
 
 rm -rf "$BUILD"
 echo ">> Listo. LAKE_URI=s3://${LAGO}"

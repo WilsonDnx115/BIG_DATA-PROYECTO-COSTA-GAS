@@ -1023,6 +1023,233 @@ Resources:
           Arguments:
             --LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
           Timeout: 15
+  # ---------------------------------------------------------------------------
+  # (12) Funciones del portal (W22, informe M9 y M10). Cuatro Lambdas con URL de
+  #      funcion: firmar la carga, estado del lago, KPI y revision documental.
+  #      AuthType NONE con validacion del token de Cognito en el codigo
+  #      (src/controles/jwt.py) y CORS limitado al dominio de CloudFront.
+  #      Costo: capa gratuita (las invocaciones son de un operador, no de un
+  #      publico). Las consultas de Athena del portal son las de desarrollo de
+  #      la Tabla 2.7, de pocos KB escaneados.
+  # ---------------------------------------------------------------------------
+  RolPortal:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: costagas-portal-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: portal-firmar-consultar-y-revisar
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow                  # la URL prefirmada solo puede escribir aqui
+                Action: s3:PutObject
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/landing/interno/*
+              - Effect: Allow                  # estado del lago: manifiestos y calidad
+                Action: s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/_manifests/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/silver/_control/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+                Condition:
+                  StringLike:
+                    s3:prefix: ["_manifests/*", "silver/_control/*"]
+              - Effect: Allow                  # Gold de solo lectura, salvo revision_alerta
+                Action: [s3:GetObject]
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/*
+              - Effect: Allow
+                Action: [s3:PutObject]
+                Resource: !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/gold/revision_alerta/*
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource:
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}/athena-results/*
+                  - !Sub arn:aws:s3:::costagas-trujillo-lake-${Sufijo}
+              - Effect: Allow
+                Action: [athena:StartQueryExecution, athena:GetQueryExecution,
+                         athena:GetQueryResults, athena:StopQueryExecution]
+                Resource: !Sub arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${WorkgroupAthena}
+              - Effect: Allow                  # el catalogo, solo para leer el esquema
+                Action: [glue:GetDatabase, glue:GetDatabases, glue:GetTable, glue:GetTables,
+                         glue:GetPartition, glue:GetPartitions]
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/costagas_gold
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/costagas_gold/*
+              - Effect: Allow
+                Action: glue:UpdateTable       # Iceberg actualiza el puntero al insertar
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/costagas_gold
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/costagas_gold/revision_alerta
+              - Effect: Allow
+                Action: ssm:GetParameter       # la sal del seudonimo del revisor
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/costagas/seudonimo/sal
+
+  PortalFirmar:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-firmar
+      Runtime: python3.12
+      Handler: src.portal.firmar.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 10
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          LAKE_BUCKET: !Sub costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+
+  PortalEstado:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-estado
+      Runtime: python3.12
+      Handler: src.portal.estado.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          LAKE_BUCKET: !Sub costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+
+  PortalKpis:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-kpis
+      Runtime: python3.12
+      Handler: src.portal.kpis.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+          ATHENA_WORKGROUP: !Ref WorkgroupAthena
+          BASE_GOLD: !Ref BaseGold
+
+  PortalRevision:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: costagas-portal-revision
+      Runtime: python3.12
+      Handler: src.portal.revision.lambda_handler
+      Role: !GetAtt RolPortal.Arn
+      MemorySize: 256
+      Timeout: 30
+      Code:
+        S3Bucket: !Sub costagas-code-${Sufijo}
+        S3Key: !Ref CodigoKey
+      Environment:
+        Variables:
+          LAKE_URI: !Sub s3://costagas-trujillo-lake-${Sufijo}
+          COGNITO_USER_POOL_ID: !Ref GrupoUsuariosPortal
+          COGNITO_CLIENT_ID: !Ref ClientePortal
+          PORTAL_ORIGEN: !Sub https://${DistribucionPortal.DomainName}
+          ATHENA_WORKGROUP: !Ref WorkgroupAthena
+          BASE_GOLD: !Ref BaseGold
+
+  UrlPortalFirmar:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalFirmar.Arn
+      AuthType: NONE                      # la autorizacion es el token de Cognito
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  UrlPortalEstado:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalEstado.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  UrlPortalKpis:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalKpis.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  UrlPortalRevision:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt PortalRevision.Arn
+      AuthType: NONE
+      Cors:
+        AllowOrigins: [!Sub "https://${DistribucionPortal.DomainName}"]
+        AllowMethods: [POST]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 600
+
+  PermisoUrlPortalFirmar:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalFirmar
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PermisoUrlPortalEstado:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalEstado
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PermisoUrlPortalKpis:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalKpis
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PermisoUrlPortalRevision:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref PortalRevision
+      Principal: "*"
+      FunctionUrlAuthType: NONE
 Outputs:
   Bucket: { Value: !Ref Lago }
   LakeUri: { Value: !Sub "s3://costagas-trujillo-lake-${Sufijo}" }
@@ -1047,3 +1274,7 @@ Outputs:
   ExtractorGdelt: { Value: !Ref ExtractorGdelt }
   ExtractorResoluciones: { Value: !Ref ExtractorResoluciones }
   JobExternos: { Value: !Ref JobExternos }
+  UrlPortalFirmar: { Value: !GetAtt UrlPortalFirmar.FunctionUrl }
+  UrlPortalEstado: { Value: !GetAtt UrlPortalEstado.FunctionUrl }
+  UrlPortalKpis: { Value: !GetAtt UrlPortalKpis.FunctionUrl }
+  UrlPortalRevision: { Value: !GetAtt UrlPortalRevision.FunctionUrl }
