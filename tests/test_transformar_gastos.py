@@ -78,8 +78,8 @@ def test_un_documento_de_persona_natural_tampoco_llega():
 
 # --- Llave y medidas -----------------------------------------------------------
 def test_la_placa_se_normaliza_para_cruzar_con_dim_unidad():
-    salida = _salida([{"placa_norm": "T2B-845", "monto_soles": 10.0}])
-    assert salida["placa_norm"].iloc[0] == "T2B845"
+    salida = _salida([{"placa_norm": "T1A-111", "monto_soles": 10.0}])
+    assert salida["placa_norm"].iloc[0] == "T1A111"
 
 
 def test_una_placa_que_no_lo_es_queda_nula_y_no_se_inventa():
@@ -108,7 +108,7 @@ def test_sin_fecha_el_mes_sale_del_texto_del_mes():
 
 def test_la_calidad_informa_lo_que_el_bloqueo_de_gold_necesita():
     _, calidad = TRANSFORMACIONES["gastos"](
-        _entrada([{"placa_norm": "T2B-845", "categoria": "COMBUSTIBLE", "monto_soles": 10.0},
+        _entrada([{"placa_norm": "T1A-111", "categoria": "COMBUSTIBLE", "monto_soles": 10.0},
                   {"placa_norm": None, "categoria": "PEAJES", "monto_soles": 20.0}]))
     assert calidad["placa_valida"] == 0.5
     assert calidad["monto_valido"] == 1.0
