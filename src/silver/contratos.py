@@ -124,10 +124,78 @@ def escribir_ddl(destino: Path | None = None) -> list[Path]:
     return salidas
 
 
+def validar() -> list[str]:
+    """Problemas que impiden desplegar los contratos. Lista vacia = todo en orden.
+
+    Lo comprueba la integracion continua antes de aceptar un cambio: un contrato sin
+    llave, con un tipo que Athena no entiende o cuyo DDL versionado quedo viejo rompe
+    el despliegue de Silver, y conviene saberlo en el pull request y no en la corrida.
+    """
+    problemas: list[str] = []
+    try:
+        todos = cargar()
+    except Exception as exc:                                   # noqa: BLE001
+        return [f"no se pueden cargar los contratos: {exc}"]
+
+    if not todos:
+        return ["no hay ningun contrato en contracts/"]
+
+    # cargar() devuelve un dict indexado por tabla, asi que dos archivos con la misma
+    # tabla se pisarian sin avisar. Por eso el duplicado se busca sobre los archivos.
+    vistos: dict[str, str] = {}
+    for ruta in sorted(DIR_CONTRATOS.glob("*.yaml")):
+        if ruta.name.startswith("_"):
+            continue
+        nombre = (yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}).get("tabla")
+        if nombre in vistos:
+            problemas.append(f"{ruta.name}: declara la tabla «{nombre}», ya declarada en {vistos[nombre]}")
+        vistos[nombre] = ruta.name
+
+    for tabla, c in sorted(todos.items()):
+        if not c.tabla:
+            problemas.append(f"{tabla}: sin nombre de tabla")
+        if not c.dominio:
+            problemas.append(f"{tabla}: sin dominio, no se sabe donde escribirla")
+        if not c.llave:
+            problemas.append(f"{tabla}: sin llave natural")
+        if not c.columnas:
+            problemas.append(f"{tabla}: sin columnas")
+        if not c.fuentes:
+            problemas.append(f"{tabla}: sin ninguna fuente declarada")
+
+        nombres = c.nombres()
+        repetidas = sorted({n for n in nombres if nombres.count(n) > 1})
+        if repetidas:
+            problemas.append(f"{tabla}: columnas repetidas {repetidas}")
+        for col in c.columnas:
+            if col.tipo not in _PA:
+                problemas.append(f"{tabla}.{col.nombre}: tipo «{col.tipo}» no admitido")
+
+        for f in c.fuentes:
+            if not f.columnas:
+                problemas.append(f"{tabla}/{f.id}: no declara ninguna columna")
+
+        versionado = config.RAIZ_REPO / "sql" / "athena" / "ddl" / f"silver_{c.tabla}.sql"
+        if not versionado.exists():
+            problemas.append(f"{tabla}: falta {versionado.name}; generelo con --ddl")
+        elif versionado.read_text(encoding="utf-8") != c.ddl():
+            problemas.append(f"{tabla}: {versionado.name} no coincide con el contrato; "
+                             f"regenerelo con: python -m src.silver.contratos --ddl")
+    return problemas
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ddl", action="store_true", help="genera los DDL de Athena desde los contratos")
+    ap.add_argument("--validar", action="store_true",
+                    help="revisa los contratos y sus DDL; sale con 1 si algo falla")
     a = ap.parse_args()
+    if a.validar:
+        fallos = validar()
+        for f in fallos:
+            print(f"ERROR {f}")
+        print(f"{len(cargar())} contratos revisados, {len(fallos)} problemas")
+        raise SystemExit(1 if fallos else 0)
     if a.ddl:
         for p in escribir_ddl():
             print(p.relative_to(config.RAIZ_REPO))
