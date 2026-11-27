@@ -122,3 +122,60 @@ def test_columnas_para_fact_serie():
               "kg_acumulados", "soles_acumulados"):
         assert c in serie.columns
     assert set(serie.estado) <= set(detector.ESTADOS)
+
+
+# --- FR03 · calibración con el escenario A ------------------------------------------
+def flota_grande(unidades=50, semanas=156, semilla=5):
+    rng = np.random.default_rng(semilla)
+    filas = [(f"U{u}", "reparto", t, 1000 * (1 + u / 25) * (1 + 0.1 * np.sin(2 * np.pi * t / 52))
+              * (1 + rng.normal(0, 0.03))) for u in range(unidades) for t in range(semanas)]
+    return pd.DataFrame(filas, columns=["unidad_id", "rol", "periodo", "kg"])
+
+
+def test_contar_alarmas_reinicia_tras_cada_senal():
+    assert detector.contar_alarmas([2, 2, 2, 2, 2, 2], k=0.5, h=2.9) == 3   # 1.5, 3.0→señal, 1.5, 3.0→señal…
+    assert detector.contar_alarmas([0.4] * 20, k=0.5, h=1.0) == 0
+
+
+def test_calibrar_h_respeta_el_presupuesto_y_es_el_minimo():
+    serie = flota_grande()
+    cal = detector.calibrar_h(serie, "unidad_id", "kg", "periodo", "semana")
+    assert cal["falsas_alarmas_anio"] <= 12 and cal["entidades"] == 50 and cal["anios"] == 3.0
+    if cal["h"] > 0.5:                                   # un h un poco menor ya se pasa del presupuesto
+        menos = detector.calibrar_h(serie, "unidad_id", "kg", "periodo", "semana",
+                                    rejilla=[round(cal["h"] - 0.1, 4)], presupuesto=10_000)
+        assert menos["falsas_alarmas_anio"] > 12
+
+
+def test_mas_entidades_piden_un_umbral_mas_alto():
+    """El presupuesto es del sistema: con más unidades vigiladas, cada una necesita un h mayor."""
+    chica = detector.calibrar_h(flota_grande(unidades=10), "unidad_id", "kg", "periodo", "semana")
+    grande = detector.calibrar_h(flota_grande(unidades=50), "unidad_id", "kg", "periodo", "semana")
+    assert grande["h"] >= chica["h"]
+
+
+def test_granularidad_invalida():
+    with pytest.raises(ValueError):
+        detector.calibrar_h(flota_grande(unidades=5), "unidad_id", "kg", "periodo", "trimestre")
+
+
+def test_calibracion_con_el_escenario_a_en_semanas_y_meses():
+    import inspect
+    import json
+
+    cal = detector.calibrar_con_escenario_a(semilla=42)
+    json.dumps(cal)                                      # serializable para gold/_modelos/detector/umbral.json
+    for g in ("semana", "mes"):
+        assert cal[g]["falsas_alarmas_anio"] <= 12
+        assert set(cal[g]["sigma"]) == {"reparto", "transporte"}
+        assert cal[g]["h"] > 0
+    assert "escenario_b" not in inspect.getsource(detector.calibrar_con_escenario_a).replace(
+        "El escenario B nunca", "")                      # solo el escenario A: B mide la detección después
+
+
+def test_la_escala_calibrada_se_reutiliza_al_detectar():
+    serie = flota_grande(unidades=10, semanas=60)
+    cal = detector.calibrar_h(serie, "unidad_id", "kg", "periodo", "semana")
+    a = detector.detectar(serie, "unidad_id", "kg", "periodo", h=cal["h"], sigma=cal["sigma"])
+    b = detector.desvios(serie, "unidad_id", "kg", "periodo", sigma=cal["sigma"])
+    assert np.allclose(a.sort_index().z, b.sort_index().z, equal_nan=True)

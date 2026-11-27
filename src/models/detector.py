@@ -137,6 +137,26 @@ def punto_cambio(s, h: float = config.DETECTOR_H) -> int | None:
 
 
 # --- 3. Detector completo por entidad ---------------------------------------------
+def desvios(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: str = "rol",
+            sigma: dict | None = None,
+            periodos_base: int = config.DETECTOR_PERIODOS_BASE) -> pd.DataFrame:
+    """Desvío estandarizado de cada entidad y periodo: `valor_esperado`, `residuo` y `z`.
+
+    Es el paso común del detector y de su calibración, así los dos usan exactamente el
+    mismo z. `sigma` fija la escala por grupo (la de la calibración); si falta un grupo,
+    se estima con los datos recibidos. La escala usada queda en la columna `_sigma`.
+    """
+    d = neutralizar_redigitados(df, entidad, valor, periodo)
+    d = esperado_por_pares(d, entidad, f"{valor}_corregido", periodo, grupo, periodos_base)
+    escalas = dict(sigma or {})
+    for g, desv in d.groupby(grupo)["desvio_rel"]:
+        escalas.setdefault(g, escala_robusta(desv))
+    d["_sigma"] = d[grupo].map(escalas)
+    d["residuo"] = d[f"{valor}_corregido"] - d["valor_esperado"]
+    d["z"] = d["desvio_rel"] / d["_sigma"]
+    return d
+
+
 def detectar(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: str = "rol",
              k: float = config.DETECTOR_K, h: float = config.DETECTOR_H,
              lam: float = config.DETECTOR_LAMBDA, L: float = config.DETECTOR_L,
@@ -150,14 +170,7 @@ def detectar(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: st
     `sigma` permite usar la escala fijada en la calibración (por grupo); si no se da,
     se estima con los datos recibidos.
     """
-    d = neutralizar_redigitados(df, entidad, valor, periodo)
-    d = esperado_por_pares(d, entidad, f"{valor}_corregido", periodo, grupo, periodos_base)
-    escalas = dict(sigma or {})
-    for g, desv in d.groupby(grupo)["desvio_rel"]:
-        escalas.setdefault(g, escala_robusta(desv))
-    d["_sigma"] = d[grupo].map(escalas)
-    d["residuo"] = d[f"{valor}_corregido"] - d["valor_esperado"]
-    d["z"] = d["desvio_rel"] / d["_sigma"]
+    d = desvios(df, entidad, valor, periodo, grupo, sigma, periodos_base)
     limite = limite_ewma(lam, L)
 
     partes = []
@@ -187,3 +200,74 @@ def alarmas(serie: pd.DataFrame, entidad: str, periodo: str) -> pd.DataFrame:
     """Primer periodo en rojo de cada entidad, con su inicio estimado. Lo usa calibrar_h."""
     rojas = serie[serie["estado"] == "rojo"].sort_values([entidad, periodo])
     return rojas.groupby(entidad, as_index=False).first()[[entidad, periodo, "periodo_inicio"]]
+
+
+# --- 4. Calibración del umbral con el escenario A ------------------------------------
+PERIODOS_POR_ANIO = {"semana": 52, "mes": 12}
+
+
+def contar_alarmas(x, k: float, h: float) -> int:
+    """Episodios de alarma de una serie: cada vez que el CUSUM cruza h cuenta uno y se reinicia.
+
+    Reiniciar tras la señal es la práctica habitual de un CUSUM (se revisa la unidad y se
+    vuelve a empezar); así una sola desviación larga no cuenta como muchas alarmas.
+    """
+    s, n = 0.0, 0
+    for v in np.asarray(x, dtype=float):
+        if not np.isfinite(v):
+            continue
+        s = max(0.0, s + v - k)
+        if s > h:
+            n += 1
+            s = 0.0
+    return n
+
+
+def calibrar_h(serie_a: pd.DataFrame, entidad: str, valor: str, periodo: str, granularidad: str,
+               grupo: str = "rol", presupuesto: int = config.FALSAS_ALARMAS_ANIO,
+               k: float = config.DETECTOR_K, rejilla=None,
+               periodos_base: int = config.DETECTOR_PERIODOS_BASE) -> dict:
+    """El menor h que deja como máximo `presupuesto` falsas alarmas al año en TODO el sistema.
+
+    `serie_a` es una serie sin robos (escenario A): toda alarma en ella es falsa. El
+    presupuesto es del sistema y no por entidad (informe v16, 4.3; Tabla 4.8h: 12 al año
+    en cada granularidad), para que vigilar muchas entidades no llene la bandeja.
+    Devuelve un dict listo para `gold/_modelos/detector/umbral.json`, con la escala σ por
+    grupo que se fijó aquí y que el detector debe reutilizar al puntuar.
+    """
+    if granularidad not in PERIODOS_POR_ANIO:
+        raise ValueError(f"granularidad debe ser una de {sorted(PERIODOS_POR_ANIO)}")
+    d = desvios(serie_a, entidad, valor, periodo, grupo, periodos_base=periodos_base)
+    sigma = {str(g): (None if pd.isna(v) else float(v))
+             for g, v in d.groupby(grupo)["_sigma"].first().items()}
+    series = [-g.sort_values(periodo)["z"].to_numpy(dtype=float) for _, g in d.groupby(entidad)]
+    anios = d[periodo].nunique() / PERIODOS_POR_ANIO[granularidad]
+    rejilla = np.round(np.arange(0.5, 50.0001, 0.1), 4) if rejilla is None else np.asarray(rejilla)
+    for h in rejilla:
+        alarmas_total = sum(contar_alarmas(x, k, float(h)) for x in series)
+        tasa = alarmas_total / anios
+        if tasa <= presupuesto:
+            return {"granularidad": granularidad, "h": float(h), "k": float(k),
+                    "lambda": float(config.DETECTOR_LAMBDA), "L": float(config.DETECTOR_L),
+                    "sigma": sigma, "periodos_base": int(periodos_base),
+                    "presupuesto_falsas_alarmas_anio": int(presupuesto),
+                    "falsas_alarmas_total": int(alarmas_total),
+                    "falsas_alarmas_anio": round(float(tasa), 4),
+                    "anios": round(float(anios), 4), "entidades": len(series)}
+    raise ValueError(f"ningún h de la rejilla deja ≤ {presupuesto} falsas alarmas al año")
+
+
+def calibrar_con_escenario_a(semilla: int = config.SEMILLA) -> dict:
+    """Calibra h dos veces con el escenario A de Anghelo (`src/sim/escenario_a`): semanas y meses.
+
+    Solo usa el escenario A (sin robos). El escenario B nunca se lee aquí: con él se mide
+    la detección, sin volver a tocar el umbral (Tabla 4.8h).
+    """
+    from src.sim import escenario_a  # noqa: PLC0415
+
+    datos = escenario_a.generar(semilla)
+    return {
+        "semana": calibrar_h(datos["semanal"], "placa_norm", "kg", "periodo", "semana"),
+        "mes": calibrar_h(datos["mensual"], "placa_norm", "kg", "periodo", "mes"),
+        "semilla": int(semilla),
+    }
