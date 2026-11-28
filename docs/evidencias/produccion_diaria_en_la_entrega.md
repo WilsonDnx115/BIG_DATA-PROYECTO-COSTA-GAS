@@ -54,7 +54,50 @@ mirada con el archivo delante, como esta.
 
 Dicho de otra manera: **se recupera la validación de S11, no el KPI 1 del piloto.**
 
-## Qué falta para cargarla
+## Resultado: la hoja ya entra a Silver, y confirma la cifra del informe
+
+`contracts/produccion_diaria.yaml` la declara por posición, tomando el **TOTAL de cada bloque**:
+
+| Concepto | Bloque | Columna TOTAL |
+|---|---|---|
+| fecha | — | **A** |
+| STOCK INICIAL | B | **H** |
+| VENTAS | I | **O** |
+| BONIFICACIONES | P | **V** |
+| STOCK FINAL (PLAT. + UNID) | W | **AC** |
+| PRODUCCION | AD | **AJ** |
+
+Corrida sobre el archivo real, sin escribir nada y sin publicar ningún valor:
+
+| Medida | Resultado |
+|---|---|
+| Filas de salida | 32 |
+| Fecha válida | 31 (la fila 32 es el cierre de la hoja y no trae fecha) |
+| Producción y stock final válidos | 100 % |
+| **Días completos** | **31** |
+| **Días con residuo cero** | **31** |
+
+**Los 31 días de octubre cuadran exacto**, y eso confirma la referencia que el informe le da a
+S11: «residuo cero en 31 de 31 días, oct-2018». La cifra era correcta y ahora es **reproducible
+desde la entrega**, no una cita heredada.
+
+Un detalle que la corrida obligó a corregir: la hoja cierra con una fila de totales que trae las
+cinco medidas y ninguna fecha. Contarla daba 32 días en un mes de 31, así que un día del balance
+exige su fecha. La fila se conserva, con `fecha` nula.
+
+## Lo que esto cambia para S11 y para el KPI 1
+
+- **S11 tiene fuente real.** Su ventana en el catálogo es oct-2018 y es justo el mes que hay.
+- **El KPI 1 del piloto 2020 no cambia.** Esta hoja es de 2018; para 2020 no hay balance diario,
+  así que `delta_stock_kg` sigue nulo y la vista publica `stock_es_supuesto`.
+- **`stock_final_es_calculado` es verdadero siempre**, y no es un supuesto nuestro: el informe
+  dice que el inventario final no se contabiliza físicamente, sino que se calcula para que el
+  balance cuadre. Que los 31 días den residuo exactamente cero es precisamente la huella de un
+  cierre calculado, no medido: es lo que S11 señala.
+
+## Lo que queda sin cubrir
+
+
 
 Lo mismo que bloquea a los contratos de gastos y de PRIMAX, más una cosa propia:
 
