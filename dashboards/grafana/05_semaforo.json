@@ -1,0 +1,897 @@
+{
+  "title": "Costa Gas · Semaforo de unidades",
+  "uid": "costagas-semaforo",
+  "description": "B07. Estado de cada unidad antes del despacho, desde v_semaforo_unidades. Rojo es desvio persistente confirmado por el CUSUM, o S9 junto con otra senal; ambar es el EWMA pasando su limite; verde es sin senales.",
+  "tags": [
+    "costagas",
+    "semaforo",
+    "unidades"
+  ],
+  "timezone": "America/Lima",
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-12M",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true,
+    "refresh_intervals": [
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_athena",
+        "label": "Origen de datos",
+        "description": "Origen Amazon Athena (AwsDataCatalog, costagas_gold, workgroup costagas-wg, us-east-2).",
+        "type": "datasource",
+        "query": "grafana-athena-datasource",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": ""
+      },
+      {
+        "name": "anio",
+        "label": "Año",
+        "description": "Años presentes en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "anio",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo WHERE anio IS NOT NULL ORDER BY anio DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "mes",
+        "label": "Mes",
+        "description": "Meses del año elegido en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "mes",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio} AND mes IS NOT NULL ORDER BY mes DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio}",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "producto",
+        "label": "Producto",
+        "description": "GLP-E o GLP-G, de dim_producto. «All» vale __all e incluye también los productos sin clasificar del balance.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "producto",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT producto FROM costagas_gold.dim_producto WHERE producto IS NOT NULL ORDER BY producto",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT producto FROM costagas_gold.dim_producto",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "rol",
+        "label": "Rol de la unidad",
+        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. «All» vale __all e incluye las unidades sin rol.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "rol",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad WHERE rol IS NOT NULL ORDER BY rol",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Estado de la flota",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Unidades con semaforo",
+      "description": "Filas de v_semaforo_unidades para los roles filtrados: una por unidad, en su periodo mas reciente.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "grafana-athena-datasource",
+        "uid": "${ds_athena}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-athena-datasource",
+            "uid": "${ds_athena}"
+          },
+          "format": 1,
+          "rawSQL": "-- B07 · Semaforo de unidades antes del despacho (Tabla 4.8i, carril 2), desde v_semaforo_unidades.\n-- Una sola consulta por refresco (ADR 0016). La vista ya toma el periodo mas reciente de cada unidad,\n-- con granularidad semanal si existe, y cruza fact_serie con el ultimo mes de fact_unidad_mes.\nSELECT unidad_id,\n       rol,\n       semaforo,\n       granularidad,\n       periodo,\n       periodo_inicio,\n       kg_acumulados,\n       soles_acumulados,\n       senales\n  FROM costagas_gold.v_semaforo_unidades\n WHERE ('__all' IN (${rol:sqlstring}) OR rol IN (${rol:sqlstring}))\n ORDER BY CASE semaforo WHEN 'rojo' THEN 0 WHEN 'ambar' THEN 1 ELSE 2 END, unidad_id",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "unidad_id"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Rojo",
+      "description": "Desvio persistente confirmado por el CUSUM, o S9 con al menos otra senal en el ultimo mes.",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "semaforo",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "rojo"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "unidad_id"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Ambar",
+      "description": "El EWMA paso su limite y el CUSUM todavia no cruza el umbral: el desvio empieza.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "semaforo",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "ambar"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "unidad_id"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Verde",
+      "description": "Sin senales en el periodo mas reciente de la unidad.",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "semaforo",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "verde"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "unidad_id"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "text",
+      "title": "Que hacer con cada color",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "- **Rojo:** no sale a despacho sin que alguien revise la unidad. El color no acusa a nadie: dice que el consumo se aparta de su propio historial.\n- **Ambar:** sale, y se mira en el siguiente corte.\n- **Verde:** sin senales.\n\n**Una unidad sin rol no es evaluable** y no deberia aparecer: si sale, es que `dim_unidad` no declara su rol. **Un semaforo vacio no es flota limpia**: puede ser que `fact_serie` aun no tenga la serie semanal, que es lo que calcula el modo que escribe esa tabla."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Unidades",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Unidades en rojo y ambar",
+      "description": "Las que piden atencion, de la misma consulta.",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "exclude",
+            "match": "any",
+            "filters": [
+              {
+                "fieldName": "semaforo",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "verde"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "unidad_id": "unidad",
+              "periodo_inicio": "inicio del periodo",
+              "kg_acumulados": "kg acumulados",
+              "soles_acumulados": "soles acumulados"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "semaforo"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "rojo": {
+                        "text": "rojo",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "ambar": {
+                        "text": "ambar",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "verde": {
+                        "text": "verde",
+                        "color": "green",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kg acumulados"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kg"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "soles acumulados"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyPEN"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Toda la flota",
+      "description": "Las mismas filas, sin filtrar por color.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "unidad_id": "unidad",
+              "periodo_inicio": "inicio del periodo",
+              "kg_acumulados": "kg acumulados",
+              "soles_acumulados": "soles acumulados"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "semaforo"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "rojo": {
+                        "text": "rojo",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "ambar": {
+                        "text": "ambar",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "verde": {
+                        "text": "verde",
+                        "color": "green",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -4,15 +4,21 @@ Tablero de Costa Gas Trujillo sobre la capa Gold, consultada con Amazon Athena (
 `docs/Plan_Implementacion_Codigo_v15.md`; informe, sección 4.4 y Tabla 4.11).
 Cada página se versiona como un JSON exportado de Grafana en esta carpeta.
 
-| Archivo | Página | Commit |
-|---|---|---|
-| `_variables.json` | Variables comunes (no es una página) | B02 |
-| `01_resumen.json` | Resumen: 5 KPI, semáforo y calidad | B03 |
-| `02_balance_unidades.json` | Balance y unidades | B04 |
-| `03_bandeja.json` | Bandeja de alertas | B05 |
-| `04_mercado.json` | Mercado | B06 |
-| `05_semaforo.json` | Semáforo de unidades | B07 |
-| `06_revision_ciega.json` | Revisión ciega | B09 |
+| Archivo | Página | Commit | Estado |
+|---|---|---|---|
+| `_variables.json` | Variables comunes (no es una página) | B02 | en el repositorio |
+| `01_resumen.json` | Resumen: 5 KPI, semáforo y calidad | B03 | en el repositorio |
+| `02_balance_unidades.json` | Balance y unidades | B04 | en el repositorio |
+| `03_bandeja.json` | Bandeja de alertas | B05 | en el repositorio |
+| `04_mercado.json` | Mercado | B06 | falta: `mercado_mes` está vacía hasta que corra el modo que la escribe |
+| `05_semaforo.json` | Semáforo de unidades | B07 | en el repositorio |
+| `06_revision_ciega.json` | Revisión ciega | B09 | falta |
+
+**Ninguna página está probada todavía contra Athena.** `tests/test_tablero_paginas.py` comprueba
+su forma sin conectarse: que cada página haga una sola consulta, que sus columnas existan en la
+vista que consulta, que filtre por `anio` y que no pida columnas de persona. Lo que falta es correr
+cada consulta en Athena y anotar su «Data scanned», que hoy el perfil de gobierno no puede hacer
+por falta de `s3:PutObject` sobre `athena-results/`.
 
 Las consultas de cada página están también en `sql/athena/tablero/`, para correrlas y medirlas en Athena.
 

@@ -1,0 +1,1383 @@
+{
+  "title": "Costa Gas · Balance y unidades",
+  "uid": "costagas-balance-unidades",
+  "description": "B04. Balance de planta (KPI 1 y 2) y actividad por unidad del mes elegido, con la tendencia de 12 meses. Una sola consulta por refresco; los demas paneles la reusan.",
+  "tags": [
+    "costagas",
+    "balance",
+    "unidades"
+  ],
+  "timezone": "America/Lima",
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-12M",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true,
+    "refresh_intervals": [
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_athena",
+        "label": "Origen de datos",
+        "description": "Origen Amazon Athena (AwsDataCatalog, costagas_gold, workgroup costagas-wg, us-east-2).",
+        "type": "datasource",
+        "query": "grafana-athena-datasource",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": ""
+      },
+      {
+        "name": "anio",
+        "label": "Año",
+        "description": "Años presentes en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "anio",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo WHERE anio IS NOT NULL ORDER BY anio DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "mes",
+        "label": "Mes",
+        "description": "Meses del año elegido en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "mes",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio} AND mes IS NOT NULL ORDER BY mes DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio}",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "producto",
+        "label": "Producto",
+        "description": "GLP-E o GLP-G, de dim_producto. «All» vale __all e incluye también los productos sin clasificar del balance.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "producto",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT producto FROM costagas_gold.dim_producto WHERE producto IS NOT NULL ORDER BY producto",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT producto FROM costagas_gold.dim_producto",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "rol",
+        "label": "Rol de la unidad",
+        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. «All» vale __all e incluye las unidades sin rol.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "rol",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad WHERE rol IS NOT NULL ORDER BY rol",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Balance de planta · mes elegido",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Kg comprados",
+      "description": "SUM(kg_comprados) de v_kpi_1 en el mes elegido, para los productos filtrados.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "grafana-athena-datasource",
+        "uid": "${ds_athena}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-athena-datasource",
+            "uid": "${ds_athena}"
+          },
+          "format": 1,
+          "rawSQL": "-- B04 · Balance de planta y unidades, 12 meses hasta el mes elegido.\n-- Una sola consulta por refresco (ADR 0016): los demas paneles reusan este resultado.\n-- Filtra por anio y mes en los dos hechos para que Athena pode particiones.\nWITH balance AS (\n    SELECT anio, mes,\n           SUM(kg_comprados)              AS kg_comprados,\n           SUM(kg_vendidos)               AS kg_vendidos,\n           SUM(delta_stock_kg)            AS delta_stock_kg,\n           SUM(merma_tecnica_kg)          AS merma_tecnica_kg,\n           MAX(stock_es_supuesto)         AS stock_es_supuesto,\n           MAX(merma_es_supuesto)         AS merma_es_supuesto,\n           MIN(mes_completo)              AS mes_completo\n      FROM costagas_gold.v_kpi_1\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n       AND ('__all' IN (${producto:sqlstring}) OR producto IN (${producto:sqlstring}))\n     GROUP BY anio, mes\n),\nvalor AS (\n    SELECT anio, mes,\n           SUM(kg_no_explicados)          AS kg_no_explicados,\n           SUM(valor_diferencia_soles)    AS valor_diferencia_soles\n      FROM costagas_gold.v_kpi_2\n     WHERE anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n       AND ('__all' IN (${producto:sqlstring}) OR producto IN (${producto:sqlstring}))\n     GROUP BY anio, mes\n),\nunidades AS (\n    SELECT anio, mes,\n           SUM(unidades)                  AS unidades,\n           SUM(kg)                        AS kg_unidades,\n           SUM(combustible_soles)         AS combustible_soles,\n           SUM(senales_disparadas)        AS senales_disparadas,\n           SUM(unidades_mes_atipicas)     AS unidades_atipicas\n      FROM costagas_gold.v_cubo_unidad\n     WHERE nivel = 0\n       AND anio BETWEEN ${anio} - 1 AND ${anio}\n       AND anio * 12 + mes BETWEEN ${anio} * 12 + ${mes} - 11 AND ${anio} * 12 + ${mes}\n       AND ('__all' IN (${rol:sqlstring}) OR rol IN (${rol:sqlstring}))\n     GROUP BY anio, mes\n)\nSELECT format('%04d-%02d', b.anio, b.mes)                       AS periodo,\n       b.anio, b.mes,\n       b.kg_comprados, b.kg_vendidos, b.delta_stock_kg, b.merma_tecnica_kg,\n       v.kg_no_explicados, v.valor_diferencia_soles,\n       (b.kg_comprados - b.kg_vendidos) / NULLIF(b.kg_comprados, 0)          AS kpi1_bruto,\n       (b.kg_comprados - b.kg_vendidos - COALESCE(b.delta_stock_kg, 0) - b.merma_tecnica_kg)\n           / NULLIF(b.kg_comprados, 0)                                       AS kpi1_neto,\n       b.stock_es_supuesto, b.merma_es_supuesto, b.mes_completo,\n       u.unidades, u.kg_unidades, u.combustible_soles, u.senales_disparadas, u.unidades_atipicas\n  FROM balance b\n  LEFT JOIN valor    v ON v.anio = b.anio AND v.mes = b.mes\n  LEFT JOIN unidades u ON u.anio = b.anio AND u.mes = b.mes\n ORDER BY b.anio, b.mes",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "kg_comprados"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Kg vendidos",
+      "description": "SUM(kg_vendidos) de v_kpi_1 en el mes elegido.",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "kg_vendidos"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Kg no explicados",
+      "description": "SUM(kg_no_explicados) de v_kpi_2: lo que queda tras descontar la variacion de stock y la merma tecnica.",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "kg_no_explicados"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "KPI 1 · diferencia neta",
+      "description": "(comprados - vendidos - variacion de stock - merma) / comprados. Rojo en o sobre 2 %.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "kpi1_neto"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "KPI 2 · valor de la diferencia",
+      "description": "Kg no explicados por el precio de compra del mes (v_kpi_2).",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyPEN",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "valor_diferencia_soles"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "title": "Como leer estas cifras",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "- **La variacion de stock se toma como 0** cuando la planta no mide stock fisico; `stock_es_supuesto` lo marca en `v_kpi_1` y la tabla de abajo lo muestra.\n- **La merma tecnica es 0.5 %**, referencia de mercado adoptada por el equipo ([ADR 0027](https://github.com/WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS/blob/main/docs/adr/0027-merma-tecnica.md)); `merma_es_supuesto` lo marca.\n- Un mes **incompleto** (`mes_completo` falso) no se compara con el umbral: falta cobertura, no es una medicion baja.\n- Un panel vacio es **sin dato**, nunca un cero medido."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Tendencia de 12 meses",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "barchart",
+      "title": "KPI 1 bruto y neto por mes",
+      "description": "Los dos cocientes del KPI 1 en la ventana de 12 meses que termina en el mes elegido.",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "periodo",
+                "kpi1_bruto",
+                "kpi1_neto"
+              ]
+            }
+          }
+        }
+      ],
+      "options": {
+        "xField": "periodo",
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "noValue": "sin dato"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Balance por mes",
+      "description": "Las columnas sumables de v_kpi_1 y v_kpi_2, mes a mes, con las marcas de supuesto.",
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "periodo",
+                "kg_comprados",
+                "kg_vendidos",
+                "kg_no_explicados",
+                "valor_diferencia_soles",
+                "kpi1_neto",
+                "stock_es_supuesto",
+                "merma_es_supuesto",
+                "mes_completo"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Unidades · mes elegido",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Unidades con actividad",
+      "description": "count(DISTINCT unidad_id) de v_cubo_unidad en el detalle (nivel = 0), para los roles filtrados.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "unidades"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Kg movidos por las unidades",
+      "description": "SUM(kg) de v_cubo_unidad: kg vendidos en reparto y transportados en transporte.",
+      "gridPos": {
+        "x": 5,
+        "y": 21,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "kg_unidades"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Combustible",
+      "description": "SUM(combustible_soles) de v_cubo_unidad en el mes elegido.",
+      "gridPos": {
+        "x": 10,
+        "y": 21,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyPEN",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "combustible_soles"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Unidades-mes atipicas",
+      "description": "count_if(alerta_base) de v_cubo_unidad. Es un indicio que abre revision, no una perdida confirmada.",
+      "gridPos": {
+        "x": 15,
+        "y": 21,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "unidades_atipicas"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Senales disparadas",
+      "description": "SUM(n_senales) de v_cubo_unidad en el mes elegido.",
+      "gridPos": {
+        "x": 19,
+        "y": 21,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "anio",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${anio}"
+                  }
+                }
+              },
+              {
+                "fieldName": "mes",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${mes}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "includeByName": {}
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "senales_disparadas"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Unidades por mes",
+      "description": "Actividad de la flota mes a mes, de v_cubo_unidad con nivel = 0.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "periodo",
+                "unidades",
+                "kg_unidades",
+                "combustible_soles",
+                "senales_disparadas",
+                "unidades_atipicas"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

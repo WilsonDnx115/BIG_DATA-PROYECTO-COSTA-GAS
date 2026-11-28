@@ -1,0 +1,1098 @@
+{
+  "title": "Costa Gas · Bandeja de alertas",
+  "uid": "costagas-bandeja",
+  "description": "B05. Alertas del mes elegido con su ultima revision, desde v_alerta. Una alerta es una candidata a revision documental, no un robo confirmado.",
+  "tags": [
+    "costagas",
+    "alertas"
+  ],
+  "timezone": "America/Lima",
+  "editable": true,
+  "graphTooltip": 0,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-12M",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true,
+    "refresh_intervals": [
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_athena",
+        "label": "Origen de datos",
+        "description": "Origen Amazon Athena (AwsDataCatalog, costagas_gold, workgroup costagas-wg, us-east-2).",
+        "type": "datasource",
+        "query": "grafana-athena-datasource",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "refresh": 1,
+        "regex": ""
+      },
+      {
+        "name": "anio",
+        "label": "Año",
+        "description": "Años presentes en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "anio",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo WHERE anio IS NOT NULL ORDER BY anio DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT anio FROM costagas_gold.dim_tiempo",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "mes",
+        "label": "Mes",
+        "description": "Meses del año elegido en dim_tiempo. Por defecto, el más reciente.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "mes",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio} AND mes IS NOT NULL ORDER BY mes DESC",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT mes FROM costagas_gold.dim_tiempo WHERE anio = ${anio}",
+        "refresh": 1,
+        "sort": 4,
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "producto",
+        "label": "Producto",
+        "description": "GLP-E o GLP-G, de dim_producto. «All» vale __all e incluye también los productos sin clasificar del balance.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "producto",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT producto FROM costagas_gold.dim_producto WHERE producto IS NOT NULL ORDER BY producto",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT producto FROM costagas_gold.dim_producto",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      },
+      {
+        "name": "rol",
+        "label": "Rol de la unidad",
+        "description": "reparto (kg vendidos) o transporte (kg transportados), desde dim_unidad. «All» vale __all e incluye las unidades sin rol.",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-athena-datasource",
+          "uid": "${ds_athena}"
+        },
+        "query": {
+          "refId": "rol",
+          "format": 1,
+          "rawSQL": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad WHERE rol IS NOT NULL ORDER BY rol",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        },
+        "definition": "SELECT DISTINCT rol FROM costagas_gold.dim_unidad",
+        "refresh": 1,
+        "sort": 1,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": "__all",
+        "multi": true,
+        "current": {},
+        "options": [],
+        "regex": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Alertas del mes elegido",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Alertas del mes",
+      "description": "Filas de v_alerta en el mes elegido, para los roles filtrados.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "grafana-athena-datasource",
+        "uid": "${ds_athena}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-athena-datasource",
+            "uid": "${ds_athena}"
+          },
+          "format": 1,
+          "rawSQL": "-- B05 · Bandeja de alertas del mes elegido, desde v_alerta (fact_alerta + su ultima revision).\n-- Una sola consulta por refresco (ADR 0016). Filtra por anio y mes: v_alerta lee un hecho particionado.\n-- Sin nombres, DNI ni RUC: unidad_id es la placa normalizada y revisor_hash va seudonimizado.\nSELECT id_alerta,\n       senal,\n       tipo,\n       resolucion,\n       fecha,\n       unidad_id,\n       rol,\n       factura_id,\n       codigo_scop,\n       kg,\n       puntaje,\n       probabilidad,\n       grado_evidencia,\n       estado_revision,\n       nivel_evidencia,\n       revisado_en,\n       motivo,\n       fuentes,\n       anio,\n       mes\n  FROM costagas_gold.v_alerta\n WHERE anio = ${anio}\n   AND mes = ${mes}\n   AND ('__all' IN (${rol:sqlstring}) OR rol IN (${rol:sqlstring}))\n ORDER BY puntaje DESC NULLS LAST, id_alerta",
+          "connectionArgs": {
+            "region": "__default",
+            "catalog": "__default",
+            "database": "__default",
+            "resultReuseEnabled": false
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "id_alerta"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Pendientes de revision",
+      "description": "Alertas cuyo estado_revision sigue en 'pendiente': nadie las ha mirado todavia.",
+      "gridPos": {
+        "x": 5,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "estado_revision",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "pendiente"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "id_alerta"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Confirmadas",
+      "description": "Alertas con estado_revision 'confirmada' en su ultima revision.",
+      "gridPos": {
+        "x": 10,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "estado_revision",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "confirmada"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "id_alerta"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Descartadas",
+      "description": "Alertas con estado_revision 'descartada' en su ultima revision.",
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "estado_revision",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "descartada"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "id_alerta"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Senales distintas",
+      "description": "Cuantas senales del catalogo S1-S12 dispararon este mes.",
+      "gridPos": {
+        "x": 19,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "sin dato",
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "senal": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "count"
+            ],
+            "includeTimeField": false
+          },
+          "reducer": {
+            "reducers": [
+              "count"
+            ]
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Field",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "id_alerta"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "title": "Que es y que no es una alerta",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Una alerta es un **indicio que abre una revision documental**, no una perdida ni un robo confirmado. S1, S4 y S7 salen marcadas como indicio por muestra minima y no entran en la precision del modelo.\n\nEl cierre lo da la **revision ciega**, que hace alguien distinto del autor del detector y queda en `revision_alerta`. Mientras `estado_revision` diga `pendiente`, la alerta no sustenta ninguna decision sobre una persona."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Reparto por senal y por estado",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Alertas por senal",
+      "description": "Conteo por senal, de la misma consulta.",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 8,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "senal": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "id_alerta": {
+                "aggregations": [
+                  "count"
+                ],
+                "operation": "aggregate"
+              },
+              "puntaje": {
+                "aggregations": [
+                  "mean"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "id_alerta (count)": "alertas",
+              "puntaje (mean)": "puntaje medio"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Alertas por estado de revision",
+      "description": "Conteo por estado_revision, de la misma consulta.",
+      "gridPos": {
+        "x": 8,
+        "y": 11,
+        "w": 8,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "estado_revision": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "id_alerta": {
+                "aggregations": [
+                  "count"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "id_alerta (count)": "alertas"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Alertas por grado de evidencia",
+      "description": "Conteo por grado_evidencia: con que respaldo documental cuenta cada alerta.",
+      "gridPos": {
+        "x": 16,
+        "y": 11,
+        "w": 8,
+        "h": 9
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "grado_evidencia": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "id_alerta": {
+                "aggregations": [
+                  "count"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "id_alerta (count)": "alertas"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Bandeja",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Alertas del mes, de mayor a menor puntaje",
+      "description": "Las filas de v_alerta tal cual, ordenadas por puntaje. Para la revision ciega usese la pagina de revision, que no muestra puntaje ni probabilidad.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "panelId": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "anio": true,
+              "mes": true
+            },
+            "renameByName": {
+              "id_alerta": "alerta",
+              "unidad_id": "unidad",
+              "estado_revision": "revision",
+              "grado_evidencia": "evidencia",
+              "nivel_evidencia": "nivel",
+              "revisado_en": "revisada"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "noValue": "sin dato"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "puntaje"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "probabilidad"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kg"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kg"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
