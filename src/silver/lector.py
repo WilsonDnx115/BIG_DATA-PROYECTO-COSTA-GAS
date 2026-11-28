@@ -138,7 +138,11 @@ def leer_hoja(ruta: str, hoja: str, fuente: Fuente, max_vacias: int | None = Non
         valores["fila"] = n
         registros.append(valores)
 
-    datos = pd.DataFrame(registros, columns=[*posiciones, "fila"])
+    # dtype=object: las celdas quedan tal como las entrega el Excel y cada transformación
+    # convierte con su regla (pd.to_datetime(..., errors="coerce") en las fechas). Si pandas
+    # infiere datetime64 por su cuenta, una fecha fuera de rango en una celda tumba el
+    # proceso con un segmentation fault en la capa de pandas de Lambda (28/11/2026).
+    datos = pd.DataFrame(registros, columns=[*posiciones, "fila"], dtype=object)
     return Lectura(hoja=hoja, datos=datos, leidas=leidas, efectivas=len(datos), cortada=cortada)
 
 
