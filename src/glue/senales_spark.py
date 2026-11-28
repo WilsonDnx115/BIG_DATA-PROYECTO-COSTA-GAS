@@ -20,6 +20,7 @@ Un solo esquema por tabla (CLAUDE.md). Este módulo no declara contratos propios
       y sobrecobro del control F08 (monto sobre lo pactado), con importe en valor_soles
   S4  carga superior a la capacidad autorizada          join con broadcast(flota)    (fixture)
   S5  volumen a un cliente sobre su capacidad           join con broadcast(maestro)  (fixture)
+      y sobre Silver: kg del mes por cliente frente a la capacidad de distribuidores
   S6  tipo de cambio igual a 1 o lejos del oficial      join con broadcast(calendario)
   S7  actividad en una unidad no habilitada             join con broadcast(unidades)
   S8  venta sin compra que la respalde (SCOP)           left_anti                    (fixture)
@@ -222,6 +223,88 @@ def s10_ventas(ventas_detalle, aplicar_ventana: bool = True):
     return _alertas(d, "S10", motivo, kg=F.col("kg"),
                     puntaje=F.lit(1.0) - F.col("precio_unitario") / F.col("_mediana"),
                     unidad=F.col("cliente_id"), rol="cliente", factura=F.col("documento"))
+
+
+def puente_cliente_distribuidor(clientes, sal: str):
+    """cliente_id de las ventas → entidad_id del maestro de distribuidores, desde Silver `clientes`.
+
+    Las ventas identifican al cliente por su código de socio de negocio de SAP (CardCode,
+    «Código SN»), seudonimizado en Silver como cliente_id; los distribuidores, por su RUC de
+    empresa o el hash de su documento (entidad_id). El maestro de clientes trae las dos cosas
+    en hojas distintas: Hoja2 tiene el código SN y el nombre, y Hoja1 y Hoja3 el documento y
+    el nombre. El puente une las dos por el nombre: la razón social si es empresa y el hash
+    del nombre si es persona natural, como los deja Silver. Un nombre que corresponde a más
+    de un documento es ambiguo y no entra al puente.
+
+    cliente_id se recalcula con la misma fórmula de `limpieza.seudonimizar` (SHA-256 de la
+    sal más el código en mayúsculas, 16 caracteres). La sal llega del job (`.env` o SSM),
+    nunca del código.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    nombre = F.coalesce(F.col("razon_social"), F.col("nombre_hash"))
+    codigos = (clientes.filter(F.col("codigo_sn").isNotNull() & nombre.isNotNull())
+               .select(F.substring(F.sha2(F.concat(F.lit(sal), F.upper(F.trim(F.col("codigo_sn")))), 256), 1, 16)
+                       .alias("cliente_id"), nombre.alias("_nombre")).distinct())
+    documentos = (clientes.filter((F.col("ruc").isNotNull() | F.col("documento_hash").isNotNull())
+                                  & nombre.isNotNull())
+                  .select(nombre.alias("_nombre"), "entidad_id").distinct())
+    unicos = (documentos.groupBy("_nombre").agg(F.countDistinct("entidad_id").alias("_n"),
+                                                F.first("entidad_id").alias("entidad_id"))
+              .filter(F.col("_n") == 1).drop("_n"))
+    return codigos.join(unicos, "_nombre", "inner").select("cliente_id", "entidad_id").distinct()
+
+
+def capacidad_distribuidor(distribuidores):
+    """Capacidad declarada por distribuidor: suma de sus establecimientos.
+
+    El mismo establecimiento aparece en la hoja maestra y en la de su envasadora, así que
+    cada dirección cuenta una vez, con su mayor capacidad declarada. De una persona natural
+    Silver no conserva la dirección (puede ser su domicilio): sus establecimientos no se
+    distinguen y cuenta el de mayor capacidad.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    d = distribuidores.filter(F.col("entidad_id").isNotNull() & (F.col("capacidad_kg") > 0))
+    por_local = (d.groupBy("entidad_id", F.coalesce(F.col("direccion"), F.lit("")).alias("_local"))
+                 .agg(F.max("capacidad_kg").alias("_cap")))
+    return por_local.groupBy("entidad_id").agg(F.sum("_cap").alias("capacidad_kg"))
+
+
+def s5_distribuidores(ventas_detalle, distribuidores, puente, aplicar_ventana: bool = True):
+    """S5 sobre Silver: kg de GLP vendidos a un cliente en el mes sobre la capacidad de su almacén.
+
+    Resolución cliente × mes y ventana del catálogo (feb-2021 y abr-2024), los meses con
+    ventas por cliente. Solo se evalúan los clientes que el puente une con un distribuidor
+    con capacidad declarada; los demás no son evaluables y `cobertura_s5` los cuenta.
+    puntaje = kg del mes ÷ capacidad.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+    from pyspark.sql.functions import broadcast  # noqa: PLC0415
+
+    v = ventas_detalle.filter(F.coalesce(F.col("es_glp"), F.lit(False)) & (F.col("kg") > 0)
+                              & F.col("cliente_id").isNotNull())
+    v = v.filter(en_ventana("S5")) if aplicar_ventana else v
+    mes = (v.groupBy("cliente_id", "anio", "mes").agg(F.sum("kg").alias("_kg_mes"))
+           .withColumn("fecha", F.make_date("anio", "mes", F.lit(1))))
+    cap = puente.join(capacidad_distribuidor(distribuidores), "entidad_id", "inner")
+    d = mes.join(broadcast(cap), "cliente_id", "inner").filter(F.col("_kg_mes") > F.col("capacidad_kg"))
+    return _alertas(d, "S5", "volumen_del_mes_sobre_capacidad_del_almacen", kg=F.col("_kg_mes"),
+                    puntaje=F.col("_kg_mes") / F.col("capacidad_kg"), unidad=F.col("cliente_id"), rol="cliente")
+
+
+def cobertura_s5(ventas_detalle, distribuidores, puente) -> dict:
+    """Distribuidores con capacidad, cuántos tienen ventas por cliente y clientes sin capacidad."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    cap = capacidad_distribuidor(distribuidores)
+    con_ventas = (ventas_detalle.filter(F.coalesce(F.col("es_glp"), F.lit(False)) & F.col("cliente_id").isNotNull())
+                  .select("cliente_id").distinct())
+    unidos = con_ventas.join(puente, "cliente_id", "inner").join(cap, "entidad_id", "inner")
+    return {"distribuidores_con_capacidad": cap.count(),
+            "distribuidores_con_ventas": unidos.select("entidad_id").distinct().count(),
+            "clientes_con_ventas": con_ventas.count(),
+            "clientes_no_evaluables": con_ventas.count() - unidos.select("cliente_id").distinct().count()}
 
 
 def calcular(compras, ventas, flota, maestro):

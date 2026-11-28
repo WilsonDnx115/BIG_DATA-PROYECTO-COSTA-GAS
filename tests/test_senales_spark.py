@@ -388,3 +388,58 @@ def test_s10_usa_el_canal_cuando_la_tabla_lo_trae(spark):
     assert _filas(sin_canal, "factura_id", "motivo") == {("I-1", "precio_bajo_mediana_de_la_presentacion")}
     con_canal = v.assign(canal=["directa", "directa", "directa", "indirecta"])
     assert senales_spark.s10_ventas(_a_spark(spark, con_canal)).count() == 0   # cada canal, su propia mediana
+
+
+# --- FR17 · S5 con la capacidad de distribuidores -----------------------------------
+SAL = "sal-de-prueba"
+
+
+def _clientes_y_distribuidores():
+    from src.common.limpieza import seudonimizar
+
+    clientes = pd.DataFrame({
+        # Hoja2: código SN y nombre; Hoja1/Hoja3: documento y nombre (como los deja Silver)
+        "codigo_sn": ["C001", "C002", "C003", None, None, None, None],
+        "razon_social": ["GAS NORTE SAC", None, "DOBLE SAC", "GAS NORTE SAC", None, "DOBLE SAC", "DOBLE SAC"],
+        "nombre_hash": [None, "hn2", None, None, "hn2", None, None],
+        "ruc": [None, None, None, "20111111111", None, "20333333333", "20444444444"],
+        "documento_hash": [None, None, None, None, "hd2", None, None],
+        "entidad_id": ["C001", "C002", "C003", "20111111111", "hd2", "20333333333", "20444444444"]})
+    distribuidores = pd.DataFrame({
+        "entidad_id": ["20111111111", "20111111111", "20111111111", "hd2"],
+        "direccion": ["AV. UNO 1", "AV. UNO 1", "JR. DOS 2", None],   # AV. UNO 1 repetida en dos hojas
+        "capacidad_kg": [1_000.0, 1_000.0, 500.0, 300.0]})
+    ids = {c: seudonimizar(c, SAL) for c in ("C001", "C002", "C003", "C009")}
+    return clientes, distribuidores, ids
+
+
+def test_puente_por_codigo_sn_y_nombre(spark):
+    from src.glue import senales_spark
+
+    clientes, _, ids = _clientes_y_distribuidores()
+    puente = senales_spark.puente_cliente_distribuidor(_a_spark(spark, clientes), SAL)
+    # C003 queda fuera: su nombre corresponde a dos RUC distintos (ambiguo)
+    assert _filas(puente, "cliente_id", "entidad_id") == {(ids["C001"], "20111111111"), (ids["C002"], "hd2")}
+
+
+def test_s5_volumen_del_mes_sobre_la_capacidad(spark):
+    from src.glue import senales_spark
+
+    clientes, distribuidores, ids = _clientes_y_distribuidores()
+    ventas = _ventas_detalle([
+        ("V-1", "2021-02-03", "GLP45", "GLP 45 KG", True, 400.0, 900.0, ids["C001"]),
+        ("V-2", "2021-02-20", "GLP45", "GLP 45 KG", True, 400.0, 700.0, ids["C001"]),   # 1 600 > 1 500
+        ("V-3", "2021-02-10", "GLP45", "GLP 45 KG", True, 400.0, 250.0, ids["C002"]),   # 250 < 300
+        ("V-4", "2021-02-11", "GLP45", "GLP 45 KG", True, 400.0, 9_000.0, ids["C009"]),  # sin capacidad
+        ("V-5", "2020-06-11", "GLP45", "GLP 45 KG", True, 400.0, 9_000.0, ids["C002"]),  # fuera de la ventana
+    ])
+    v, d = _a_spark(spark, ventas), _a_spark(spark, distribuidores)
+    puente = senales_spark.puente_cliente_distribuidor(_a_spark(spark, clientes), SAL)
+    a = senales_spark.s5_distribuidores(v, d, puente)
+    assert a.columns == COLUMNAS
+    (fila,) = a.take(5)
+    assert (fila["unidad_id"], fila["rol"], fila["kg"], fila["anio"], fila["mes"]) == (ids["C001"], "cliente", 1_600.0, 2021, 2)
+    assert fila["puntaje"] == pytest.approx(1_600.0 / 1_500.0) and fila["resolucion"] == "cliente_mes"
+    cob = senales_spark.cobertura_s5(v, d, puente)
+    assert cob == {"distribuidores_con_capacidad": 2, "distribuidores_con_ventas": 2,
+                   "clientes_con_ventas": 3, "clientes_no_evaluables": 1}

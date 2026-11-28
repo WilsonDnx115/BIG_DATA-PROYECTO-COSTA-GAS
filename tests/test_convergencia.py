@@ -72,3 +72,16 @@ def test_riesgo_rf_con_contexto(spark):
     assert importancias[0] == importancias.max()          # aprende del volumen, que es lo que marca la etiqueta
     puntuado = modelo.transform(spark.createDataFrame(datos.drop(columns="etiqueta_probable")))
     assert "probabilidad_riesgo" in puntuado.columns
+
+
+def test_s5_y_s10_convergen_por_cliente():
+    a = pd.DataFrame([
+        {"senal": "S5", "factura_id": None, "unidad_id": "h_cliente", "rol": "cliente", "anio": 2021, "mes": 2,
+         "grado_evidencia": "medio"},
+        {"senal": "S10", "factura_id": "B-4", "unidad_id": "h_cliente", "rol": "cliente", "anio": 2021, "mes": 2,
+         "grado_evidencia": "medio"},
+        {"senal": "S9", "factura_id": None, "unidad_id": "REP1", "rol": "reparto", "anio": 2020, "mes": 5,
+         "grado_evidencia": "medio"}])
+    r = convergencia.puntaje_convergencia(convergencia.desde_alertas(a))
+    cli = r[r.grupo == "cliente"].iloc[0]
+    assert (cli.entidad_id, cli.fuentes, cli.puntaje_convergencia, cli.etiqueta_probable) == ("h_cliente", "S10,S5", 4.0, 1)

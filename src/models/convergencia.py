@@ -37,14 +37,19 @@ COLUMNAS_EVENTO = ["grupo", "entidad_id", "anio", "mes", "fuente", "grado_eviden
 
 # --- Eventos: una fila por fuente que marcó una entidad en un mes -----------------------
 def desde_alertas(alertas: pd.DataFrame) -> pd.DataFrame:
-    """fact_alerta_base → eventos de proveedor (S12, S2, S3, S6, S1) y de unidad (S9, S7).
+    """fact_alerta_base → eventos de proveedor (S12, S2, S3, S6, S1), unidad (S9, S7) y cliente (S5, S10).
 
-    El proveedor es la primera parte de factura_id («PROVEEDOR|SERIE|NUMERO»).
+    El proveedor es la primera parte de factura_id («PROVEEDOR|SERIE|NUMERO»). En S5 y S10
+    sobre ventas_detalle, unidad_id lleva el cliente seudonimizado y rol = «cliente».
     """
     a = alertas.copy()
     prov = a[a["senal"].isin(GRUPOS["proveedor"]["fuentes"]) & a["factura_id"].notna()]
     unid = a[a["senal"].isin(("S9", "S7")) & a["unidad_id"].notna()]
+    rol = a["rol"] if "rol" in a else pd.Series(None, index=a.index, dtype=object)
+    clie = a[a["senal"].isin(GRUPOS["cliente"]["fuentes"]) & (rol == "cliente") & a["unidad_id"].notna()]
     partes = [
+        pd.DataFrame({"grupo": "cliente", "entidad_id": clie["unidad_id"].astype(str), "anio": clie["anio"],
+                      "mes": clie["mes"], "fuente": clie["senal"], "grado_evidencia": clie["grado_evidencia"]}),
         pd.DataFrame({"grupo": "proveedor", "entidad_id": prov["factura_id"].astype(str).str.split("|").str[0],
                       "anio": prov["anio"], "mes": prov["mes"], "fuente": prov["senal"],
                       "grado_evidencia": prov["grado_evidencia"]}),
