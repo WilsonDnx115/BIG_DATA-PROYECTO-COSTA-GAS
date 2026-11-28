@@ -40,7 +40,13 @@ ENTRADAS_SENAL = {
     "S9": ("unidad_mes",),
     "S11": ("produccion",),
     "S12": ("tesoreria", "compras"),
+    "S5": ("ventas_detalle", "distribuidores", "puente_clientes"),
+    "S10": ("ventas_detalle",),
 }
+
+# S5 y S10 corren sobre Silver ventas_detalle (FR16 y FR17), no sobre la muestra antigua
+# que leen `senales_spark.s5` y `s10`; las demas se llaman como la senal.
+FUNCIONES_SENAL = {"S5": senales_spark.s5_distribuidores, "S10": senales_spark.s10_ventas}
 
 # Por que falta cada entrada que hoy no existe, para que el log lo diga una vez y
 # no haya que buscarlo en el repositorio.
@@ -48,15 +54,22 @@ MOTIVO_ENTRADA = {
     "unidad_mes": "fact_unidad_mes espera contracts/gastos.yaml (WR02)",
     "produccion": "silver/produccion_diaria no esta cubierta en la entrega",
     "tc": "falta la extraccion del BCRP en landing/externo/bcrp/",
+    "puente_clientes": "falta Silver clientes o la sal de seudonimizacion (SEUDONIMO_SAL o SSM)",
 }
+
+TABLA_OPERACION = "fact_operacion"
+LLAVE_OPERACION = ("anio", "mes", "tramo", "medida")
 
 # Pasos que llenan los commits siguientes, en el orden en que corren.
 PENDIENTES = {
-    # W05, W06, W08 y las senales de regla (WR06) ya corren. Lo que falta de
-    # `fact_alerta` es la puntuacion del modelo S12 y el aviso al tema (WR11).
-    "evento": ["fact_unidad_mes (W07)", "probabilidad del modelo S12 en fact_alerta (WR11)"],
-    "entrenar": ["tabla de modelado (F-ML)", "entrenamiento S12", "registro del modelo (W13)"],
-    "operacion": ["entregas mensuales (W18)", "fact_operacion"],
+    # W05, W06, W08, las senales de regla (WR06) y la probabilidad del modelo S12
+    # (WR11, con mllib.puntuar_s12) ya corren. Falta fact_unidad_mes.
+    "evento": ["fact_unidad_mes (W07)"],
+    # El reentrenamiento corre completo (entrenamiento.entrenar_y_registrar).
+    "entrenar": [],
+    # fact_operacion se mide sobre las tablas de Gold; las entregas del lago op/ las
+    # genera la Lambda costagas-entregas-mensuales.
+    "operacion": ["entregas mensuales en op/landing/ (W18)"],
 }
 
 
@@ -147,6 +160,15 @@ def entradas_de_senales(spark, args) -> dict:
     silver = {t: leer_silver(spark, t) for t in ("compras_glp", "unidades")}
     entradas = interfaces.construir(spark, silver, args.lake_uri)
     entradas["tesoreria"] = leer_silver(spark, "pedidos_proveedor")
+    entradas["ventas_detalle"] = leer_silver(spark, "ventas_detalle")
+    entradas["distribuidores"] = leer_silver(spark, "distribuidores")
+    try:
+        from src.common import limpieza  # noqa: PLC0415
+
+        entradas["puente_clientes"] = senales_spark.puente_cliente_distribuidor(
+            leer_silver(spark, "clientes"), limpieza.obtener_sal())
+    except Exception as e:                  # noqa: BLE001 - sin clientes o sin sal: S5 queda sin fuente
+        print(f"[evento] puente de clientes no disponible: {type(e).__name__}")
     return entradas
 
 
@@ -157,7 +179,7 @@ def alertas_de_regla(entradas: dict):
     calculables, omitidas = senales_calculables(set(entradas))
     partes = []
     for senal in calculables:
-        funcion = getattr(senales_spark, senal.lower())
+        funcion = FUNCIONES_SENAL.get(senal) or getattr(senales_spark, senal.lower())
         partes.append(funcion(*[entradas[e] for e in ENTRADAS_SENAL[senal]]))
     if not partes:
         return None, omitidas
@@ -197,8 +219,41 @@ def paso_dimensiones(spark, args) -> list[str]:
     })
 
 
+def tabla_de_modelado(spark, args, fecha_corte: str):
+    """gold/modelo_factura a la fecha de corte, con las entradas del WP 0.8 (F07)."""
+    from src.glue import modelo_factura  # noqa: PLC0415
+
+    e = entradas_de_senales(spark, args)
+    return modelo_factura.construir(e["compras"], e["tesoreria"], fecha_corte, tc=e.get("tc"),
+                                    unidades=leer_silver(spark, "unidades"))
+
+
+def paso_modelo_s12(spark, args) -> dict:
+    """WR11: el modelo vigente puntua las facturas y las marcadas entran a fact_alerta por MERGE.
+
+    Sin modelo vigente en el registro (todavia no hubo un `--modo entrenar` que lo
+    promoviera) no se puntua y se dice: no hay probabilidad que escribir.
+    """
+    import datetime as dt  # noqa: PLC0415
+
+    from pyspark.ml import PipelineModel  # noqa: PLC0415
+
+    from src.models import mllib, registro  # noqa: PLC0415
+
+    ficha = registro.vigente()
+    if ficha is None:
+        print("[evento] S12 sin modelo vigente: se puntua despues del primer --modo entrenar")
+        return {"tabla": None, "version": None}
+    facturas = tabla_de_modelado(spark, args, dt.date.today().isoformat())
+    puntuadas = mllib.puntuar_s12(facturas, PipelineModel.load(ficha["ruta"]), ficha["umbral"],
+                                  ficha["version"])
+    alertas = mllib.alertas_s12(puntuadas, facturas)
+    return {"tabla": iceberg.escribir_merge(spark, alertas, TABLA_ALERTA, LLAVE_ALERTA),
+            "version": ficha["version"]}
+
+
 def modo_evento(spark, args) -> dict:
-    """Corrida normal por evento. Falta lo que llenan W07 y W11."""
+    """Corrida normal por evento. Falta lo que llena W07."""
     resumen = _pendiente("evento")
     resumen["escrito"].append(paso_mapreduce(spark, args))
     resumen["escrito"].extend(paso_dimensiones(spark, args))
@@ -208,17 +263,58 @@ def modo_evento(spark, args) -> dict:
         resumen["escrito"].append(senales["tabla"])
     resumen["senales"] = senales["senales"]
     resumen["senales_sin_fuente"] = senales["omitidas"]
+    modelo = paso_modelo_s12(spark, args)
+    if modelo["tabla"]:
+        resumen["escrito"].append(modelo["tabla"])
+    resumen["modelo_s12"] = modelo["version"]
     return resumen
 
 
 def modo_entrenar(spark, args) -> dict:
-    """Reentrenamiento semanal del clasificador S12."""
-    return _pendiente("entrenar")
+    """Reentrenamiento semanal del clasificador S12: entrena, registra y promueve si mejora."""
+    import datetime as dt  # noqa: PLC0415
+
+    from src.models import entrenamiento  # noqa: PLC0415
+
+    resumen = _pendiente("entrenar")
+    corte = dt.date.today().isoformat()
+    r = entrenamiento.entrenar_y_registrar(tabla_de_modelado(spark, args, corte), corte)
+    resumen.update({"estado": r["estado"], "promovido": r["promovido"]})
+    if r.get("ficha"):
+        resumen["escrito"].append(r["ficha"]["ruta"])
+    return resumen
+
+
+def leer_gold(spark, tabla: str):
+    return spark.table(iceberg.nombre(tabla))
+
+
+MESES_CON_VENTAS_POR_CLIENTE = ["2019-09", "2020-05", "2021-02", "2024-04"]   # catalogo, S5 y S10
 
 
 def modo_operacion(spark, args) -> dict:
-    """Medicion mes a mes sobre el lago `op/` (W18)."""
-    return _pendiente("operacion")
+    """Tabla 4.8e mes a mes con las tablas de Gold, en gold/fact_operacion por MERGE."""
+    import pandas as pd  # noqa: PLC0415
+
+    from src.glue import operacion  # noqa: PLC0415
+
+    resumen = _pendiente("operacion")
+    tablas = {"fact_alerta": leer_gold(spark, TABLA_ALERTA),
+              "modelo_factura": leer_gold(spark, "modelo_factura")}
+    for opcional in ("fact_serie", "fact_balance_planta"):
+        if iceberg.existe(spark, opcional):
+            tablas[opcional] = leer_gold(spark, opcional)
+    partes = [operacion.medir_tramo("facturas", tablas)]
+    if "fact_serie" in tablas:
+        partes.append(operacion.medir_tramo("unidades", tablas))
+    else:
+        print("[operacion] tramo de unidades sin fact_serie")
+    partes.append(operacion.medir_tramo("clientes", tablas, meses=MESES_CON_VENTAS_POR_CLIENTE))
+    medidas = pd.concat(partes, ignore_index=True)
+    medidas = pd.concat([medidas, operacion.estabilidad_trimestral(medidas)], ignore_index=True)
+    resumen["escrito"].append(iceberg.escribir_merge(spark, operacion.a_spark(spark, medidas),
+                                                     TABLA_OPERACION, LLAVE_OPERACION))
+    return resumen
 
 
 DESPACHO = {"evento": modo_evento, "entrenar": modo_entrenar, "operacion": modo_operacion}
