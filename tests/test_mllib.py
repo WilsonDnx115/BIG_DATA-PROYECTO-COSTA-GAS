@@ -107,20 +107,26 @@ def modelo_factura_sintetica(por_mes=40, semilla=4):
 
 
 @pytest.fixture()
-def rapido(monkeypatch):
+def rapido(monkeypatch, spark):
     from src.common import config
 
     monkeypatch.setattr(config, "RF_ARBOLES", 10)   # solo para que la prueba corra rápido
+    # Cada prueba activa Arrow por su cuenta: no depende de que otra lo haya hecho antes.
+    spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+    spark.conf.set("spark.sql.execution.arrow.pyspark.fallback.enabled", "false")
 
 
 def test_matriz_y_umbral():
     pares = [(0.9, 1), (0.8, 1), (0.7, 0), (0.3, 1), (0.2, 0), (0.1, 0)]
     assert mllib.matriz(pares, 0.75) == {"tp": 2, "fp": 0, "fn": 1, "tn": 3}
-    u = mllib.elegir_umbral(pares, recall_min=0.5)
-    assert u["umbral"] == 0.8 and u["precision"] == 1.0 and u["cumple_recall"]
-    # Si ningún umbral alcanza el recall mínimo, se toma el de mayor recall y queda marcado.
-    sin_recall = mllib.elegir_umbral([(0.9, 0), (0.5, 0), (0.1, 1)], recall_min=1.1)
-    assert sin_recall["cumple_recall"] is False and sin_recall["umbral"] == 0.1 and sin_recall["recall"] == 1.0
+    # Precisión por umbral: 0.1 → 3/6, 0.2 → 3/5, 0.3 → 3/4 = 0.75, 0.7 → 2/3, 0.8 → 1, 0.9 → 1.
+    # El menor umbral con precisión ≥ 0.70 es 0.3 (marca 4 facturas), no el más preciso.
+    u = mllib.elegir_umbral(pares, meta=0.70)
+    assert u["umbral"] == 0.3 and u["precision"] == 0.75 and u["recall"] == 1.0 and u["cumple_meta"]
+    assert mllib.elegir_umbral(pares, meta=0.9)["umbral"] == 0.8
+    # Si ningún umbral alcanza la meta, se toma el de mayor precisión y queda marcado.
+    sin_meta = mllib.elegir_umbral([(0.9, 0), (0.5, 1), (0.1, 0)], meta=0.70)
+    assert sin_meta["cumple_meta"] is False and sin_meta["umbral"] == 0.5 and sin_meta["precision"] == 0.5
 
 
 def test_el_umbral_no_usa_etiquetas_que_no_se_conocian(spark, rapido):

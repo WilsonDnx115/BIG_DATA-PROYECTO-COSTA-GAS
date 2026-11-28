@@ -176,25 +176,34 @@ def matriz(pares, umbral: float) -> dict:
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
 
-def elegir_umbral(pares, recall_min: float = config.RECALL_MIN_RETADOR) -> dict:
-    """Umbral con la mayor precisión de la clase positiva entre los que dejan recall ≥ recall_min.
+def elegir_umbral(pares, meta: float = config.META_PRECISION) -> dict:
+    """Umbral de decisión como dice el informe (sección 4.3, «Desbalance de clases»).
 
-    Los candidatos son las probabilidades observadas en la validación (no una rejilla
-    arbitraria). Si ninguno alcanza el recall mínimo, se toma el de mayor recall y
-    `cumple_recall` queda en False, para que se vea en la evaluación.
+    Es el MENOR valor de probabilidad con el que la precisión de la clase positiva alcanza
+    la meta (META_PRECISION = 0.70) en los meses de validación. Así se marca el mayor número
+    de facturas posible sin bajar de la precisión exigida: el falso positivo recae en un
+    trabajador. El recall mínimo de 0.50 no se usa aquí: es la regla para reemplazar el
+    modelo vigente (`registro.promover_si_mejora`).
+
+    Los candidatos son las probabilidades observadas en la validación, no una rejilla
+    arbitraria. Si ningún umbral alcanza la meta, se toma el de mayor precisión (y, entre
+    iguales, el menor) y `cumple_meta` queda en False, para que se vea en la evaluación.
     """
     positivos = sum(1 for _, y in pares if y == 1)
-    mejor = None
+    candidatos = []
     for u in sorted({p for p, _ in pares}):
         m = matriz(pares, u)
         marcadas = m["tp"] + m["fp"]
         precision = m["tp"] / marcadas if marcadas else 0.0
         recall = m["tp"] / positivos if positivos else 0.0
-        cand = {"umbral": u, "precision": precision, "recall": recall, "cumple_recall": recall >= recall_min}
-        clave = (cand["cumple_recall"], precision if cand["cumple_recall"] else recall, -u if not cand["cumple_recall"] else u)
-        if mejor is None or clave > mejor[0]:
-            mejor = (clave, cand)
-    return mejor[1] if mejor else {"umbral": None, "precision": None, "recall": None, "cumple_recall": False}
+        candidatos.append({"umbral": u, "precision": precision, "recall": recall,
+                           "cumple_meta": marcadas > 0 and precision >= meta})
+    if not candidatos:
+        return {"umbral": None, "precision": None, "recall": None, "cumple_meta": False}
+    cumplen = [c for c in candidatos if c["cumple_meta"]]
+    if cumplen:
+        return cumplen[0]                                  # el menor umbral que alcanza la meta
+    return max(candidatos, key=lambda c: (c["precision"], -c["umbral"]))
 
 
 def evaluar_corte(modelo_factura, corte, prueba, meses_validacion: int = config.MESES_VALIDACION) -> dict:
@@ -230,7 +239,7 @@ def entrenar_validar_probar(entrenamiento, validacion, prueba) -> dict:
     m = matriz(_probabilidades(modelo, prueba), umbral["umbral"]) if umbral["umbral"] is not None else {}
     return {"estado": "evaluado", "umbral": umbral["umbral"],
             "precision_validacion": umbral["precision"], "recall_validacion": umbral["recall"],
-            "cumple_recall": umbral["cumple_recall"], **m}
+            "cumple_meta": umbral["cumple_meta"], **m}
 
 
 def evaluar_s12(modelo_factura, inicio: str = config.INICIO_EVAL_ADELANTE, fin: str | None = None):
