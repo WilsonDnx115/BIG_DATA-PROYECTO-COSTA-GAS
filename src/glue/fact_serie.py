@@ -81,6 +81,23 @@ def unidades_mes_pandas(unidad_mes: pd.DataFrame) -> pd.DataFrame:
     })
 
 
+def unidades_mes_spark(unidad_mes):
+    """`fact_unidad_mes` de Spark → entrada mensual del detector, sin traer datos al driver."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    valor = (F.when(F.col("rol") == "reparto", F.col("kg_vendidos"))
+             .when(F.col("rol") == "transporte", F.col("kg_transportados")))
+    periodo = F.make_date(F.col("anio").cast("int"), F.col("mes").cast("int"), F.lit(1))
+    return (unidad_mes
+            .filter(F.col("rol").isin("reparto", "transporte"))
+            .select(F.lit("unidad").alias("entidad_tipo"),
+                    F.col("unidad_id").alias("entidad_id"), F.col("rol").alias("grupo"),
+                    F.lit("mes").alias("granularidad"), periodo.alias("periodo"),
+                    valor.cast("double").alias("valor"))
+            .filter(F.col("periodo").isNotNull() & F.col("valor").isNotNull()
+                    & (F.col("valor") > 0)))
+
+
 def _semanas(df: pd.DataFrame, entidad: str, entidad_tipo: str, grupo: str) -> pd.DataFrame:
     """Suma kg de GLP por entidad y semana (lunes de la semana ISO)."""
     v = df[df["es_glp"].fillna(False).astype(bool)].copy()
