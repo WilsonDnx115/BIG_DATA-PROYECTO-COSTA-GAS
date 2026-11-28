@@ -9,6 +9,11 @@
 #
 # Uso (Git Bash, desde la raíz del repositorio):  ./infra/scripts/deploy.sh
 #      Solo validar, sin crear nada:              ./infra/scripts/deploy.sh --validar
+#      Subir el código y crear el change set, sin ejecutarlo:  ./infra/scripts/deploy.sh --revisar
+#
+# La plantilla pasa de 51 200 caracteres, el máximo que CloudFormation acepta en línea
+# (--template-body). Por eso se valida y se despliega desde el bucket de código
+# (_plantillas/stack.yaml), que es lo que hace `cloudformation deploy --s3-bucket`.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1      # Git Bash en Windows: no convertir "/costagas/..." en una ruta de disco
 cd "$(dirname "$0")/../.."          # rutas relativas: evita problemas con espacios y con Git Bash en Windows
@@ -36,7 +41,13 @@ BUILD=".build"
 echo ">> Identidad: $(aws sts get-caller-identity --query Arn --output text) · región ${AWS_REGION}"
 
 echo ">> Validando plantilla"
-aws cloudformation validate-template --template-body "file://${PLANTILLA}" > /dev/null
+if aws s3api head-bucket --bucket "$CODE_BUCKET" 2>/dev/null; then
+  aws s3 cp "$PLANTILLA" "s3://${CODE_BUCKET}/_plantillas/stack.yaml" --sse AES256 --only-show-errors
+  aws cloudformation validate-template \
+    --template-url "https://${CODE_BUCKET}.s3.${AWS_REGION}.amazonaws.com/_plantillas/stack.yaml" > /dev/null
+else
+  echo "   El bucket de código todavía no existe: se valida en el despliegue."
+fi
 if [[ "${1:-}" == "--validar" ]]; then echo ">> Plantilla válida. No se creó nada."; exit 0; fi
 
 echo ">> Sal de seudonimización en Parameter Store"
@@ -84,9 +95,16 @@ aws s3 cp src/glue/gold_job.py "s3://${CODE_BUCKET}/_code/glue_gold_job.py" --ss
 aws s3 cp src/glue/externos_job.py "s3://${CODE_BUCKET}/_code/glue_externos.py" --sse AES256 --only-show-errors
 
 echo ">> Desplegando stack ${STACK}"
+REVISAR=()
+[[ "${1:-}" == "--revisar" ]] && REVISAR=(--no-execute-changeset)
 aws cloudformation deploy --stack-name "$STACK" --template-file "$PLANTILLA" \
-  --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset \
+  --s3-bucket "$CODE_BUCKET" --s3-prefix _plantillas \
+  --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset "${REVISAR[@]}" \
   --parameter-overrides Sufijo="$SUFIJO" Correo1="$C1" Correo2="$C2" Correo3="$C3" Correo4="$C4"
+if [[ "${1:-}" == "--revisar" ]]; then
+  echo ">> Change set creado y sin ejecutar. Revíselo y vuelva a correr el script sin --revisar."
+  exit 0
+fi
 
 # Si el stack ya existia, actualizar el codigo de las Lambdas
 for f in costagas-bronze-to-silver costagas-ingesta \
