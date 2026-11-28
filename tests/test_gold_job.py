@@ -120,12 +120,12 @@ def test_ninguna_senal_se_pierde_por_el_camino():
 
 
 def test_lo_que_falta_hoy_dice_a_quien_le_toca():
-    """S7 y S9 esperan el contrato de gastos; S11 no tiene fuente en la entrega."""
+    """S7 y S9 esperan la entrada unidad_mes; S11 no tiene fuente en la entrega."""
     _, omitidas = gold_job.senales_calculables({"compras", "unidades", "tesoreria", "tc", "ventas_detalle",
                                                 "distribuidores", "puente_clientes"})
 
     assert set(omitidas) == {"S7", "S9", "S11"}
-    assert "gastos.yaml" in omitidas["S7"] and "gastos.yaml" in omitidas["S9"]
+    assert "unidad_mes" in omitidas["S7"] and "unidad_mes" in omitidas["S9"]
     assert "no esta cubierta" in omitidas["S11"]
 
 
@@ -167,7 +167,8 @@ def test_el_modo_evento_ya_no_tiene_pendiente_el_calculo_de_las_senales():
 
     assert "W12" not in pendientes                 # las alertas de regla ya se escriben
     assert "WR11" not in pendientes                # la probabilidad del modelo ya se escribe
-    assert "W07" in pendientes                     # y fact_unidad_mes
+    assert "W07" not in pendientes                 # fact_unidad_mes entro con el PR #32
+    assert pendientes == ""                        # al modo evento no le queda ninguno
 
 
 FILAS_COMPRAS_WR06 = [
