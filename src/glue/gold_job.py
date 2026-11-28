@@ -6,10 +6,8 @@ Tres modos, un solo script, porque Glue cobra por corrida y no por tarea:
   --modo entrenar    reentrenamiento semanal del clasificador S12 (FLEX)
   --modo operacion   medicion mes a mes sobre el lago `op/` (W18)
 
-Este commit deja el esqueleto: la sesion con el catalogo Iceberg, la lectura de
-Silver por catalogo y el despacho por modo. Cada paso lo llenan los commits
-siguientes (W05 a W08, W12 y W14); mientras tanto cada uno se anuncia como
-pendiente y el job corre de principio a fin sin escribir nada.
+El modo evento escribe balance, dimensiones, alertas y hechos unidad-mes en
+Iceberg. Las señales sin fuente cubierta se informan con su motivo.
 
 Uso local (pruebas):
     python -m src.glue.gold_job --modo evento --lake_uri file://data/lake
@@ -20,6 +18,7 @@ import argparse
 
 from src.common import config
 from src.glue import balance, dimensiones, iceberg, interfaces, mapreduce_sql
+from src.glue import unidad_mes as hecho_unidad_mes
 from src.glue import senales_spark
 
 BASE_SILVER = "costagas_silver"
@@ -51,7 +50,6 @@ FUNCIONES_SENAL = {"S5": senales_spark.s5_distribuidores, "S10": senales_spark.s
 # Por que falta cada entrada que hoy no existe, para que el log lo diga una vez y
 # no haya que buscarlo en el repositorio.
 MOTIVO_ENTRADA = {
-    "unidad_mes": "fact_unidad_mes espera contracts/gastos.yaml (WR02)",
     "produccion": "silver/produccion_diaria no esta cubierta en la entrega",
     "tc": "falta la extraccion del BCRP en landing/externo/bcrp/",
     "puente_clientes": "falta Silver clientes o la sal de seudonimizacion (SEUDONIMO_SAL o SSM)",
@@ -62,9 +60,8 @@ LLAVE_OPERACION = ("anio", "mes", "tramo", "medida")
 
 # Pasos que llenan los commits siguientes, en el orden en que corren.
 PENDIENTES = {
-    # W05, W06, W08, las senales de regla (WR06) y la probabilidad del modelo S12
-    # (WR11, con mllib.puntuar_s12) ya corren. Falta fact_unidad_mes.
-    "evento": ["fact_unidad_mes (W07)"],
+    # W05-W08 y las señales de regla ya corren; S12 depende del modelo vigente.
+    "evento": [],
     # El reentrenamiento corre completo (entrenamiento.entrenar_y_registrar).
     "entrenar": [],
     # fact_operacion se mide sobre las tablas de Gold; las entregas del lago op/ las
@@ -186,7 +183,7 @@ def alertas_de_regla(entradas: dict):
     return reduce(lambda a, b: a.unionByName(b), partes), omitidas
 
 
-def paso_senales(spark, args) -> dict:
+def paso_senales(spark, args, entradas: dict | None = None) -> dict:
     """WR06: `fact_alerta` con las alertas de regla, por MERGE sobre `id_alerta`.
 
     El id es el SHA-256 determinista que arma `senales_spark._alertas`, asi que
@@ -198,16 +195,44 @@ def paso_senales(spark, args) -> dict:
     """
     from pyspark.sql import functions as F  # noqa: PLC0415
 
-    alertas, omitidas = alertas_de_regla(entradas_de_senales(spark, args))
+    alertas, omitidas = alertas_de_regla(entradas if entradas is not None
+                                         else entradas_de_senales(spark, args))
     for senal, motivo in sorted(omitidas.items()):
         print(f"[evento] {senal} sin fuente: {motivo}")
     if alertas is None:
-        return {"tabla": None, "senales": [], "omitidas": omitidas}
+        return {"tabla": None, "senales": [], "omitidas": omitidas, "alertas_df": None}
 
     alertas = alertas.withColumn("probabilidad", F.lit(None).cast("double"))
     tabla = iceberg.escribir_merge(spark, alertas, TABLA_ALERTA, LLAVE_ALERTA)
     return {"tabla": tabla, "senales": sorted(set(ENTRADAS_SENAL) - set(omitidas)),
-            "omitidas": omitidas}
+            "omitidas": omitidas, "alertas_df": alertas}
+
+
+def paso_unidad_mes(spark, unidad_mes_puntuado, alertas) -> str:
+    """W07: añade señales y persiste el hecho unidad-mes en Iceberg."""
+    puntuado = unidad_mes_puntuado
+    if alertas is None:
+        from pyspark.sql import functions as F  # noqa: PLC0415
+
+        puntuado = (puntuado.withColumn("senales", F.array().cast("array<string>"))
+                    .withColumn("n_senales", F.lit(0)))
+    else:
+        puntuado = senales_spark.agregar_senales(puntuado, alertas)
+    # `log_combustible_por_t` es una columna de cálculo intermedio, no parte del
+    # contrato Gold que consumen las vistas.
+    puntuado = puntuado.drop("log_combustible_por_t")
+    return iceberg.escribir_merge(spark, puntuado, "fact_unidad_mes",
+                                  ("unidad_id", "anio", "mes"))
+
+
+def estado_calidad_kpi4(spark) -> dict:
+    """Estado de calidad de las fuentes de KPI 4, a partir de silver/_control/."""
+    from src.quality import calidad_silver  # noqa: PLC0415
+
+    filas = (calidad_silver.construir(spark)
+             .select("tabla", "cumple", "metas_incumplidas")
+             .take(1000))
+    return calidad_silver.bloqueos([fila.asDict(recursive=True) for fila in filas])["kpi_4"]
 
 
 def paso_dimensiones(spark, args) -> list[str]:
@@ -253,16 +278,42 @@ def paso_modelo_s12(spark, args) -> dict:
 
 
 def modo_evento(spark, args) -> dict:
-    """Corrida normal por evento. Falta lo que llena W07."""
+    """Corrida normal por evento: Silver → hechos y dimensiones de Gold."""
     resumen = _pendiente("evento")
     resumen["escrito"].append(paso_mapreduce(spark, args))
     resumen["escrito"].extend(paso_dimensiones(spark, args))
     resumen["escrito"].append(paso_balance(spark, args))
-    senales = paso_senales(spark, args)
+    ventas = leer_silver(spark, "ventas_unidad_mes")
+    gastos = leer_silver(spark, "gastos")
+    unidades = leer_silver(spark, "unidades")
+    unidad_mes_base = hecho_unidad_mes.construir(ventas, gastos, unidades)
+    entradas = entradas_de_senales(spark, args)
+    calidad_kpi4 = estado_calidad_kpi4(spark)
+    if calidad_kpi4["publicable"]:
+        unidad_mes_puntuado = senales_spark.kpi4(unidad_mes_base)
+        entradas["unidad_mes"] = unidad_mes_puntuado
+    else:
+        from pyspark.sql import functions as F  # noqa: PLC0415
+
+        print(f"[evento] KPI 4 bloqueado por calidad Silver: {calidad_kpi4['motivo']}")
+        volumen = F.when(F.col("rol") == "reparto", F.col("kg_vendidos")) \
+                   .otherwise(F.col("kg_transportados"))
+        unidad_mes_puntuado = (unidad_mes_base
+                               .withColumn("kg_base_rol", volumen.cast("double"))
+                               .withColumn("soles_comb_por_t", F.lit(None).cast("double"))
+                               .withColumn("z", F.lit(None).cast("double"))
+                               .withColumn("puntaje", F.lit(None).cast("double"))
+                               .withColumn("alerta_base", F.lit(False))
+                               .withColumn("estado_puntaje", F.lit("calidad_fuente_bloqueada")))
+    senales = paso_senales(spark, args, entradas)
     if senales["tabla"]:
         resumen["escrito"].append(senales["tabla"])
     resumen["senales"] = senales["senales"]
     resumen["senales_sin_fuente"] = senales["omitidas"]
+    resumen["kpi_4_publicable"] = calidad_kpi4["publicable"]
+    resumen["kpi_4_motivo"] = calidad_kpi4["motivo"]
+    resumen["escrito"].append(paso_unidad_mes(spark, unidad_mes_puntuado,
+                                               senales.pop("alertas_df")))
     modelo = paso_modelo_s12(spark, args)
     if modelo["tabla"]:
         resumen["escrito"].append(modelo["tabla"])

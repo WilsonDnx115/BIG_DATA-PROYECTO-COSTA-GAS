@@ -46,10 +46,9 @@ def test_cada_modo_tiene_su_funcion_y_sus_pendientes():
     assert gold_job.LLAVE_OPERACION == ("anio", "mes", "tramo", "medida")
 
 
-def test_el_modo_evento_ya_no_tiene_pendiente_el_mapreduce_ni_el_balance():
-    for hecho in ("W05", "W06"):
+def test_el_modo_evento_ya_no_tiene_pendientes_de_hechos():
+    for hecho in ("W05", "W06", "W07"):
         assert not [p for p in gold_job.PENDIENTES["evento"] if hecho in p]
-    assert [p for p in gold_job.PENDIENTES["evento"] if "W07" in p]
 
 
 def test_nombre_califica_la_tabla():
