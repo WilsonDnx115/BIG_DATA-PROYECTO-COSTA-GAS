@@ -131,3 +131,41 @@ def test_pluspetrol_es_la_unica_con_tipo_de_cambio(lago, tmp_path):
     assert str(fila["fecha_pago"]) == "2022-05-20"
     # el nombre del cambista no llega a Silver
     assert not df.astype(str).apply(lambda s: s.str.contains("CAMBISTA", case=False)).any().any()
+
+
+# --- PRIMAX, el cuarto proveedor (commit AR26) ---------------------------------
+# La hoja empieza en datos, asi que se declara por posicion. Que mide cada una esta
+# medido sobre la entrega en docs/evidencias/primax_posiciones.md, sin copiar valores.
+def test_primax_esta_declarada_como_cuarta_fuente():
+    fuentes = {f.id: f for f in contratos.cargar()["pedidos_proveedor"].fuentes}
+    assert "pedidos_primax" in fuentes
+    assert len(fuentes) == 4
+
+
+def test_primax_se_lee_por_posicion_desde_la_fila_3():
+    f = next(f for f in contratos.cargar()["pedidos_proveedor"].fuentes if f.id == "pedidos_primax")
+    assert f.por_posicion and f.primera_fila == 3
+    assert f.columnas == {}
+
+
+def test_primax_mapea_lo_que_el_cruce_s12_necesita():
+    """`cruce_s12` lee proveedor, documento, kg, fecha_pago y fecha_vence."""
+    f = next(f for f in contratos.cargar()["pedidos_proveedor"].fuentes if f.id == "pedidos_primax")
+    # B fecha · D cantidad (kg) · E producto · G total · H factura · Q fecha de pago · R banco
+    assert f.posiciones == {"fecha": 1, "cantidad": 3, "producto": 4, "total": 6,
+                            "factura": 7, "fecha_pago": 16, "banco": 17}
+
+
+def test_el_proveedor_de_primax_sale_del_nombre_de_la_hoja():
+    """Como en las otras tres: el grupo «empresa» del patron de hojas."""
+    f = next(f for f in contratos.cargar()["pedidos_proveedor"].fuentes if f.id == "pedidos_primax")
+    assert f.hojas.search("PRIMAX").groupdict()["empresa"] == "PRIMAX"
+
+
+def test_la_cantidad_de_primax_tiene_su_evidencia():
+    """La posicion D es la unica con la firma de CANTIDAD de las hojas con encabezado."""
+    evidencia = (contratos.config.RAIZ_REPO / "docs" / "evidencias"
+                 / "primax_posiciones.md").read_text(encoding="utf-8")
+    assert "100 % enteros" in evidencia
+    crudo = (contratos.DIR_CONTRATOS / "pedidos_proveedor.yaml").read_text(encoding="utf-8")
+    assert "primax_posiciones.md" in crudo

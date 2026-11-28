@@ -44,6 +44,25 @@ fuentes:
       fecha de pago: fecha_pago
       banco: banco
       modalidad: modalidad
+  - id: pedidos_primax
+    familia: F04
+    archivo: '^1\. PEDIDOS GLP\.xlsx$'
+    hojas: '^(?P<empresa>PRIMAX)$'
+    primera_fila: 3
+    exigir: [factura]
+    # La hoja empieza en datos: no hay encabezado que emparejar. Que mide cada posicion
+    # esta medido sobre la entrega, sin copiar ningun valor, en
+    # docs/evidencias/primax_posiciones.md. La D es la cantidad en kg: es la unica
+    # posicion con la firma de CANTIDAD de las tres hojas con encabezado (100 % enteros,
+    # mediana de 5 digitos y rango estrecho); las demas numericas son importes.
+    posiciones:
+      B: fecha
+      D: cantidad
+      E: producto
+      G: total
+      H: factura
+      Q: fecha_pago
+      R: banco
   - id: pedidos_pluspetrol
     familia: F03
     archivo: '^1\. PEDIDOS GLP\.xlsx$'
