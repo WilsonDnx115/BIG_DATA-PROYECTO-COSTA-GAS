@@ -286,3 +286,45 @@ def test_s12_cruce_tesoreria_logistica(spark):
                                                 ("SOLGAS|F002|99", "solo_tesoreria")}
     (fila,) = a.filter(a.factura_id == "SOLGAS|F002|99").take(1)
     assert (fila["anio"], fila["mes"], fila["kg"]) == (2022, 4, 8000.0)    # solo tesorería: fecha de pago
+
+
+# --- FR15 · control de sobrecobros F08 ----------------------------------------------
+def _sobrecobros():
+    return pd.DataFrame({
+        "factura_id": ["PETROPERU|F001|1", "PETROPERU|F001|2", "SOLGAS|F002|3", "SOLGAS|F002|4", "SOLGAS|F002|5"],
+        "fecha": pd.to_datetime(["2022-03-01", "2022-03-02", "2022-04-01", "2021-06-01", "2022-05-01"]),
+        "monto_facturado_soles": [1_100.0, 900.0, 2_050.0, 3_000.0, 500.0],
+        "monto_pactado_soles": [1_000.0, 900.0, 2_000.0, 2_000.0, 0.0]})
+    # 1: sobrecobro de S/ 100; 2: igual; 3: S/ 50; 4: fuera de la ventana; 5: sin pactado
+
+
+def test_control_sobrecobros_igual_que_pandas(spark):
+    from src.glue import senales_spark
+    from src.signals.s3 import s3_control
+
+    pdf = _sobrecobros()
+    esperado = s3_control(pdf)
+    obtenido = senales_spark.control_sobrecobros(_a_spark(spark, pdf))
+    assert obtenido.columns == COLUMNAS
+    assert _filas(obtenido, "factura_id", "motivo", "valor_soles") == set(
+        zip(esperado.factura_id, esperado.motivo, esperado.valor_soles))
+    assert {f: round(p, 6) for f, p in _filas(obtenido, "factura_id", "puntaje")} == {
+        f: round(p, 6) for f, p in zip(esperado.factura_id, esperado.puntaje)}
+    assert {r["grado_evidencia"] for r in obtenido.take(5)} == set(esperado.grado_evidencia)
+
+
+def test_control_sobrecobros_rechaza_contrato_o_facturas_invalidas(spark):
+    from src.glue import senales_spark
+
+    with pytest.raises(ValueError, match="incompleto"):
+        senales_spark.control_sobrecobros(_a_spark(spark, _sobrecobros().drop(columns="monto_pactado_soles")))
+    repetida = _sobrecobros().assign(factura_id=["X"] * 5)
+    with pytest.raises(ValueError, match="duplicada"):
+        senales_spark.control_sobrecobros(_a_spark(spark, repetida))
+
+
+def test_las_demas_alertas_no_valorizan_kg(spark):
+    from src.glue import senales_spark
+
+    c = _compras([("F-3", "2022-03-03", "P2", None, 1000.0, 0.6, 3.8)])
+    assert senales_spark.s2(_a_spark(spark, c)).filter("valor_soles IS NOT NULL").count() == 0

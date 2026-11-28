@@ -12,11 +12,12 @@ Un solo esquema por tabla (CLAUDE.md). Este módulo no declara contratos propios
     tipo_cambio), `unidad_mes`, `unidades`, `produccion` y `tc`. `normalizar_compras`
     arma `compras` desde la tabla Silver `compras_glp`;
   * las alertas no valorizan kg: `valor_soles` queda nulo, porque unos kg señalados no
-    son una pérdida medida.
+    son una pérdida medida. Solo el sobrecobro del F08 lleva importe.
 
   S1  placa cargada distinta de la facturada            filtro                       (fixture)
   S2  compra sin SCOP o con SCOP repetido               ventana por codigo_scop
   S3  USD/kg sobre la mediana móvil del proveedor       ventana rangeBetween de días previos
+      y sobrecobro del control F08 (monto sobre lo pactado), con importe en valor_soles
   S4  carga superior a la capacidad autorizada          join con broadcast(flota)    (fixture)
   S5  volumen a un cliente sobre su capacidad           join con broadcast(maestro)  (fixture)
   S6  tipo de cambio igual a 1 o lejos del oficial      join con broadcast(calendario)
@@ -68,8 +69,11 @@ def _texto(valor):
 
 
 def _alertas(df, senal: str, motivo, *, kg, puntaje=None, tipo="regla", unidad=None, rol=None,
-             factura=None, scop=None):
+             factura=None, scop=None, valor=None):
     """Lleva las filas que disparan una señal al contrato `fact_alerta_base`.
+
+    `valor` (S/) queda nulo salvo en el control de sobrecobros del F08, el único caso en que
+    la diferencia es un importe facturado de más y no unos kg sin valorizar.
 
     El id es determinístico (SHA-256 de señal, tipo, resolución, fecha, unidad, factura y
     motivo, 24 caracteres), así la misma alerta en otra corrida tiene el mismo id y el
@@ -88,7 +92,7 @@ def _alertas(df, senal: str, motivo, *, kg, puntaje=None, tipo="regla", unidad=N
         _texto(factura).alias("factura_id"),
         _texto(scop).alias("codigo_scop"),
         kg.cast("double").alias("kg"),
-        F.lit(None).cast("double").alias("valor_soles"),
+        (F.lit(None) if valor is None else valor).cast("double").alias("valor_soles"),
         (F.lit(1.0) if puntaje is None else puntaje).cast("double").alias("puntaje"),
         F.lit(grado_alerta(regla)).alias("grado_evidencia"),
         F.lit("pendiente").alias("estado_revision"),
@@ -275,6 +279,35 @@ def s3(compras, aplicar_ventana: bool = True):
     return _alertas(d, "S3", F.col("_motivo"), kg=F.col("kg"),
                     puntaje=F.col("precio_usd_kg") / F.col("_base") - F.lit(1.0),
                     unidad=F.col("unidad_id"), factura=F.col("factura_id"), scop=F.col("codigo_scop"))
+
+
+def control_sobrecobros(sobrecobros, aplicar_ventana: bool = True):
+    """Control de sobrecobros del F08: monto facturado mayor que el pactado (S3, con importe).
+
+    Es `src/signals/s3.s3_control` del WP 0.8 en Spark, con el mismo contrato de entrada
+    (factura_id, fecha, monto_facturado_soles, monto_pactado_soles) y las mismas reglas: la
+    fecha y la factura deben ser válidas y la factura única, o el control no corre; dispara
+    si facturado ≥ 0, pactado > 0 y facturado − pactado > 0. puntaje = diferencia ÷ pactado
+    y valor_soles = diferencia: es un importe cobrado de más, no unos kg sin valorizar.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    requeridas = {"factura_id", "fecha", "monto_facturado_soles", "monto_pactado_soles"}
+    if not requeridas <= set(sobrecobros.columns):
+        raise ValueError("control_sobrecobros: contrato F08 incompleto")
+    c = sobrecobros.withColumn("fecha", F.to_date("fecha"))
+    r = c.agg(F.sum(F.when(F.col("fecha").isNull() | F.col("factura_id").isNull(), 1).otherwise(0)).alias("nulas"),
+              (F.count("factura_id") - F.countDistinct("factura_id")).alias("repetidas")).take(1)[0]
+    if (r["nulas"] or 0) > 0 or (r["repetidas"] or 0) > 0:
+        raise ValueError("control_sobrecobros: fecha o factura inválida/duplicada")
+    facturado = F.col("monto_facturado_soles").cast("double")
+    pactado = F.col("monto_pactado_soles").cast("double")
+    c = c.withColumn("_diferencia", facturado - pactado).withColumn("_pactado", pactado)
+    d = c.filter((facturado >= 0) & (pactado > 0) & (F.col("_diferencia") > 0))
+    d = d.filter(en_ventana("S3")) if aplicar_ventana else d
+    kg = F.col("kg") if "kg" in d.columns else F.lit(None)
+    return _alertas(d, "S3", "sobrecobro_control_F08", kg=kg, puntaje=F.col("_diferencia") / F.col("_pactado"),
+                    factura=F.col("factura_id"), valor=F.col("_diferencia"))
 
 
 def calendario_tc(tc):
