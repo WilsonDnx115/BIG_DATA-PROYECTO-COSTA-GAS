@@ -98,7 +98,12 @@ def crear_sesion(lake_uri: str | None = None, catalogo: str = iceberg.CATALOGO,
          .config("spark.sql.adaptive.skewJoin.enabled", "true")
          .config("spark.sql.shuffle.partitions", str(config.SPARK_SHUFFLE_PARTITIONS))
          .config("spark.sql.parquet.compression.codec", "snappy")
-         .config("spark.sql.session.timeZone", "America/Lima"))
+         .config("spark.sql.session.timeZone", "America/Lima")
+         # El lago ya contiene Parquet con fechas escritas antes de Spark 3;
+         # LEGACY las rebasa al calendario proleptico al leer y evita perderlas
+         # o abortar los MERGE de Iceberg por ambiguedad de calendario.
+         .config("spark.sql.parquet.datetimeRebaseModeInRead", "LEGACY")
+         .config("spark.sql.parquet.int96RebaseModeInRead", "LEGACY"))
     if not uri.startswith("s3://"):
         b = b.master("local[*]")
     return iceberg.configurar(b, catalogo, almacen or uri, tipo).getOrCreate()
@@ -225,11 +230,12 @@ def paso_unidad_mes(spark, unidad_mes_puntuado, alertas) -> str:
                                   ("unidad_id", "anio", "mes"))
 
 
-def estado_calidad_kpi4(spark) -> dict:
+def estado_calidad_kpi4(spark, args) -> dict:
     """Estado de calidad de las fuentes de KPI 4, a partir de silver/_control/."""
     from src.quality import calidad_silver  # noqa: PLC0415
 
-    filas = (calidad_silver.construir(spark)
+    ruta_control = f"{args.lake_uri.rstrip('/')}/silver/_control"
+    filas = (calidad_silver.construir(spark, ruta_control=ruta_control)
              .select("tabla", "cumple", "metas_incumplidas")
              .take(1000))
     return calidad_silver.bloqueos([fila.asDict(recursive=True) for fila in filas])["kpi_4"]
@@ -288,7 +294,7 @@ def modo_evento(spark, args) -> dict:
     unidades = leer_silver(spark, "unidades")
     unidad_mes_base = hecho_unidad_mes.construir(ventas, gastos, unidades)
     entradas = entradas_de_senales(spark, args)
-    calidad_kpi4 = estado_calidad_kpi4(spark)
+    calidad_kpi4 = estado_calidad_kpi4(spark, args)
     if calidad_kpi4["publicable"]:
         unidad_mes_puntuado = senales_spark.kpi4(unidad_mes_base)
         entradas["unidad_mes"] = unidad_mes_puntuado
