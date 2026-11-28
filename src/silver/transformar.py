@@ -7,6 +7,7 @@ lo que no se puede convertir queda nulo y se cuenta.
 """
 from __future__ import annotations
 
+import datetime
 import re
 
 import pandas as pd
@@ -168,9 +169,7 @@ def ventas_unidad_mes(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 def ventas_detalle(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o = pd.DataFrame(index=df.index)
     o["fecha"] = df["fecha"].map(L.a_fecha)
-    fechas = pd.to_datetime(o["fecha"], errors="coerce")
-    o["anio"] = fechas.dt.year.astype("Int64")
-    o["mes"] = fechas.dt.month.astype("Int64")
+    o["anio"], o["mes"] = _anio_mes(o["fecha"])
     o["proyecto"] = _texto(df["proyecto"], mayus=True)
     o["placa_norm"], _, o["centro_costo"] = _placas(df["proyecto"])
     o["linea"] = _entero(_col(df, "linea"))
@@ -230,6 +229,27 @@ def _documento(valor) -> tuple[str | None, str | None, str | None, str | None]:
     return f"{serie}-{numero}", serie, numero, None
 
 
+# Rango de datetime64[ns]: lo que pd.to_datetime(..., errors="coerce") convertia; fuera de el
+# devolvia NaT. Se conserva la misma regla sin pasar por datetime64.
+_FECHA_MIN = datetime.date(1677, 9, 22)
+_FECHA_MAX = datetime.date(2262, 4, 11)
+
+
+def _anio_mes(fechas) -> tuple[pd.Series, pd.Series]:
+    """Año y mes de cada fecha (date o None), en Int64, sin convertir a datetime64.
+
+    pd.to_datetime sobre fechas de Python tumba el proceso con un segmentation fault en la
+    capa de pandas de Lambda (AWSSDKPandas, 28/11/2026). El año y el mes se leen de la
+    fecha; una fecha fuera del rango de datetime64 queda nula, como antes.
+    """
+    validas = [f if isinstance(f, datetime.date) and _FECHA_MIN <= f <= _FECHA_MAX else None
+               for f in fechas]
+    indice = fechas.index if isinstance(fechas, pd.Series) else None
+    anio = pd.Series([f.year if f else None for f in validas], index=indice, dtype="Int64")
+    mes = pd.Series([f.month if f else None for f in validas], index=indice, dtype="Int64")
+    return anio, mes
+
+
 def _fechas(serie: pd.Series) -> tuple[list, list]:
     """Fechas convertidas y su estado: ok, sin_fecha o no_convertible. Nada se inventa."""
     valores = [L.a_fecha(v) for v in serie]
@@ -273,9 +293,7 @@ def pedidos_proveedor(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o["fecha_pago"], _ = _fechas(_col(df, "fecha_pago"))
     o["fecha_vence"], estado_vence = _fechas(_col(df, "fecha_vence"))
     o["estado_fecha_vence"] = estado_vence
-    fecha = pd.to_datetime(pd.Series(o["fecha"], index=o.index), errors="coerce")
-    o["anio"] = fecha.dt.year.astype("Int64")
-    o["mes"] = fecha.dt.month.astype("Int64")
+    o["anio"], o["mes"] = _anio_mes(pd.Series(o["fecha"], index=o.index))
 
     o["grupo"] = _texto(_col(df, "grupo"), mayus=True)
     o["sede"] = _texto(_col(df, "sede"), mayus=True)
@@ -336,9 +354,7 @@ def gastos(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     o["mes_texto"] = _texto(_col(df, "mes_texto"), mayus=True)
     o["fecha"] = _col(df, "fecha").map(L.a_fecha)
 
-    fecha = pd.to_datetime(o["fecha"], errors="coerce")
-    o["anio"] = fecha.dt.year.astype("Int64")
-    mes_de_la_fecha = fecha.dt.month.astype("Int64")
+    o["anio"], mes_de_la_fecha = _anio_mes(o["fecha"])
     mes_del_texto = o["mes_texto"].map(L.mes_a_numero).astype("Int64")
     o["mes"] = mes_de_la_fecha.where(mes_de_la_fecha.notna(), mes_del_texto)
 
