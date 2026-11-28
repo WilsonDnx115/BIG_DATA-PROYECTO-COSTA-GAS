@@ -83,7 +83,11 @@ jobs:
         run: |
           NOMBRE="gh-${GITHUB_RUN_ID}"
           echo "nombre=${NOMBRE}" >> "$GITHUB_OUTPUT"
-          aws cloudformation create-change-set --stack-name "$STACK" --change-set-name "$NOMBRE" --template-body "file://${PLANTILLA}" --capabilities CAPABILITY_NAMED_IAM --parameters ParameterKey=Sufijo,ParameterValue="$SUFIJO" ParameterKey=Correo1,ParameterValue="$CORREO1" ParameterKey=Correo2,UsePreviousValue=true ParameterKey=Correo3,UsePreviousValue=true ParameterKey=Correo4,UsePreviousValue=true > /dev/null
+          # La plantilla pasa de 51 200 caracteres: CloudFormation la lee desde el bucket de codigo.
+          CLAVE="_plantillas/stack-${GITHUB_RUN_ID}.yaml"
+          aws s3 cp "$PLANTILLA" "s3://costagas-code-${SUFIJO}/${CLAVE}" --sse AES256 --only-show-errors
+          URL="https://costagas-code-${SUFIJO}.s3.${AWS_REGION}.amazonaws.com/${CLAVE}"
+          aws cloudformation create-change-set --stack-name "$STACK" --change-set-name "$NOMBRE" --template-url "$URL" --capabilities CAPABILITY_NAMED_IAM --parameters ParameterKey=Sufijo,ParameterValue="$SUFIJO" ParameterKey=Correo1,ParameterValue="$CORREO1" ParameterKey=Correo2,UsePreviousValue=true ParameterKey=Correo3,UsePreviousValue=true ParameterKey=Correo4,UsePreviousValue=true > /dev/null
           if aws cloudformation wait change-set-create-complete --stack-name "$STACK" --change-set-name "$NOMBRE"; then
             echo "cambios=si" >> "$GITHUB_OUTPUT"
           else

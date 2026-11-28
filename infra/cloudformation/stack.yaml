@@ -56,6 +56,13 @@ Parameters:
     Type: String
     Default: WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS
     Description: Repositorio que puede asumir el rol de despliegue por OIDC (solo la rama main)
+  RepoGithubInmutable:
+    Type: String
+    Default: WilsonDnx115@131301197/BIG_DATA-PROYECTO-COSTA-GAS@1409544882
+    Description: >
+      El mismo repositorio en el formato inmutable del token OIDC (propietario@id/repositorio@id), que
+      GitHub usa cuando el repositorio tiene activado use_immutable_subject. Los id no cambian aunque se
+      renombre el repositorio o su propietario.
 
 Conditions:
   HayCorreo2: !Not [!Equals [!Ref Correo2, ""]]
@@ -699,7 +706,10 @@ Resources:
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals: { token.actions.githubusercontent.com:aud: sts.amazonaws.com }
-              StringLike: { token.actions.githubusercontent.com:sub: !Sub "repo:${RepoGithub}:ref:refs/heads/main" }
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub "repo:${RepoGithub}:ref:refs/heads/main"
+                  - !Sub "repo:${RepoGithubInmutable}:ref:refs/heads/main"
       ManagedPolicyArns:
         - !Sub arn:aws:iam::${AWS::AccountId}:policy/costagas-ingenieria-datos
         - !Sub arn:aws:iam::${AWS::AccountId}:policy/costagas-base
