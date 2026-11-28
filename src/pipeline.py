@@ -2,7 +2,7 @@
 
   muestra → Bronze (+manifiesto) → Lambda Bronze→Silver → movimientos
           → Glue conciliación (Gold) → señales (fact_alerta) → features
-          → modelo base MAD → modelo definitivo → evidencias
+          → modelo base MAD → detector de rareza → evidencias
 
 Uso:
   python -m src.pipeline                       # todo con la muestra sintética y motor pandas
@@ -30,7 +30,7 @@ def correr(origen: Path | None, motor: str, regenerar_muestra: bool) -> dict:
     from src.bronze_to_silver import handler
     from src.common import muestra
     from src.ingest import internos
-    from src.models import base_mad_fixture as base_mad, definitivo
+    from src.models import base_mad_fixture as base_mad, rareza
     from src.quality import linea_base, volumen
     from src.signals import senales_fixture as senales
     from src.silver_to_gold import conciliacion, features
@@ -72,21 +72,24 @@ def correr(origen: Path | None, motor: str, regenerar_muestra: bool) -> dict:
     _guardar("linea_base_tecnica_fixture.json", resumen["modelo_base"])
     base_mad.top_k(base).to_csv(EVID / "top20_base_fixture.csv", index=False)
 
-    print("6) Modelo definitivo (Isolation Forest vs LOF, partición temporal)")
+    print("6) Detector de rareza (Isolation Forest o LOF, partición temporal; muestra sintética)")
     feats = [f for f in features.FEATURES if f != "flag_placa_divergente"]  # evita fuga con la etiqueta débil
-    res = definitivo.ajustar(um, y, feats)
-    res["tabla"].to_csv(EVID / "rejilla_modelos.csv", index=False)
-    resumen["modelo_definitivo"] = res["mejor"]
-    _guardar("modelo_definitivo.json", res["mejor"])
+    entreno = um[um["anio"] < config.ANIO_PILOTO]
+    validacion = um[um["anio"] == config.ANIO_PILOTO].assign(_y=y)
+    res = rareza.ajustar(entreno, validacion, feats, etiqueta="_y")
+    res["tabla"].to_csv(EVID / "rejilla_rareza_fixture.csv", index=False)
+    resumen["modelo_rareza"] = {"modelo": res["nombre"], **res["params"], "criterio": res["criterio"]}
+    _guardar("modelo_rareza_fixture.json", resumen["modelo_rareza"])
+    puntuado = um.assign(puntaje_modelo=rareza.puntuar_pandas(res["modelo"], um, feats))
 
     verdad_f = origen / "_verdad_sintetica.json"
     if verdad_f.exists():          # solo con la muestra: ¿los modelos recuperan las unidades inyectadas?
         anom = set(json.loads(verdad_f.read_text(encoding="utf-8"))["unidades_anomalas"])
         yv = um["placa_norm"].isin(anom).astype(int)
-        p = res["puntuado"]
+        p = puntuado.dropna(subset=["puntaje_modelo"])
         resumen["validacion_sintetica"] = {
             "precision@20_base_vs_verdad": base_mad.precision_at_k(base["puntaje"], yv),
-            "precision@20_definitivo_vs_verdad": base_mad.precision_at_k(p["puntaje_modelo"], yv.loc[p.index]),
+            "precision@20_rareza_vs_verdad": base_mad.precision_at_k(p["puntaje_modelo"], yv.loc[p.index]),
         }
 
     print("7) Evidencias: línea base y volumen")
@@ -105,4 +108,4 @@ if __name__ == "__main__":
     a = ap.parse_args()
     r = correr(a.origen, a.motor, a.regenerar_muestra)
     print(json.dumps({k: r[k] for k in ("bronze_archivos", "silver", "movimientos", "gold_conciliacion",
-                                        "modelo_base", "modelo_definitivo") if k in r} | {"validacion_sintetica": r.get("validacion_sintetica")}, indent=2, default=str))
+                                        "modelo_base", "modelo_rareza") if k in r} | {"validacion_sintetica": r.get("validacion_sintetica")}, indent=2, default=str))

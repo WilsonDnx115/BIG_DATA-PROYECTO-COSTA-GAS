@@ -370,7 +370,7 @@ Cada optimización se mide **antes y después** y se guarda en `docs/evidencias/
 - [ ] **4.3.4 Ajuste de hiperparámetros.** Rejilla de la Tabla 4.6 (`n_estimators`, `max_samples`, `contamination`, `n_neighbors`), eligiendo por `precision@20` en 2020. Semilla fija para reproducir.
 - [ ] **4.3.5 Comparación y elección.** Tabla de la 4.7 (base frente a Isolation Forest frente a LOF) y justificación del umbral priorizando la precisión, por el costo de un falso positivo sobre un trabajador (Tabla 4.8).
 - [ ] **4.3.6 Puntajes a Gold.** Escribir el puntaje del modelo elegido en `gold/fact_alerta/` (tipo = modelo).
-  - *Aceptación:* métricas en `docs/evidencias/modelo_definitivo.json` contrastadas con la línea base técnica.
+  - *Aceptación:* métricas del detector de rareza (`src/models/rareza.py`, Isolation Forest o LOF) medidas con los datos reales en `docs/evidencias/`, contrastadas con la línea base técnica.
 
 ### 4.4 · Modelo dimensional y capa de consumo
 
