@@ -24,14 +24,30 @@ sobre los commits de Frank sin fusionar ya no aplica.
 
 ## Lo que falta, que es Gold
 
-`gold/` tiene sus trece tablas Iceberg creadas, pero **sin un solo archivo de datos**: solo el
-`00000-*.metadata.json` de cada una. El job `costagas-gold-conciliacion` **nunca se ha ejecutado**;
-`aws glue get-job-runs` devuelve una lista vacía. En el catálogo `costagas_gold` están las vistas
-`v_alerta`, `v_kpi_1`, `v_kpi_2`, `v_kpi_3` y `v_kpi_5`, y faltan `v_kpi_4`, `v_cubo_unidad` y
-`v_semaforo_unidades`, que son las tres que leen `fact_unidad_mes`.
+**`fact_unidad_mes` ya existe.** Entró con el PR #32 (`gold_fact_unidad_mes.sql`,
+`src/glue/unidad_mes.py` y su integración al job), está catalogada en `costagas_gold` y con ella se
+catalogaron las tres vistas que faltaban: `v_kpi_4`, `v_cubo_unidad` y `v_semaforo_unidades`. El
+catálogo de Gold tiene hoy sus **quince tablas y ocho vistas**.
 
-`fact_unidad_mes` no tiene DDL en `sql/athena/ddl/`. Es lo primero de la fila: sin esa tabla no hay
-KPI 4, ni semáforo, ni las tres vistas.
+**El job de Gold está en pruebas, no cerrado.** `costagas-gold-conciliacion` registra cinco
+ejecuciones el 28/11 entre las 03:27 y las 03:45: cuatro fallaron y la quinta estaba corriendo al
+escribir esto. Los cuatro fallos, por si ayudan a Ingeniería de datos:
+
+| Hora | Error |
+|---|---|
+| 03:27 | `NotADirectoryError` al leer `src/signals/catalogo.yaml` dentro de `costagas_src.zip` |
+| 03:30 | `ValueError: fact_unidad_mes: hay placas sin rol en dim_unidad; se cancela para no inventar el rol` |
+| 03:37 | `PATH_NOT_FOUND` de `data/lake/silver/_control/*/*.json` dentro del zip, en vez de la ruta de S3 |
+| 03:40 | `INCONSISTENT_BEHAVIOR_CROSS_VERSION.READ_ANCIENT_DATETIME` al leer fechas anteriores a 1900 con Spark ≥ 3.0 |
+
+El tercero y el cuarto son de empaquetado y de lectura de fechas antiguas. El segundo es el
+interesante para calidad: el job **se niega a inventar el rol** de una placa que `dim_unidad` no
+declara, que es exactamente lo que pide `CLAUDE.md`. Las placas sin rol salen de que
+`relacion_unidades` tiene 80.1 % de placas válidas y `soat_2020` 83.7 %
+([medición](evidencias/calidad_carga_inicial.md)).
+
+Mientras ese job no termine en `SUCCEEDED`, **ninguna cifra de KPI, señal o semáforo puede
+presentarse como resultado de la empresa**.
 
 La regla `costagas-silver-actualizado` sigue en **DISABLED**, como manda el
 [ADR 0020](adr/0020-regla-gold-prefijos-internos.md), y `costagas-glue-fallido` en ENABLED.
@@ -40,8 +56,8 @@ La regla `costagas-silver-actualizado` sigue en **DISABLED**, como manda el
 
 | Quién | Qué | Desbloquea |
 |---|---|---|
-| **Wilson** | `fact_unidad_mes` y su DDL | Las tres vistas que faltan, el KPI 4 y el semáforo |
-| **Wilson** | Correr `costagas-gold-conciliacion` | **AR17 completo y AR24**, y las cifras de Gold del informe |
+| **Wilson** | Que `costagas-gold-conciliacion` termine en `SUCCEEDED` | **AR17 completo y AR24**, y todas las cifras de Gold del informe |
+| **Wilson** | Las placas sin rol en `dim_unidad`, que cancelan `fact_unidad_mes` | El KPI 4 y el semáforo |
 | **Wilson** | Subir el escenario B sellado a `sim/_spec/` y correr `costagas-validacion-detector` | **AR18 y AR19** |
 | **Wilson o el titular** | En mi política: `s3:ListBucket` sobre el bucket y `s3:PutObject`/`GetObject` sobre `athena-results/*` | Poder citar consultas de Athena como evidencia |
 | **Bruno** | Roles de la Semana 8 en `equipo.md`; protocolo ciego alineado con `revision.py`; proteger `main` | Coherencia con el informe y la revisión ciega real |
