@@ -120,12 +120,13 @@ def test_ninguna_senal_se_pierde_por_el_camino():
 
 
 def test_lo_que_falta_hoy_dice_a_quien_le_toca():
-    """S7 y S9 esperan el contrato de gastos; S11 no tiene fuente en la entrega."""
+    """S7 y S9 esperan unidad_mes; S11 no tiene fuente en la entrega."""
     _, omitidas = gold_job.senales_calculables({"compras", "unidades", "tesoreria", "tc", "ventas_detalle",
                                                 "distribuidores", "puente_clientes"})
 
     assert set(omitidas) == {"S7", "S9", "S11"}
-    assert "gastos.yaml" in omitidas["S7"] and "gastos.yaml" in omitidas["S9"]
+    assert omitidas["S7"] == "falta unidad_mes"
+    assert omitidas["S9"] == "falta unidad_mes"
     assert "no esta cubierta" in omitidas["S11"]
 
 
