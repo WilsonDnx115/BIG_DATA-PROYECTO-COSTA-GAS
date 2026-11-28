@@ -87,6 +87,49 @@ def test_proveedor_nuevo_no_rompe_la_puntuacion(spark, datos):
     assert puntuado.count() == 5
 
 
+# --- FR12 · puntuación al llegar la factura --------------------------------------------
+class ModeloFijo:
+    """Devuelve la probabilidad que trae la columna `_p`: así la prueba fija el resultado."""
+
+    def transform(self, df):
+        from pyspark.ml.functions import array_to_vector
+        from pyspark.sql import functions as F
+
+        return df.withColumn("probability", array_to_vector(F.array(1 - F.col("_p"), F.col("_p"))))
+
+
+def test_puntuar_s12_con_el_umbral_del_vigente(spark, datos):
+    nuevas = facturas(n=3).drop(columns=["etiqueta_s12", "madura"]).assign(_p=[0.4, 0.6, 0.5])
+    p = mllib.puntuar_s12(spark.createDataFrame(nuevas), ModeloFijo(), umbral=0.5, version_modelo="s12-2023-01-01")
+    filas = {r["factura_id"]: r for r in p.take(10)}
+    assert set(p.columns) == {"factura_id", "probabilidad", "alerta_s12", "version_modelo"}
+    assert (filas["F0"]["alerta_s12"], filas["F1"]["alerta_s12"], filas["F2"]["alerta_s12"]) == (0, 1, 1)
+    assert filas["F1"]["version_modelo"] == "s12-2023-01-01"
+    assert mllib.puntuar_s12(spark.createDataFrame(nuevas), ModeloFijo(), umbral=0.55,
+                             version_modelo="v").filter("alerta_s12 = 1").count() == 1   # solo la de 0.6
+
+
+def test_alertas_s12_con_el_contrato_de_fact_alerta(spark, datos):
+    from src.common import schemas
+
+    nuevas = facturas(n=2).drop(columns=["etiqueta_s12", "madura"]).assign(
+        _p=[0.2, 0.9], fecha=pd.Timestamp("2023-03-10").date(), unidad_id="ABC123", codigo_scop="77")
+    df = spark.createDataFrame(nuevas)
+    a = mllib.alertas_s12(mllib.puntuar_s12(df, ModeloFijo(), 0.5, "s12-2023-03-01"), df)
+    assert a.columns == schemas.CONTRATOS["fact_alerta_base"].columnas() + ["probabilidad"]
+    (fila,) = a.take(5)
+    assert (fila["factura_id"], fila["senal"], fila["tipo"]) == ("F1", "S12", "modelo")
+    assert fila["puntaje"] == pytest.approx(0.9) and fila["probabilidad"] == pytest.approx(0.9)
+    assert fila["motivo"] == "modelo_s12_s12-2023-03-01" and fila["valor_soles"] is None
+
+
+def test_puntuar_s12_con_el_random_forest(spark, datos):
+    modelo = mllib.entrenar_clasificador_s12(datos)
+    nuevas = spark.createDataFrame(facturas(n=6, semilla=21).drop(columns=["etiqueta_s12", "madura"]))
+    p = mllib.puntuar_s12(nuevas, modelo, umbral=0.5, version_modelo="v")
+    assert p.count() == 6 and p.filter("probabilidad < 0 OR probabilidad > 1").count() == 0
+
+
 # --- FR07 · evaluación hacia adelante -----------------------------------------------
 def modelo_factura_sintetica(por_mes=40, semilla=4):
     """feb-2022 a jul-2023, como la ventana de S12; vence a los 30 días y madura a los 60."""

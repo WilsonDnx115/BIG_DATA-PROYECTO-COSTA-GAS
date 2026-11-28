@@ -284,6 +284,49 @@ def evaluar_2022_2023(modelo_factura) -> dict:
             **entrenar_validar_probar(entrenamiento, validacion, prueba)}
 
 
+# --- Puntuación al llegar la factura a logística (FR12; informe v17, 4.3 «Cómo se usa») -----
+def puntuar_s12(df_nuevas, modelo, umbral: float, version_modelo: str):
+    """Probabilidad de descuadre de cada factura nueva con el modelo vigente.
+
+    `umbral` y `version_modelo` salen de la ficha del vigente (`registro.vigente()`): el
+    umbral es el que se eligió en la validación y no se recalcula al puntuar. Devuelve
+    factura_id, probabilidad, alerta_s12 (1 si probabilidad ≥ umbral) y version_modelo. No
+    hace falta la etiqueta: la factura acaba de llegar y todavía no se sabe si descuadra.
+    """
+    from pyspark.ml.functions import vector_to_array  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    datos = df_nuevas if ETIQUETA in df_nuevas.columns else df_nuevas.withColumn(ETIQUETA, F.lit(None))
+    prob = vector_to_array("probability").getItem(1)
+    return (modelo.transform(preparar_variables(datos))
+            .select("factura_id", prob.alias("probabilidad"))
+            .withColumn("alerta_s12", (F.col("probabilidad") >= F.lit(float(umbral))).cast("int"))
+            .withColumn("version_modelo", F.lit(version_modelo)))
+
+
+def alertas_s12(puntuadas, facturas):
+    """Facturas con alerta_s12 = 1 → filas de fact_alerta (contrato fact_alerta_base + probabilidad).
+
+    `facturas`: las mismas facturas con fecha, unidad_id, codigo_scop y kg. tipo = «modelo»,
+    puntaje = probabilidad y el motivo lleva la versión del modelo que la marcó. Las facturas
+    bajo el umbral no son alertas y no entran a la bandeja; su probabilidad queda en
+    `puntuadas` para el semáforo de pago.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    from src.glue import senales_spark  # noqa: PLC0415
+
+    marcadas = (puntuadas.filter(F.col("alerta_s12") == 1)
+                .join(facturas.select("factura_id", "fecha", "unidad_id", "codigo_scop", "kg"),
+                      "factura_id", "inner"))
+    filas = senales_spark._alertas(  # noqa: SLF001
+        marcadas, "S12", F.concat(F.lit("modelo_s12_"), F.col("version_modelo")), kg=F.col("kg"),
+        puntaje=F.col("probabilidad"), tipo="modelo", unidad=F.col("unidad_id"),
+        factura=F.col("factura_id"), scop=F.col("codigo_scop"))
+    return (filas.join(marcadas.select("factura_id", "probabilidad"), "factura_id", "left")
+            .select(*senales_spark.COLUMNAS_ALERTA, "probabilidad"))
+
+
 # --- Regresión del combustible esperado (FR09; informe v16, 4.3 y Tablas 4.6b y 4.7) ---------
 def _volumen_del_rol(unidad_mes):
     """kg_movidos: kg vendidos en reparto y transportados en transporte (igual que el modelo base)."""
