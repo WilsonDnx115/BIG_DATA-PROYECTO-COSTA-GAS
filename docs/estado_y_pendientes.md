@@ -58,6 +58,27 @@ Es el rol `costagas-github-deploy`: todavía no existe en la cuenta, así que no
 que cargar. **No es de las pruebas y no lo causó ningún commit de código.** Lo resuelve Wilson con
 el titular, desplegando el stack una primera vez o condicionando ese job.
 
+## Frank: se puede entrenar hoy, sin esperar a nadie
+
+El lago de AWS está vacío y el código desplegado es del 10/10: eso es cierto y lo resuelve
+WR07-WR10. Pero **el pipeline completo corre en local con un comando**, y para eso existe la
+muestra sintética:
+
+```powershell
+python -m src.pipeline --regenerar-muestra
+```
+
+Verificado hoy, de punta a punta: ingesta a Bronze, Silver con esquema declarado, conciliación en
+Gold (47 107 movimientos, 10 152 filas), modelo base, modelo definitivo (LOF) y la validación
+contra la verdad sintética. Con `--origen <carpeta>` corre sobre cualquier entrega de Excel.
+
+Lo que **no** se puede hacer en local es publicar cifras del negocio: las de la muestra son
+sintéticas y `CLAUDE.md` prohíbe presentarlas como resultados. Para eso hace falta la carga a S3.
+
+**Los 35 Excel no van de mí a análisis y modelado.** La custodia es de Ingeniería de datos: van a
+S3 con el perfil de Wilson, y de ahí se leen Silver y Gold. Es lo que dice `CLAUDE.md` sobre
+`data/raw/` y lo que evita que acabemos con dos copias de la entrega circulando.
+
 ## Dos cosas que conviene no perder de vista
 
 **Una prueba omitida se ve igual que una que pasa.** Las de Spark se omiten en Windows; por eso
