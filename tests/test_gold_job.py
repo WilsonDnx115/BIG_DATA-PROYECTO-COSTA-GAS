@@ -168,7 +168,7 @@ def test_el_modo_evento_ya_no_tiene_pendiente_el_calculo_de_las_senales():
 
     assert "W12" not in pendientes                 # las alertas de regla ya se escriben
     assert "WR11" not in pendientes                # la probabilidad del modelo ya se escribe
-    assert "W07" in pendientes                     # y fact_unidad_mes
+    assert "W07" not in pendientes                 # fact_unidad_mes ya se escribe
 
 
 FILAS_COMPRAS_WR06 = [
