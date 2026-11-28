@@ -190,6 +190,8 @@ progress { width: 100%; height: 12px; margin-top: 12px; accent-color: var(--prim
 }
 .kpi__nombre { color: var(--texto-suave); font-size: 0.875rem; }
 .kpi__valor { font-size: 1.5rem; font-weight: 700; overflow-wrap: anywhere; }
+/* De dónde sale el valor, o por qué no hay dato. Nunca se sustituye por un cero. */
+.kpi__nota { display: block; color: var(--texto-suave); font-size: 0.75rem; margin-top: 4px; }
 
 /* Pie */
 .pie {
