@@ -12,11 +12,11 @@ lista escrita a mano, y la regla de cada una se reusa de donde ya vive:
 * `unidades`  `dimensiones.dim_unidad`, que ya colapsa las placas del maestro
 * `tc`        el JSON del BCRP que baja `src/extractores/bcrp.py`
 
-Las otras dos entradas del contrato no se arman aqui y es a proposito:
+`unidad_mes` se construye desde Silver `ventas_unidad_mes` y `gastos` en
+`src/glue/unidad_mes.py`; la salida es Gold `fact_unidad_mes`.
 
-* `unidad_mes` es `fact_unidad_mes`, que es el WR02 y espera
-  `contracts/gastos.yaml`; mientras no exista, no hay de donde sacar
-  `gasto_combustible`.
+La entrada que no se arma aqui y es a proposito:
+
 * `produccion` es `silver/produccion_diaria`, que **no esta cubierta** en la
   entrega de 35 archivos: el stock diario no aparece en ninguna de las 199 hojas
   (evidencia: `docs/evidencias/hojas_sin_encabezado.md`). S11 queda sin fuente y
