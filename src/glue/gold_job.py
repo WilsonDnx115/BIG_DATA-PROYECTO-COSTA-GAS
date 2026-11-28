@@ -248,6 +248,98 @@ def paso_unidad_mes(spark, unidad_mes_puntuado, alertas) -> str:
                                   ("unidad_id", "anio", "mes"))
 
 
+def umbrales_detector(lake_uri: str) -> dict:
+    """Carga la calibración vigente o la calcula solo con el escenario A y la guarda en S3."""
+    import json  # noqa: PLC0415
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    from src.models import detector  # noqa: PLC0415
+
+    ruta = urlparse(lake_uri)
+    if ruta.scheme != "s3" or not ruta.netloc:
+        return detector.calibrar_con_escenario_a()
+
+    import boto3  # noqa: PLC0415
+    from botocore.exceptions import ClientError  # noqa: PLC0415
+
+    bucket = ruta.netloc
+    key = f"{ruta.path.strip('/')}/gold/_modelos/detector/umbral.json".lstrip("/")
+    s3 = boto3.client("s3", region_name=config.AWS_REGION)
+    try:
+        objeto = s3.get_object(Bucket=bucket, Key=key)
+        umbrales = json.loads(objeto["Body"].read().decode("utf-8"))
+        if not {"semana", "mes"} <= set(umbrales):
+            raise ValueError(f"calibración del detector incompleta en s3://{bucket}/{key}")
+        print(f"[fact_serie] umbrales cargados de s3://{bucket}/{key}")
+        return umbrales
+    except ClientError as exc:
+        codigo = exc.response.get("Error", {}).get("Code")
+        if codigo not in {"NoSuchKey", "404", "NotFound"}:
+            raise
+
+    # `calibrar_con_escenario_a` no importa ni usa el escenario B sellado.
+    umbrales = detector.calibrar_con_escenario_a()
+    s3.put_object(Bucket=bucket, Key=key, Body=json.dumps(umbrales, ensure_ascii=False).encode("utf-8"),
+                  ContentType="application/json", ServerSideEncryption="AES256")
+    print(f"[fact_serie] umbrales calibrados con escenario A y guardados en s3://{bucket}/{key}")
+    return umbrales
+
+
+def paso_fact_serie(spark, unidad_mes, ventas_detalle, lake_uri: str) -> str:
+    """W09: construye las series mensual y semanal de unidad, calibradas con escenario A."""
+    from src.glue import fact_serie  # noqa: PLC0415
+
+    umbrales = umbrales_detector(lake_uri)
+    fuentes = (
+        ("mes", fact_serie.unidades_mes_spark(unidad_mes)),
+        ("semana", fact_serie.unidades_semana_spark(ventas_detalle)),
+    )
+    series = []
+    for granularidad, entrada in fuentes:
+        if entrada.limit(1).count() == 0:
+            print(f"[fact_serie] sin unidades evaluables para granularidad {granularidad}")
+            continue
+        serie = fact_serie.construir(entrada, umbrales[granularidad])
+        series.append(serie)
+        print(f"[fact_serie] serie {granularidad} calculada con h={umbrales[granularidad]['h']}")
+    if not series:
+        raise ValueError("fact_serie: no hay ventas con placa y volumen para construir el detector")
+    salida = series[0]
+    for otra in series[1:]:
+        salida = salida.unionByName(otra)
+    # applyInPandas y el modelo MLlib forman un plan que Spark etiqueta como
+    # no determinista, incluso tras cache(). Iceberg no permite usar ese plan
+    # directamente como fuente de MERGE; un Parquet temporal en el bucket cifra-
+    # do del lago fija la salida y conserva la escritura idempotente por grano.
+    import uuid  # noqa: PLC0415
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    ruta_lago = urlparse(lake_uri)
+    if ruta_lago.scheme != "s3" or not ruta_lago.netloc:
+        raise ValueError("fact_serie necesita un lake_uri s3:// para materializar el MERGE")
+    bucket = ruta_lago.netloc
+    prefijo = "/".join(p for p in (ruta_lago.path.strip("/"), "gold", "_tmp",
+                                    "fact_serie", uuid.uuid4().hex) if p)
+    stage_uri = f"s3://{bucket}/{prefijo}"
+    s3 = __import__("boto3").client("s3", region_name=config.AWS_REGION)
+    try:
+        salida.write.mode("overwrite").parquet(stage_uri)
+        estable = spark.read.schema(salida.schema).parquet(stage_uri)
+        filas = estable.count()
+        print(f"[fact_serie] {filas} filas materializadas en staging cifrado")
+        return iceberg.escribir_merge(spark, estable, "fact_serie",
+                                      ("entidad_tipo", "entidad_id", "granularidad", "periodo"))
+    finally:
+        try:
+            paginas = s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefijo)
+            for pagina in paginas:
+                objetos = [{"Key": o["Key"]} for o in pagina.get("Contents", [])]
+                if objetos:
+                    s3.delete_objects(Bucket=bucket, Delete={"Objects": objetos, "Quiet": True})
+        except Exception as exc:  # noqa: BLE001 - el error de limpieza no oculta el resultado Gold
+            print(f"[fact_serie] no se pudo borrar el staging {stage_uri}: {type(exc).__name__}")
+
+
 def estado_calidad_kpi4(spark, args) -> dict:
     """Estado de calidad de las fuentes de KPI 4, a partir de silver/_control/."""
     from src.quality import calidad_silver  # noqa: PLC0415
