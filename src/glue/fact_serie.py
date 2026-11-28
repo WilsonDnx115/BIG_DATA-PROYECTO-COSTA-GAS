@@ -5,11 +5,11 @@ Grano: entidad (unidad, vendedor o cliente) × semana o mes. Columnas que lee la
 periodo_inicio, kg_acumulados y soles_acumulados; además valor_real, valor_esperado,
 residuo, z, cusum y ewma para el expediente.
 
-Cómo se reparte en Spark. El valor esperado de una entidad necesita a todos sus pares del
-mismo periodo, así que no se puede partir por entidad suelta. Se parte por **grupo de
-pares** con groupBy(...).applyInPandas(...): cada tarea recibe todas las unidades de un
-rol (o todos los vendedores, o todos los clientes) y corre el detector de
-`src/models/detector.py` en pandas. Los grupos son pocos y chicos (de 12 a 150 entidades),
+Cómo se reparte en Spark. Primero el valor esperado de cada entidad sale de una regresión
+de MLlib sobre sus pares (`detector.esperado_mllib`, FR26). Después el CUSUM y el EWMA se
+parten por **grupo de pares** con groupBy(...).applyInPandas(...): cada tarea recibe todas
+las unidades de un rol (o todos los vendedores, o todos los clientes) y corre el detector
+de `src/models/detector.py` en pandas. Los grupos son pocos y chicos (de 12 a 150 entidades),
 así que caben en las tareas de un solo executor.
 
 Fuentes:
@@ -113,12 +113,17 @@ def bajar_a_vendedor_y_cliente(ventas_detalle: pd.DataFrame, serie_unidades: pd.
 
 
 # --- Spark: un grupo de pares por tarea ------------------------------------------------
-def construir(spark_df, umbral: dict):
-    """Aplica el detector en Spark, un grupo de pares por tarea (applyInPandas).
+def construir(spark_df, umbral: dict, hasta=None):
+    """Aplica el detector en Spark (FR26): valor esperado con MLlib y CUSUM por grupo de pares.
 
+    1. `detector.esperado_mllib` estima el valor esperado con `LinearRegression` de MLlib
+       sobre todo el DataFrame (ajustado hasta `hasta`, si se da).
+    2. groupBy(...).applyInPandas(...) corre el CUSUM y el EWMA, un grupo de pares por tarea;
+       el detector usa el `valor_esperado` que ya trae cada fila.
     `spark_df` tiene las columnas de entrada del detector (las que devuelven
     unidades_mes_pandas, unidades_semana_pandas o bajar_a_vendedor_y_cliente) de una sola
     granularidad; `umbral` es el de esa granularidad.
     """
-    return spark_df.groupBy("entidad_tipo", "grupo").applyInPandas(
+    con_esperado = detector.esperado_mllib(spark_df, hasta=hasta)
+    return con_esperado.groupBy("entidad_tipo", "grupo").applyInPandas(
         lambda pdf: serie_pandas(pdf, umbral), schema=ESQUEMA)

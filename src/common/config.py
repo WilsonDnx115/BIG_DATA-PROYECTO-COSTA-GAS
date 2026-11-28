@@ -143,6 +143,11 @@ DETECTOR_L = _env_float("DETECTOR_L", 3.0)
 # Periodos propios que necesita una entidad antes de evaluarla: con 4, la participación frente a sus
 # pares sale de una mediana y no de un solo periodo; en la serie mensual de 14 meses deja 10 evaluables.
 DETECTOR_PERIODOS_BASE = _env_int("DETECTOR_PERIODOS_BASE", 4)
+# Marca de pandemia del valor esperado (informe v16, 4.3): desde el estado de emergencia nacional del
+# 16/03/2020 (D. S. N.º 044-2020-PCM) hasta el fin de 2020. dim_tiempo marca todo 2020 porque su grano es
+# el mes; el detector también trabaja por semana y usa la fecha exacta.
+PANDEMIA_INICIO = _env("PANDEMIA_INICIO", "2020-03-16")
+PANDEMIA_FIN = _env("PANDEMIA_FIN", "2020-12-31")
 SEMILLAS_DETECTOR = _env_int("SEMILLAS_DETECTOR", 100)
 LOTE_SEMILLAS = _env_int("LOTE_SEMILLAS", 10)
 

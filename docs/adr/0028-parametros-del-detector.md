@@ -25,7 +25,7 @@ El detector (`src/models/detector.py`, informe v16, 4.3 y Figura 4.5) busca falt
 | `DETECTOR_PERIODOS_BASE` | 4 | Decisión de diseño: con 4 periodos propios, la participación de la entidad frente a sus pares sale de una mediana y no de un solo periodo. En la serie mensual de 14 meses (ene-2020 a feb-2021) quedan 10 meses evaluables |
 | `FALSAS_ALARMAS_ANIO` | 12 | Informe v16, Tabla 4.8h: como máximo 12 al año en todo el sistema y en cada granularidad, una por mes |
 
-**Cómo se calcula el desvío.** El valor esperado de cada entidad es su participación histórica por la mediana de sus pares en el mismo periodo. La participación usa solo periodos anteriores, sin mirar el futuro. El desvío relativo se divide por una escala robusta, σ = 1.4826 × MAD del grupo. Si un grupo no tiene variación (MAD = 0), sus entidades quedan «no_evaluable» y no se inventa una escala.
+**Cómo se calcula el desvío.** El valor esperado sale de una regresión lineal sobre los pares (informe, 4.3, primera etapa): lo que vendieron los demás del grupo en el periodo, escalado por la participación histórica de la entidad (solo periodos anteriores), la semana del año, la marca de pandemia (16/03/2020 a 31/12/2020) y, si se entregan, los eventos de mercado y el precio de lista. En Glue se ajusta con `LinearRegression` de MLlib y en la Lambda de validación con numpy; las dos dan el mismo resultado (`tests/test_detector.py`). El desvío relativo se divide por una escala robusta, σ = 1.4826 × MAD del grupo. Si un grupo no tiene variación (MAD = 0), sus entidades quedan «no_evaluable» y no se inventa una escala.
 
 **Cómo se calibra h.** `calibrar_h` busca el menor h, de 0.5 en adelante y de 0.1 en 0.1, que deja como máximo 12 falsas alarmas al año sumando todas las entidades de una serie sin robos (escenario A). Cada vez que el CUSUM cruza h cuenta como una alarma y se reinicia, que es la práctica habitual tras una señal.
 
@@ -33,8 +33,8 @@ El detector (`src/models/detector.py`, informe v16, 4.3 y Figura 4.5) busca falt
 
 | Granularidad | h calibrado | Falsas alarmas al año | σ reparto | σ transporte |
 |---|---|---|---|---|
-| Semana | 2.3 | 11.3 (34 en 3 años) | 0.109 | 0.127 |
-| Mes | 1.0 | 12.0 (36 en 3 años) | 0.059 | 0.057 |
+| Semana | 2.5 | 11.3 (34 en 3 años) | 0.095 | 0.124 |
+| Mes | 1.1 | 11.7 (35 en 3 años) | 0.049 | 0.051 |
 
 El h calibrado queda por debajo del 5 inicial: el presupuesto de 12 alarmas se reparte entre solo 12 unidades, y la serie semanal tiene más ruido relativo que la mensual. Con más entidades vigiladas el h sube, porque el presupuesto es del sistema (`tests/test_detector.py`).
 
