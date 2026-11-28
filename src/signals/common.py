@@ -1,8 +1,8 @@
 """Catálogo y salida de alertas WP 0.8; sin campos personales ni pérdidas imputadas."""
 from __future__ import annotations
 import hashlib
+from importlib.resources import files
 import json
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
@@ -12,8 +12,8 @@ COLUMNAS = schemas.CONTRATOS['fact_alerta_base'].columnas()
 HITO = ('S2', 'S3', 'S6', 'S7', 'S9', 'S11')
 
 def cargar_catalogo() -> dict:
-    with (Path(__file__).with_name('catalogo.yaml')).open(encoding='utf-8') as f:
-        catalogo = yaml.safe_load(f)
+    contenido = files('src.signals').joinpath('catalogo.yaml').read_text(encoding='utf-8')
+    catalogo = yaml.safe_load(contenido)
     senales = catalogo['senales']
     if set(senales) != {f'S{i}' for i in range(1, 13)} or senales['S8']['estado'] != 'no_resoluble':
         raise ValueError('El catálogo debe declarar S1–S12 y S8 no resoluble')

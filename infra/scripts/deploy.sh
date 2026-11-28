@@ -82,6 +82,8 @@ with zipfile.ZipFile(build / "costagas_src.zip", "w", zipfile.ZIP_DEFLATED) as z
         z.write(f, f.as_posix())
     for f in sorted(pathlib.Path("contracts").glob("*.yaml")):      # los contratos viajan con el código
         z.write(f, f.as_posix())
+    for f in sorted(pathlib.Path("src").rglob("*.yaml")):
+        z.write(f, f.as_posix())
     pkg = build / "pkg"
     for f in sorted(pkg.rglob("*")):
         if f.is_file() and "__pycache__" not in f.parts and not f.parent.name.endswith(".dist-info"):

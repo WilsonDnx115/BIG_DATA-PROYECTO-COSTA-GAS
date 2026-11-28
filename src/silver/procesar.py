@@ -16,6 +16,7 @@ valor original no llega a Silver (Ley 29733).
 """
 from __future__ import annotations
 
+import faulthandler
 import json
 import tempfile
 import urllib.parse
@@ -30,6 +31,10 @@ from src.common import limpieza as L
 from src.common import rutas
 from src.silver import contratos, lector
 from src.silver.transformar import TRANSFORMACIONES
+
+# Un fallo nativo (segmentation fault en pandas, numpy o pyarrow) no deja traza de Python:
+# faulthandler la escribe en stderr, que Lambda manda a CloudWatch.
+faulthandler.enable()
 
 _COLUMNAS_DE_TOTAL = ("proveedor", "tipo", "numero", "proyecto", "articulo", "mes_texto", "placa")
 

@@ -250,3 +250,16 @@ def test_ingesta_por_dominio_y_rechazo_de_duplicados(lago, tmp_path):
         "bronze", "interno", "estructurado", "compras", "compras_mensuales", "fecha_carga=2026-10-10", "COMPRAS MENSUALES.xlsx")
     assert "/ventas_unidad/ventas_flota_2020/" in r["VENTAS FLOTA 2020.xlsx"]["destino"]
     assert len(list((lago / "lake" / "bronze").rglob("*.xlsx"))) == 2
+
+
+def test_anio_mes_sin_datetime64_y_fuera_de_rango_nulo():
+    """Año y mes desde la fecha, sin pd.to_datetime; fuera del rango de datetime64 queda nulo."""
+    import datetime as dt
+
+    import pandas as pd
+
+    from src.silver.transformar import _anio_mes
+
+    anio, mes = _anio_mes(pd.Series([dt.date(2020, 5, 3), None, dt.date(202, 5, 1), dt.date(2023, 12, 31)]))
+    assert anio.tolist() == [2020, pd.NA, pd.NA, 2023] and mes.tolist() == [5, pd.NA, pd.NA, 12]
+    assert str(anio.dtype) == "Int64"
