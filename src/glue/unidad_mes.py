@@ -61,7 +61,7 @@ def construir(ventas, gastos, unidades):
                       F.col("kg_vendidos").cast("double"), "kg_transportados",
                       F.col("gasto_combustible").cast("double"),
                       F.col("gasto_total").cast("double")))
-    sin_rol = F.col("rol").isNull() | ~F.col("rol").isin("reparto", "transporte")
-    if hechos.filter(sin_rol).limit(1).count():
-        raise ValueError("fact_unidad_mes: hay placas sin rol en dim_unidad; se cancela para no inventar el rol")
+    # Algunas placas de GASTOS FLOTA no aparecen en ninguno de los tres
+    # maestros Silver. Se conservan en el hecho con rol nulo: descartarlas
+    # perdería gasto real y asignarles reparto/transporte inventaría evidencia.
     return hechos
