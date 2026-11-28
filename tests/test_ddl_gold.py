@@ -62,7 +62,7 @@ def ddl(tabla: str) -> Path:
 
 
 def test_hay_un_ddl_por_tabla_declarada():
-    assert len(ARCHIVOS) == 13, [a.name for a in ARCHIVOS]
+    assert len(ARCHIVOS) == 14, [a.name for a in ARCHIVOS]
 
 
 @pytest.mark.parametrize("archivo", ARCHIVOS, ids=lambda a: a.stem)
@@ -145,7 +145,8 @@ def test_una_dimension_no_se_particiona():
 
 
 def test_los_hechos_por_mes_se_particionan_por_anio_y_mes():
-    for tabla in ("fact_balance_planta", "fact_alerta", "mercado_mes", "modelo_factura"):
+    for tabla in ("fact_balance_planta", "fact_alerta", "mercado_mes", "modelo_factura", "fact_serie",
+                  "fact_operacion"):
         assert particiones(ddl(tabla)) == ["anio", "mes"]
 
 
@@ -187,3 +188,12 @@ def test_el_kpi_1_encuentra_sus_columnas_en_el_balance():
     for columna in ("kg_comprados", "kg_vendidos", "delta_stock_kg", "merma_tecnica_kg",
                     "merma_es_supuesto", "mes_completo"):
         assert columna in sql and columna in declaradas
+
+
+def test_modelo_factura_fact_serie_y_operacion_declaran_lo_que_escriben():
+    """FR05, FR07 y FR14: el DDL es el esquema de lo que escribe cada productor, en su orden."""
+    from src.glue import fact_serie, modelo_factura, operacion
+
+    for tabla, productor in (("modelo_factura", modelo_factura.COLUMNAS), ("fact_serie", fact_serie.COLUMNAS),
+                             ("fact_operacion", operacion.COLUMNAS)):
+        assert sorted(columnas(ddl(tabla))) == sorted(productor), tabla

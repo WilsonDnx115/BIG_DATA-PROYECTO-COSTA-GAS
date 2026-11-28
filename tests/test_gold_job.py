@@ -41,11 +41,9 @@ def test_leer_silver_usa_el_catalogo():
 
 def test_cada_modo_tiene_su_funcion_y_sus_pendientes():
     assert set(gold_job.DESPACHO) == set(gold_job.MODOS)
-    for modo in ("entrenar", "operacion"):       # «evento» ya escribe: necesita Spark
-        resumen = gold_job.DESPACHO[modo](None, gold_job.argumentos(["--modo", modo]))
-        assert resumen["modo"] == modo
-        assert resumen["escrito"] == []
-        assert resumen["pendientes"]
+    assert gold_job.PENDIENTES["entrenar"] == []          # entrena, registra y promueve
+    assert [p for p in gold_job.PENDIENTES["operacion"] if "W18" in p]   # falta la Lambda de entregas
+    assert gold_job.LLAVE_OPERACION == ("anio", "mes", "tramo", "medida")
 
 
 def test_el_modo_evento_ya_no_tiene_pendiente_el_mapreduce_ni_el_balance():
@@ -101,7 +99,8 @@ def test_instantanea_actual(spark_iceberg):
 
 # --- WR06: las senales de regla dentro del job --------------------------------
 
-TODAS = ("compras", "unidades", "tesoreria", "tc", "unidad_mes", "produccion")
+TODAS = ("compras", "unidades", "tesoreria", "tc", "unidad_mes", "produccion", "ventas_detalle",
+         "distribuidores", "puente_clientes")
 
 
 def test_con_todas_las_entradas_se_calculan_las_siete_senales_de_regla():
@@ -123,7 +122,8 @@ def test_ninguna_senal_se_pierde_por_el_camino():
 
 def test_lo_que_falta_hoy_dice_a_quien_le_toca():
     """S7 y S9 esperan el contrato de gastos; S11 no tiene fuente en la entrega."""
-    _, omitidas = gold_job.senales_calculables({"compras", "unidades", "tesoreria", "tc"})
+    _, omitidas = gold_job.senales_calculables({"compras", "unidades", "tesoreria", "tc", "ventas_detalle",
+                                                "distribuidores", "puente_clientes"})
 
     assert set(omitidas) == {"S7", "S9", "S11"}
     assert "gastos.yaml" in omitidas["S7"] and "gastos.yaml" in omitidas["S9"]
@@ -134,7 +134,9 @@ def test_cada_senal_declarada_existe_en_senales_spark():
     from src.glue import senales_spark
 
     for senal in gold_job.ENTRADAS_SENAL:
-        assert callable(getattr(senales_spark, senal.lower()))
+        assert callable(gold_job.FUNCIONES_SENAL.get(senal) or getattr(senales_spark, senal.lower()))
+    # S5 y S10 corren sobre Silver, no sobre la muestra antigua
+    assert gold_job.FUNCIONES_SENAL == {"S5": senales_spark.s5_distribuidores, "S10": senales_spark.s10_ventas}
 
 
 def test_sin_ninguna_entrada_no_se_escribe_una_tabla_vacia():
@@ -165,7 +167,7 @@ def test_el_modo_evento_ya_no_tiene_pendiente_el_calculo_de_las_senales():
     pendientes = " ".join(gold_job.PENDIENTES["evento"])
 
     assert "W12" not in pendientes                 # las alertas de regla ya se escriben
-    assert "WR11" in pendientes                    # falta la probabilidad del modelo
+    assert "WR11" not in pendientes                # la probabilidad del modelo ya se escribe
     assert "W07" in pendientes                     # y fact_unidad_mes
 
 

@@ -109,12 +109,22 @@ MERMA_TECNICA_ES_SUPUESTO = _env("MERMA_TECNICA_ES_SUPUESTO", "si").strip().lowe
 MADUREZ_DIAS = _env_int("MADUREZ_DIAS", 30)                  # la etiqueta madura 30 días después del vencimiento
 VENTANA_MEDIANA_DIAS = _env_int("VENTANA_MEDIANA_DIAS", 90)  # mediana móvil de USD/kg a la fecha de la factura
 INICIO_EVAL_ADELANTE = _env("INICIO_EVAL_ADELANTE", "2022-08")  # evaluación hacia adelante, mes a mes
+# Meses con etiqueta madura que eligen el umbral antes de cada mes evaluado: con unas 58 facturas
+# al mes (1 040 en feb-2022 a jul-2023) y 7.4 % de discrepancias, 2 meses dan unas 115 facturas y
+# 8 positivas, lo mínimo para estimar la precisión de la clase positiva (informe v16, 4.3).
+MESES_VALIDACION = _env_int("MESES_VALIDACION", 2)
 META_PRECISION = _env_float("META_PRECISION", 0.70)          # precisión de la clase positiva
 META_AUC = _env_float("META_AUC", 0.70)
 RECALL_MIN_RETADOR = _env_float("RECALL_MIN_RETADOR", 0.50)  # el retador no reemplaza al vigente por debajo
 REVISIONES_REENTRENO = _env_int("REVISIONES_REENTRENO", 20)  # revisiones nuevas que adelantan el reentrenamiento
 RF_ARBOLES = _env_int("RF_ARBOLES", 100)
 RF_PROFUNDIDAD = _env_int("RF_PROFUNDIDAD", 6)
+# Árbol de decisión que explica las reglas a la gerencia (informe v16, 4.3): 3 niveles dan reglas
+# de hasta 3 condiciones, que se leen sin software; más profundo deja de ser legible.
+ARBOL_PROFUNDIDAD = _env_int("ARBOL_PROFUNDIDAD", 3)
+# Regresión del combustible (S9): rejilla de regParam de la Tabla 4.6b del informe v16; se elige
+# la de menor RMSE en la validación por exclusión mensual.
+REGRESION_REGPARAM = tuple(float(x) for x in _env("REGRESION_REGPARAM", "0.0,0.1,0.3").split(","))
 BOOTSTRAP_REMUESTREOS = _env_int("BOOTSTRAP_REMUESTREOS", 1000)
 PSI_UMBRAL = _env_float("PSI_UMBRAL", 0.2)                   # un PSI mayor adelanta el reentrenamiento
 PSI_MIN_OBS = _env_int("PSI_MIN_OBS", 100)                   # con menos facturas el PSI salta por ruido
@@ -133,6 +143,11 @@ DETECTOR_L = _env_float("DETECTOR_L", 3.0)
 # Periodos propios que necesita una entidad antes de evaluarla: con 4, la participación frente a sus
 # pares sale de una mediana y no de un solo periodo; en la serie mensual de 14 meses deja 10 evaluables.
 DETECTOR_PERIODOS_BASE = _env_int("DETECTOR_PERIODOS_BASE", 4)
+# Marca de pandemia del valor esperado (informe v16, 4.3): desde el estado de emergencia nacional del
+# 16/03/2020 (D. S. N.º 044-2020-PCM) hasta el fin de 2020. dim_tiempo marca todo 2020 porque su grano es
+# el mes; el detector también trabaja por semana y usa la fecha exacta.
+PANDEMIA_INICIO = _env("PANDEMIA_INICIO", "2020-03-16")
+PANDEMIA_FIN = _env("PANDEMIA_FIN", "2020-12-31")
 SEMILLAS_DETECTOR = _env_int("SEMILLAS_DETECTOR", 100)
 LOTE_SEMILLAS = _env_int("LOTE_SEMILLAS", 10)
 

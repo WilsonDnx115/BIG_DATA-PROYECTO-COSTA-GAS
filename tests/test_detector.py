@@ -56,12 +56,14 @@ def test_escala_robusta_sin_variacion_no_es_evaluable():
 
 
 def test_esperado_no_mira_el_futuro():
+    """Con el ajuste fijado hasta un periodo, agregar periodos posteriores no cambia lo anterior."""
     df = flota()
-    a = detector.esperado_por_pares(df, "unidad_id", "kg", "periodo", "rol")
-    b = detector.esperado_por_pares(df[df.periodo <= 30], "unidad_id", "kg", "periodo", "rol")
-    unir = a.merge(b, on=["unidad_id", "periodo"], suffixes=("", "_corto"))
-    assert np.allclose(unir.valor_esperado, unir.valor_esperado_corto, equal_nan=True)
+    a = detector.esperado_regresion(df, "unidad_id", "kg", "periodo", "rol", hasta=None)
+    corto = detector.esperado_regresion(df[df.periodo <= 30], "unidad_id", "kg", "periodo", "rol")
+    unir = a.merge(corto, on=["unidad_id", "periodo"], suffixes=("", "_corto"))
+    assert np.allclose(unir.participacion, unir.participacion_corto, equal_nan=True)
     assert a[a.periodo < 4].participacion.isna().all()       # sin DETECTOR_PERIODOS_BASE previos
+    assert a[a.periodo < 4].valor_esperado.isna().all()
 
 
 # --- Comportamiento -------------------------------------------------------------
@@ -179,3 +181,56 @@ def test_la_escala_calibrada_se_reutiliza_al_detectar():
     a = detector.detectar(serie, "unidad_id", "kg", "periodo", h=cal["h"], sigma=cal["sigma"])
     b = detector.desvios(serie, "unidad_id", "kg", "periodo", sigma=cal["sigma"])
     assert np.allclose(a.sort_index().z, b.sort_index().z, equal_nan=True)
+
+
+
+# --- FR26 · valor esperado con regresión sobre los pares --------------------------------
+def flota_fechas(semanas=60, semilla=13):
+    """Como `flota`, con periodos semanales reales desde ene-2020 (calendario y pandemia)."""
+    base = flota(semanas=semanas, semilla=semilla, caida_comun=False)
+    inicio = pd.Timestamp("2020-01-06")
+    base["periodo"] = [(inicio + pd.Timedelta(weeks=int(t))).date() for t in base["periodo"]]
+    return base
+
+
+def test_variables_de_calendario_y_pandemia():
+    v = detector.variables_del_esperado(flota_fechas(), "unidad_id", "kg", "periodo", "rol")
+    marzo = v[pd.to_datetime(v.periodo) == pd.Timestamp("2020-03-16")]
+    enero = v[pd.to_datetime(v.periodo) == pd.Timestamp("2020-01-06")]
+    assert (marzo.pandemia == 1.0).all() and (enero.pandemia == 0.0).all()
+    assert v.semana_sin.between(-1, 1).all() and v.semana_cos.between(-1, 1).all()
+    assert detector._columnas_regresion(v) == detector.VARIABLES_BASE
+
+
+def test_sin_fechas_solo_entran_los_pares():
+    v = detector.variables_del_esperado(flota(), "unidad_id", "kg", "periodo", "rol")
+    assert detector._columnas_regresion(v) == ["base_pares"]
+
+
+def test_el_contexto_entra_si_se_entrega():
+    df = flota_fechas().assign(eventos_mercado=1.0)
+    v = detector.variables_del_esperado(df, "unidad_id", "kg", "periodo", "rol")
+    assert "eventos_mercado" in detector._columnas_regresion(v)
+
+
+def test_numpy_y_mllib_dan_el_mismo_esperado(spark):
+    spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+    spark.conf.set("spark.sql.execution.arrow.pyspark.fallback.enabled", "false")
+    df = flota_fechas().rename(columns={"unidad_id": "entidad_id", "rol": "grupo", "kg": "valor"})
+    np_ = detector.esperado_regresion(df, "entidad_id", "valor", "periodo", "grupo")
+    sp = detector.esperado_mllib(spark.createDataFrame(df))
+    filas = {(r["entidad_id"], str(r["periodo"])): r["valor_esperado"]
+             for r in sp.select("entidad_id", "periodo", "valor_esperado").take(10_000)}
+    for fila in np_.itertuples(index=False):
+        esperado_sp = filas[(fila.entidad_id, str(fila.periodo))]
+        if pd.isna(fila.valor_esperado):
+            assert esperado_sp is None
+        else:
+            assert esperado_sp == pytest.approx(fila.valor_esperado, rel=1e-6)
+
+
+def test_la_regresion_detecta_el_faltante_con_fechas():
+    df = flota_fechas()
+    df.loc[(df.unidad_id == "U0") & (pd.to_datetime(df.periodo) >= pd.Timestamp("2020-05-25")), "kg"] *= 0.98
+    rojas = detector.alarmas(_det(df), "unidad_id", "periodo")
+    assert set(rojas.unidad_id) == {"U0"}

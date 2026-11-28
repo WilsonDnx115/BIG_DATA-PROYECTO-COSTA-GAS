@@ -3,12 +3,17 @@
 Un faltante de 2 % en un periodo se confunde con el ruido; lo que lo delata es que se
 repite hacia el mismo lado. Por eso se acumula:
 
-1. **Valor esperado frente a los pares.** Cada entidad (unidad, vendedor, cliente o
-   proveedor) se compara con el resto de su grupo en el mismo periodo, no con su propio
-   pasado: una caída que afecta a todos (estacionalidad, cuarentena) no es un desvío.
-   esperado = participación de la entidad × mediana de sus pares en ese periodo. La
-   participación es la mediana de sus cocientes **anteriores** (sin mirar el futuro) y
-   exige DETECTOR_PERIODOS_BASE periodos propios.
+1. **Valor esperado con una regresión sobre los pares** (informe v16/v17, 4.3, primera
+   etapa). Cada entidad (unidad, vendedor, cliente o proveedor) se compara con el resto de
+   su grupo en el mismo periodo, no con su propio pasado: una caída que afecta a todos
+   (estacionalidad, cuarentena) no es un desvío. Variables: lo que vendieron sus pares en
+   el periodo (promedio del grupo sin la propia entidad) escalado por la participación
+   histórica de la entidad (mediana de sus cocientes ANTERIORES, con al menos
+   DETECTOR_PERIODOS_BASE periodos), la semana del año (seno y coseno), la marca de pandemia
+   (PANDEMIA_INICIO a PANDEMIA_FIN) y, si se entregan, los eventos de mercado y el precio de
+   lista del periodo. Es una regresión lineal por mínimos cuadrados: en el job de Glue con
+   `LinearRegression` de MLlib (`esperado_mllib`) y en la Lambda de validación, que no tiene
+   Spark, con numpy (`esperado_regresion`); las dos dan el mismo resultado.
 2. **Desvío estandarizado.** z = (real − esperado) ÷ esperado ÷ σ, con σ = 1.4826 × MAD de
    los desvíos relativos del grupo (escala robusta).
 3. **CUSUM de un solo lado (faltante)** con k y h, y **EWMA** con λ y L (Montgomery;
@@ -56,38 +61,120 @@ def neutralizar_redigitados(df: pd.DataFrame, entidad: str, valor: str, periodo:
     return salida
 
 
-def esperado_por_pares(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: str,
-                       periodos_base: int = config.DETECTOR_PERIODOS_BASE) -> pd.DataFrame:
-    """Agrega `mediana_pares`, `participacion`, `valor_esperado` y `desvio_rel`.
+CONTEXTO_OPCIONAL = ("eventos_mercado", "precio_lista")
+VARIABLES_BASE = ["base_pares", "semana_sin", "semana_cos", "pandemia"]
 
-    mediana_pares: mediana del grupo en el periodo, sin la propia entidad.
-    participacion: mediana de los cocientes valor ÷ mediana_pares de los periodos
-    ANTERIORES de la entidad; nula hasta tener `periodos_base` de ellos.
-    desvio_rel = (valor − esperado) ÷ esperado.
+
+def _fecha_del_periodo(periodo: pd.Series) -> pd.Series:
+    """Fecha de cada periodo: fechas, «AAAA-MM-DD» o «AAAA-MM». Si no es una fecha (un número
+    de periodo), queda nula y la semana y la pandemia no entran a la regresión."""
+    texto = periodo.astype(str).str.slice(0, 10)
+    dia = pd.to_datetime(texto, format="%Y-%m-%d", errors="coerce")
+    mes = pd.to_datetime(texto.str.slice(0, 7), format="%Y-%m", errors="coerce")
+    return dia.fillna(mes)
+
+
+def variables_del_esperado(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: str,
+                           periodos_base: int = config.DETECTOR_PERIODOS_BASE) -> pd.DataFrame:
+    """Variables de la regresión del valor esperado (las mismas que `esperado_mllib`).
+
+    pares: promedio del grupo en el periodo sin la propia entidad; participacion: mediana de
+    los cocientes valor ÷ pares de los periodos ANTERIORES (nula sin `periodos_base` de ellos);
+    base_pares = participacion × pares; semana_sin y semana_cos; pandemia (0 o 1).
     """
     d = df.copy()
     d["_v"] = pd.to_numeric(d[valor], errors="coerce").astype(float)
-
-    def _pares(g):
-        v = g["_v"].to_numpy()
-        med = np.full(len(v), np.nan)
-        for i in range(len(v)):
-            otros = np.delete(v, i)
-            otros = otros[np.isfinite(otros)]
-            if otros.size:
-                med[i] = np.median(otros)
-        return pd.Series(med, index=g.index)
-
-    d["mediana_pares"] = d.groupby([grupo, periodo], group_keys=False)[["_v"]].apply(_pares)
-    cociente = d["_v"] / d["mediana_pares"].where(d["mediana_pares"] > 0)
-    d["_cociente"] = cociente
+    g = d.groupby([grupo, periodo])["_v"]
+    n, suma = g.transform("count"), g.transform("sum")
+    propio = d["_v"].notna().astype(int)
+    d["pares"] = ((suma - d["_v"].fillna(0)) / (n - propio)).where(n - propio > 0)
+    d["_cociente"] = d["_v"] / d["pares"].where(d["pares"] > 0)
     d = d.sort_values([entidad, periodo], kind="stable")
-    previo = d.groupby(entidad)["_cociente"].transform(
+    d["participacion"] = d.groupby(entidad)["_cociente"].transform(
         lambda s: s.shift(1).expanding(min_periods=periodos_base).median())
-    d["participacion"] = previo
-    d["valor_esperado"] = d["participacion"] * d["mediana_pares"]
-    d["desvio_rel"] = (d["_v"] - d["valor_esperado"]) / d["valor_esperado"].where(d["valor_esperado"] > 0)
-    return d.drop(columns=["_v", "_cociente"]).sort_index()
+    d["base_pares"] = d["participacion"] * d["pares"]
+    fecha = _fecha_del_periodo(d[periodo])
+    semana = fecha.dt.isocalendar().week.astype(float)
+    d["semana_sin"] = np.sin(2 * np.pi * semana / 52)
+    d["semana_cos"] = np.cos(2 * np.pi * semana / 52)
+    d["pandemia"] = ((fecha >= pd.Timestamp(config.PANDEMIA_INICIO))
+                     & (fecha <= pd.Timestamp(config.PANDEMIA_FIN))).astype(float).where(fecha.notna())
+    return d.drop(columns=["_cociente"]).sort_index()
+
+
+def _columnas_regresion(d: pd.DataFrame) -> list[str]:
+    """Variables con datos. Si el periodo no es una fecha, la semana y la pandemia no se pueden
+    calcular y no entran (quedan solo los pares y el contexto que se haya entregado)."""
+    candidatas = VARIABLES_BASE + [c for c in CONTEXTO_OPCIONAL if c in d.columns]
+    return [c for c in candidatas if d[c].notna().any()]
+
+
+def esperado_regresion(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: str,
+                       hasta=None, periodos_base: int = config.DETECTOR_PERIODOS_BASE) -> pd.DataFrame:
+    """Valor esperado por mínimos cuadrados con numpy (la Lambda de validación no tiene Spark).
+
+    Se ajusta con intercepto sobre las filas con base_pares y, si se da `hasta`, solo con
+    los periodos hasta esa fecha; se predice en todas las filas con base_pares.
+    """
+    d = variables_del_esperado(df, entidad, valor, periodo, grupo, periodos_base)
+    cols = _columnas_regresion(d)
+    usable = d[cols].notna().all(axis=1) & d["_v"].notna()
+    entrena = usable
+    if hasta is not None:
+        entrena = usable & (_fecha_del_periodo(d[periodo]) <= pd.Timestamp(hasta))
+    d["valor_esperado"] = np.nan
+    if int(entrena.sum()) > len(cols) + 1:
+        X = np.column_stack([np.ones(int(entrena.sum())), d.loc[entrena, cols].to_numpy(float)])
+        coef, *_ = np.linalg.lstsq(X, d.loc[entrena, "_v"].to_numpy(float), rcond=None)
+        Xp = np.column_stack([np.ones(int(usable.sum())), d.loc[usable, cols].to_numpy(float)])
+        d.loc[usable, "valor_esperado"] = Xp @ coef
+    return d.drop(columns=["_v"])
+
+
+def esperado_mllib(df, entidad: str = "entidad_id", valor: str = "valor", periodo: str = "periodo",
+                   grupo: str = "grupo", hasta=None, periodos_base: int = config.DETECTOR_PERIODOS_BASE):
+    """Valor esperado con `LinearRegression` de MLlib en el job de Glue (informe, 4.3).
+
+    Mismas variables y mismo ajuste que `esperado_regresion`: mínimos cuadrados con
+    intercepto, sin regularización y con el solver «normal», calculados en Spark con
+    ventanas. Devuelve el DataFrame con `valor_esperado` (nulo donde no hay base_pares).
+    """
+    from pyspark.ml.feature import VectorAssembler  # noqa: PLC0415
+    from pyspark.ml.regression import LinearRegression  # noqa: PLC0415
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    wg = Window.partitionBy(grupo, periodo)
+    we = Window.partitionBy(entidad).orderBy(periodo).rowsBetween(Window.unboundedPreceding, -1)
+    fecha = F.to_date(F.substring(F.col(periodo).cast("string"), 1, 10))
+    semana = F.weekofyear(fecha).cast("double")
+    propio = F.col("_v").isNotNull().cast("int")
+    d = (df.withColumn("_v", F.col(valor).cast("double"))
+         .withColumn("_n", F.count("_v").over(wg)).withColumn("_s", F.sum("_v").over(wg))
+         .withColumn("pares", F.when(F.col("_n") - propio > 0,
+                                     (F.col("_s") - F.coalesce(F.col("_v"), F.lit(0.0))) / (F.col("_n") - propio)))
+         .withColumn("_cociente", F.when(F.col("pares") > 0, F.col("_v") / F.col("pares")))
+         .withColumn("_previos", F.count("_cociente").over(we))
+         .withColumn("participacion", F.when(F.col("_previos") >= periodos_base,
+                                             F.expr("percentile(_cociente, 0.5)").over(we)))
+         .withColumn("base_pares", F.col("participacion") * F.col("pares"))
+         .withColumn("semana_sin", F.sin(F.lit(2 * np.pi) * semana / 52))
+         .withColumn("semana_cos", F.cos(F.lit(2 * np.pi) * semana / 52))
+         .withColumn("pandemia", ((fecha >= F.lit(config.PANDEMIA_INICIO).cast("date"))
+                                  & (fecha <= F.lit(config.PANDEMIA_FIN).cast("date"))).cast("double")))
+    cols = VARIABLES_BASE + [c for c in CONTEXTO_OPCIONAL if c in df.columns]
+    usable = F.col("base_pares").isNotNull() & F.col("_v").isNotNull()
+    if hasta is not None:
+        usable_ent = usable & (fecha <= F.lit(str(hasta)).cast("date"))
+    else:
+        usable_ent = usable
+    ensamblador = VectorAssembler(inputCols=cols, outputCol="_x", handleInvalid="keep")
+    modelo = LinearRegression(featuresCol="_x", labelCol="_v", predictionCol="_pred", regParam=0.0,
+                              solver="normal", standardization=False).fit(
+        ensamblador.transform(d.filter(usable_ent)))
+    pred = modelo.transform(ensamblador.transform(d))
+    return (pred.withColumn("valor_esperado", F.when(F.col("base_pares").isNotNull(), F.col("_pred")))
+            .drop("_v", "_n", "_s", "_cociente", "_previos", "_x", "_pred"))
 
 
 def escala_robusta(desvios: pd.Series) -> float | None:
@@ -147,13 +234,17 @@ def desvios(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: str
     se estima con los datos recibidos. La escala usada queda en la columna `_sigma`.
     """
     d = neutralizar_redigitados(df, entidad, valor, periodo)
-    d = esperado_por_pares(d, entidad, f"{valor}_corregido", periodo, grupo, periodos_base)
+    corregido = f"{valor}_corregido"
+    if "valor_esperado" not in d.columns:            # en Glue llega ya calculado por esperado_mllib
+        d = esperado_regresion(d, entidad, corregido, periodo, grupo, periodos_base=periodos_base)
+    esperado = d["valor_esperado"]
+    d["desvio_rel"] = (d[corregido] - esperado) / esperado.where(esperado > 0)
     escalas = dict(sigma or {})
     for g, desv in d.groupby(grupo)["desvio_rel"]:
         escalas.setdefault(g, escala_robusta(desv))
-    d["_sigma"] = d[grupo].map(escalas)
+    d["_sigma"] = pd.to_numeric(d[grupo].map(escalas), errors="coerce").astype(float)
     d["residuo"] = d[f"{valor}_corregido"] - d["valor_esperado"]
-    d["z"] = d["desvio_rel"] / d["_sigma"]
+    d["z"] = (d["desvio_rel"] / d["_sigma"]).astype(float)
     return d
 
 
@@ -173,8 +264,8 @@ def detectar(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: st
     d = desvios(df, entidad, valor, periodo, grupo, sigma, periodos_base)
     limite = limite_ewma(lam, L)
 
-    partes = []
-    for _, g in d.sort_values([entidad, periodo], kind="stable").groupby(entidad, sort=False):
+    partes, inicios = [], {}
+    for ent, g in d.sort_values([entidad, periodo], kind="stable").groupby(entidad, sort=False):
         g = g.copy()
         faltante = -g["z"].to_numpy(dtype=float)          # un faltante es un desvío negativo
         s, e = cusum(faltante, k), ewma(faltante, lam)
@@ -183,16 +274,17 @@ def detectar(df: pd.DataFrame, entidad: str, valor: str, periodo: str, grupo: st
         estado = np.where(s > h, "rojo", np.where(e > limite, "ambar", "verde"))
         g["estado"] = np.where(evaluable, estado, "no_evaluable")
         inicio = punto_cambio(s, h)
-        g["periodo_inicio"] = None
         g["kg_acumulados"] = 0.0
         if inicio is not None:
-            g["periodo_inicio"] = g[periodo].iloc[inicio]
+            inicios[ent] = g[periodo].iloc[inicio]
             desde = np.arange(len(g)) >= inicio
             faltante_kg = (-g["residuo"]).where(desde, 0.0).fillna(0.0)
             g["kg_acumulados"] = faltante_kg.cumsum().where(desde, 0.0)
         g["soles_acumulados"] = g["kg_acumulados"] * precio
         partes.append(g)
     salida = pd.concat(partes).sort_index() if partes else d
+    # El inicio se asigna al final: así ninguna parte llega a concat con la columna vacía.
+    salida["periodo_inicio"] = salida[entidad].map(inicios)
     return salida.drop(columns=["_sigma"])
 
 

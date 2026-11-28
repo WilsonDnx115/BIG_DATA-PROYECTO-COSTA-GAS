@@ -286,3 +286,160 @@ def test_s12_cruce_tesoreria_logistica(spark):
                                                 ("SOLGAS|F002|99", "solo_tesoreria")}
     (fila,) = a.filter(a.factura_id == "SOLGAS|F002|99").take(1)
     assert (fila["anio"], fila["mes"], fila["kg"]) == (2022, 4, 8000.0)    # solo tesorería: fecha de pago
+
+
+# --- FR15 · control de sobrecobros F08 ----------------------------------------------
+def _sobrecobros():
+    return pd.DataFrame({
+        "factura_id": ["PETROPERU|F001|1", "PETROPERU|F001|2", "SOLGAS|F002|3", "SOLGAS|F002|4", "SOLGAS|F002|5"],
+        "fecha": pd.to_datetime(["2022-03-01", "2022-03-02", "2022-04-01", "2021-06-01", "2022-05-01"]),
+        "monto_facturado_soles": [1_100.0, 900.0, 2_050.0, 3_000.0, 500.0],
+        "monto_pactado_soles": [1_000.0, 900.0, 2_000.0, 2_000.0, 0.0]})
+    # 1: sobrecobro de S/ 100; 2: igual; 3: S/ 50; 4: fuera de la ventana; 5: sin pactado
+
+
+def test_control_sobrecobros_igual_que_pandas(spark):
+    from src.glue import senales_spark
+    from src.signals.s3 import s3_control
+
+    pdf = _sobrecobros()
+    esperado = s3_control(pdf)
+    obtenido = senales_spark.control_sobrecobros(_a_spark(spark, pdf))
+    assert obtenido.columns == COLUMNAS
+    assert _filas(obtenido, "factura_id", "motivo", "valor_soles") == set(
+        zip(esperado.factura_id, esperado.motivo, esperado.valor_soles))
+    assert {f: round(p, 6) for f, p in _filas(obtenido, "factura_id", "puntaje")} == {
+        f: round(p, 6) for f, p in zip(esperado.factura_id, esperado.puntaje)}
+    assert {r["grado_evidencia"] for r in obtenido.take(5)} == set(esperado.grado_evidencia)
+
+
+def test_control_sobrecobros_rechaza_contrato_o_facturas_invalidas(spark):
+    from src.glue import senales_spark
+
+    with pytest.raises(ValueError, match="incompleto"):
+        senales_spark.control_sobrecobros(_a_spark(spark, _sobrecobros().drop(columns="monto_pactado_soles")))
+    repetida = _sobrecobros().assign(factura_id=["X"] * 5)
+    with pytest.raises(ValueError, match="duplicada"):
+        senales_spark.control_sobrecobros(_a_spark(spark, repetida))
+
+
+def test_las_demas_alertas_no_valorizan_kg(spark):
+    from src.glue import senales_spark
+
+    c = _compras([("F-3", "2022-03-03", "P2", None, 1000.0, 0.6, 3.8)])
+    assert senales_spark.s2(_a_spark(spark, c)).filter("valor_soles IS NOT NULL").count() == 0
+
+
+# --- FR16 · S10 sobre ventas_detalle de Silver --------------------------------------
+def _ventas_detalle(filas):
+    cols = ["documento", "fecha", "articulo_codigo", "articulo", "es_glp", "precio_unitario", "kg", "cliente_id"]
+    df = pd.DataFrame(filas, columns=cols)
+    df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
+    df["anio"] = [f.year for f in df["fecha"]]
+    df["mes"] = [f.month for f in df["fecha"]]
+    return df
+
+
+def test_s10_doce_por_ciento_bajo_la_mediana_dispara_y_cinco_no(spark):
+    from src.glue import senales_spark
+
+    v = _ventas_detalle([
+        ("B-1", "2020-05-03", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c1"),
+        ("B-2", "2020-05-04", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c2"),
+        ("B-3", "2020-05-05", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c3"),
+        ("B-4", "2020-05-06", "GLP10", "GLP 10 KG", True, 88.0, 10.0, "c4"),      # 12 % bajo: dispara
+        ("B-5", "2020-05-07", "GLP10", "GLP 10 KG", True, 95.0, 10.0, "c5"),      # 5 % bajo: no
+        ("B-6", "2020-05-07", "ARROZ", "ARROZ 5 KG", False, 10.0, None, "c6"),    # no es GLP
+        ("B-7", "2020-05-08", "GLP10", "GLP 10 KG", True, 0.0, 10.0, "c7"),       # precio cero: falta el dato
+        ("B-8", "2022-05-08", "GLP10", "GLP 10 KG", True, 50.0, 10.0, "c8"),      # fuera de la ventana
+        ("B-9", "2022-05-09", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c9"),
+    ])
+    a = senales_spark.s10_ventas(_a_spark(spark, v))
+    assert a.columns == COLUMNAS
+    (fila,) = a.take(5)
+    assert (fila["factura_id"], fila["unidad_id"], fila["rol"]) == ("B-4", "c4", "cliente")
+    assert fila["puntaje"] == pytest.approx(0.12) and fila["resolucion"] == "linea_venta"
+    assert fila["valor_soles"] is None
+
+
+def test_s10_compara_cada_articulo_con_su_propia_mediana(spark):
+    from src.glue import senales_spark
+
+    v = _ventas_detalle([
+        ("A-1", "2024-04-02", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c1"),
+        ("A-2", "2024-04-03", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c2"),
+        ("A-3", "2024-04-04", "GLP45", "GLP 45 KG", True, 400.0, 45.0, "c3"),
+        ("A-4", "2024-04-05", "GLP45", "GLP 45 KG", True, 400.0, 45.0, "c4"),
+        ("A-5", "2024-04-06", "GLP45", "GLP 45 KG", True, 330.0, 45.0, "c5"),    # mediana 400: 17.5 % bajo
+    ])
+    assert _filas(senales_spark.s10_ventas(_a_spark(spark, v)), "factura_id") == {("A-5",)}
+
+
+def test_s10_usa_el_canal_cuando_la_tabla_lo_trae(spark):
+    from src.glue import senales_spark
+
+    v = _ventas_detalle([
+        ("D-1", "2020-05-02", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c1"),
+        ("D-2", "2020-05-03", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c2"),
+        ("D-3", "2020-05-04", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c3"),
+        ("I-1", "2020-05-05", "GLP10", "GLP 10 KG", True, 85.0, 10.0, "c4"),    # 15 % bajo la mediana de todas
+    ])
+    sin_canal = senales_spark.s10_ventas(_a_spark(spark, v))
+    assert _filas(sin_canal, "factura_id", "motivo") == {("I-1", "precio_bajo_mediana_de_la_presentacion")}
+    con_canal = v.assign(canal=["directa", "directa", "directa", "indirecta"])
+    assert senales_spark.s10_ventas(_a_spark(spark, con_canal)).count() == 0   # cada canal, su propia mediana
+
+
+# --- FR17 · S5 con la capacidad de distribuidores -----------------------------------
+SAL = "sal-de-prueba"
+
+
+def _clientes_y_distribuidores():
+    from src.common.limpieza import seudonimizar
+
+    clientes = pd.DataFrame({
+        # Hoja2: código SN y nombre; Hoja1/Hoja3: documento y nombre (como los deja Silver)
+        "codigo_sn": ["C001", "C002", "C003", None, None, None, None],
+        "razon_social": ["GAS NORTE SAC", None, "DOBLE SAC", "GAS NORTE SAC", None, "DOBLE SAC", "DOBLE SAC"],
+        "nombre_hash": [None, "hn2", None, None, "hn2", None, None],
+        "ruc": [None, None, None, "20111111111", None, "20333333333", "20444444444"],
+        "documento_hash": [None, None, None, None, "hd2", None, None],
+        "entidad_id": ["C001", "C002", "C003", "20111111111", "hd2", "20333333333", "20444444444"]})
+    distribuidores = pd.DataFrame({
+        "entidad_id": ["20111111111", "20111111111", "20111111111", "hd2"],
+        "direccion": ["AV. UNO 1", "AV. UNO 1", "JR. DOS 2", None],   # AV. UNO 1 repetida en dos hojas
+        "capacidad_kg": [1_000.0, 1_000.0, 500.0, 300.0]})
+    ids = {c: seudonimizar(c, SAL) for c in ("C001", "C002", "C003", "C009")}
+    return clientes, distribuidores, ids
+
+
+def test_puente_por_codigo_sn_y_nombre(spark):
+    from src.glue import senales_spark
+
+    clientes, _, ids = _clientes_y_distribuidores()
+    puente = senales_spark.puente_cliente_distribuidor(_a_spark(spark, clientes), SAL)
+    # C003 queda fuera: su nombre corresponde a dos RUC distintos (ambiguo)
+    assert _filas(puente, "cliente_id", "entidad_id") == {(ids["C001"], "20111111111"), (ids["C002"], "hd2")}
+
+
+def test_s5_volumen_del_mes_sobre_la_capacidad(spark):
+    from src.glue import senales_spark
+
+    clientes, distribuidores, ids = _clientes_y_distribuidores()
+    ventas = _ventas_detalle([
+        ("V-1", "2021-02-03", "GLP45", "GLP 45 KG", True, 400.0, 900.0, ids["C001"]),
+        ("V-2", "2021-02-20", "GLP45", "GLP 45 KG", True, 400.0, 700.0, ids["C001"]),   # 1 600 > 1 500
+        ("V-3", "2021-02-10", "GLP45", "GLP 45 KG", True, 400.0, 250.0, ids["C002"]),   # 250 < 300
+        ("V-4", "2021-02-11", "GLP45", "GLP 45 KG", True, 400.0, 9_000.0, ids["C009"]),  # sin capacidad
+        ("V-5", "2020-06-11", "GLP45", "GLP 45 KG", True, 400.0, 9_000.0, ids["C002"]),  # fuera de la ventana
+    ])
+    v, d = _a_spark(spark, ventas), _a_spark(spark, distribuidores)
+    puente = senales_spark.puente_cliente_distribuidor(_a_spark(spark, clientes), SAL)
+    a = senales_spark.s5_distribuidores(v, d, puente)
+    assert a.columns == COLUMNAS
+    (fila,) = a.take(5)
+    assert (fila["unidad_id"], fila["rol"], fila["kg"], fila["anio"], fila["mes"]) == (ids["C001"], "cliente", 1_600.0, 2021, 2)
+    assert fila["puntaje"] == pytest.approx(1_600.0 / 1_500.0) and fila["resolucion"] == "cliente_mes"
+    cob = senales_spark.cobertura_s5(v, d, puente)
+    assert cob == {"distribuidores_con_capacidad": 2, "distribuidores_con_ventas": 2,
+                   "clientes_con_ventas": 3, "clientes_no_evaluables": 1}

@@ -28,7 +28,9 @@ def cargar_catalogo() -> dict:
 VENTANAS_FECHA = {
     'S2': (('2020-01-01', '2020-12-31'), ('2022-02-01', '2023-08-31')),
     'S3': (('2020-01-01', '2020-12-31'), ('2022-02-01', '2023-08-31')),
+    'S5': (('2021-02-01', '2021-02-28'), ('2024-04-01', '2024-04-30')),
     'S6': (('2022-02-01', '2023-08-31'),),
+    'S10': (('2019-01-01', '2021-12-31'), ('2024-04-01', '2024-04-30')),
     'S11': (('2018-10-01', '2018-10-31'),),
     'S12': (('2022-02-01', '2023-07-31'),),
 }
@@ -36,6 +38,9 @@ ANIO_VENTANA = 2020
 
 # Grado de evidencia de la señal (dim_senal) → grado que lleva cada alerta.
 GRADO_ALERTA = {'alta': 'alto', 'media': 'medio', 'indicio': 'indicio'}
+# Peso de cada grado en el puntaje de convergencia (informe v17, 4.3): la escala ordinal de los
+# grados de la Tabla 4.3, donde cada grado vale uno más que el inferior.
+PESO_GRADO = {'alto': 3.0, 'medio': 2.0, 'indicio': 1.0}
 
 
 def grado_evidencia(regla: dict) -> str:

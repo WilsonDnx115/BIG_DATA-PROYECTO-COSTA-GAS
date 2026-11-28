@@ -12,23 +12,31 @@ Un solo esquema por tabla (CLAUDE.md). Este módulo no declara contratos propios
     tipo_cambio), `unidad_mes`, `unidades`, `produccion` y `tc`. `normalizar_compras`
     arma `compras` desde la tabla Silver `compras_glp`;
   * las alertas no valorizan kg: `valor_soles` queda nulo, porque unos kg señalados no
-    son una pérdida medida.
+    son una pérdida medida. Solo el sobrecobro del F08 lleva importe.
 
   S1  placa cargada distinta de la facturada            filtro                       (fixture)
   S2  compra sin SCOP o con SCOP repetido               ventana por codigo_scop
   S3  USD/kg sobre la mediana móvil del proveedor       ventana rangeBetween de días previos
+      y sobrecobro del control F08 (monto sobre lo pactado), con importe en valor_soles
   S4  carga superior a la capacidad autorizada          join con broadcast(flota)    (fixture)
   S5  volumen a un cliente sobre su capacidad           join con broadcast(maestro)  (fixture)
+      y sobre Silver: kg del mes por cliente frente a la capacidad de distribuidores
   S6  tipo de cambio igual a 1 o lejos del oficial      join con broadcast(calendario)
   S7  actividad en una unidad no habilitada             join con broadcast(unidades)
   S8  venta sin compra que la respalde (SCOP)           left_anti                    (fixture)
   S9  combustible sin volumen o atípico para su rol     z robusto del log, por rol (base_mad)
   S10 precio de venta bajo la mediana de su canal       ventana con percentile exacto (fixture)
+      y sobre Silver ventas_detalle: mediana del artículo y el mes, solo GLP
   S11 cierre de planta calculado sin medición física    por día
   S12 factura sin pareja o con kg distinto              full_outer tesorería × logística
 
 Las marcadas «fixture» leen las tablas de la muestra sintética antigua
 (`src/signals/senales_fixture.py`) y se prueban contra ella. Sin collect().
+
+Señales por cliente (S5 y S10 sobre ventas_detalle). El contrato `fact_alerta_base` tiene una
+sola columna de entidad, `unidad_id`. En estas alertas lleva el cliente seudonimizado
+(`cliente_id`, SHA-256 con sal, el mismo de Silver) y `rol` = «cliente», así la bandeja y la
+convergencia por cliente (`src/models/convergencia.py`) las distinguen de las de una unidad.
 """
 from __future__ import annotations
 
@@ -68,8 +76,11 @@ def _texto(valor):
 
 
 def _alertas(df, senal: str, motivo, *, kg, puntaje=None, tipo="regla", unidad=None, rol=None,
-             factura=None, scop=None):
+             factura=None, scop=None, valor=None):
     """Lleva las filas que disparan una señal al contrato `fact_alerta_base`.
+
+    `valor` (S/) queda nulo salvo en el control de sobrecobros del F08, el único caso en que
+    la diferencia es un importe facturado de más y no unos kg sin valorizar.
 
     El id es determinístico (SHA-256 de señal, tipo, resolución, fecha, unidad, factura y
     motivo, 24 caracteres), así la misma alerta en otra corrida tiene el mismo id y el
@@ -88,7 +99,7 @@ def _alertas(df, senal: str, motivo, *, kg, puntaje=None, tipo="regla", unidad=N
         _texto(factura).alias("factura_id"),
         _texto(scop).alias("codigo_scop"),
         kg.cast("double").alias("kg"),
-        F.lit(None).cast("double").alias("valor_soles"),
+        (F.lit(None) if valor is None else valor).cast("double").alias("valor_soles"),
         (F.lit(1.0) if puntaje is None else puntaje).cast("double").alias("puntaje"),
         F.lit(grado_alerta(regla)).alias("grado_evidencia"),
         F.lit("pendiente").alias("estado_revision"),
@@ -184,6 +195,118 @@ def s10(ventas):
                     factura=F.col("documento"), scop=F.col("codigo_scop"))
 
 
+def s10_ventas(ventas_detalle, aplicar_ventana: bool = True):
+    """S10 sobre Silver `ventas_detalle`: precio TOL_PRECIO_S10 bajo la mediana de su canal y presentación.
+
+    Solo líneas de GLP (`es_glp`) con precio_unitario > 0: la planta también vende abarrotes,
+    y un precio cero no es una venta bajo precio sino un dato que falta. La mediana es exacta
+    (percentile, 0.5) y se toma en el mismo mes, la misma presentación (articulo_codigo; el
+    nombre si no hay código) y, si la tabla trae la columna `canal`, el mismo canal (informe,
+    Tabla 4.3 y diccionario: «precio por canal y presentación»). Los archivos de ventas de la
+    entrega (F09 y F18) no traen esa columna (contrato ventas_detalle): con ellos la mediana es
+    la de la presentación y el mes. Ventana del catálogo: 2019-2021 y abr-2024. Resolución:
+    línea de venta, con el cliente seudonimizado.
+    """
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    v = ventas_detalle.filter(F.coalesce(F.col("es_glp"), F.lit(False))
+                              & (F.col("precio_unitario") > 0))
+    v = v.filter(en_ventana("S10")) if aplicar_ventana else v
+    v = v.withColumn("_articulo", F.coalesce(F.col("articulo_codigo"), F.col("articulo"))).filter(
+        F.col("_articulo").isNotNull())
+    grupo = ["_articulo", "anio", "mes"] + (["canal"] if "canal" in v.columns else [])
+    w = Window.partitionBy(*grupo)
+    v = v.withColumn("_mediana", F.expr("percentile(precio_unitario, 0.5)").over(w))
+    d = v.filter(F.col("precio_unitario") < F.col("_mediana") * F.lit(1 - config.TOL_PRECIO_S10))
+    motivo = "precio_bajo_mediana_del_canal_y_presentacion" if "canal" in v.columns         else "precio_bajo_mediana_de_la_presentacion"
+    return _alertas(d, "S10", motivo, kg=F.col("kg"),
+                    puntaje=F.lit(1.0) - F.col("precio_unitario") / F.col("_mediana"),
+                    unidad=F.col("cliente_id"), rol="cliente", factura=F.col("documento"))
+
+
+def puente_cliente_distribuidor(clientes, sal: str):
+    """cliente_id de las ventas → entidad_id del maestro de distribuidores, desde Silver `clientes`.
+
+    Las ventas identifican al cliente por su código de socio de negocio de SAP (CardCode,
+    «Código SN»), seudonimizado en Silver como cliente_id; los distribuidores, por su RUC de
+    empresa o el hash de su documento (entidad_id). El maestro de clientes trae las dos cosas
+    en hojas distintas: Hoja2 tiene el código SN y el nombre, y Hoja1 y Hoja3 el documento y
+    el nombre. El puente une las dos por el nombre: la razón social si es empresa y el hash
+    del nombre si es persona natural, como los deja Silver. Un nombre que corresponde a más
+    de un documento es ambiguo y no entra al puente.
+
+    cliente_id se recalcula con la misma fórmula de `limpieza.seudonimizar` (SHA-256 de la
+    sal más el código en mayúsculas, 16 caracteres). La sal llega del job (`.env` o SSM),
+    nunca del código.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    nombre = F.coalesce(F.col("razon_social"), F.col("nombre_hash"))
+    codigos = (clientes.filter(F.col("codigo_sn").isNotNull() & nombre.isNotNull())
+               .select(F.substring(F.sha2(F.concat(F.lit(sal), F.upper(F.trim(F.col("codigo_sn")))), 256), 1, 16)
+                       .alias("cliente_id"), nombre.alias("_nombre")).distinct())
+    documentos = (clientes.filter((F.col("ruc").isNotNull() | F.col("documento_hash").isNotNull())
+                                  & nombre.isNotNull())
+                  .select(nombre.alias("_nombre"), "entidad_id").distinct())
+    unicos = (documentos.groupBy("_nombre").agg(F.countDistinct("entidad_id").alias("_n"),
+                                                F.first("entidad_id").alias("entidad_id"))
+              .filter(F.col("_n") == 1).drop("_n"))
+    return codigos.join(unicos, "_nombre", "inner").select("cliente_id", "entidad_id").distinct()
+
+
+def capacidad_distribuidor(distribuidores):
+    """Capacidad declarada por distribuidor: suma de sus establecimientos.
+
+    El mismo establecimiento aparece en la hoja maestra y en la de su envasadora, así que
+    cada dirección cuenta una vez, con su mayor capacidad declarada. De una persona natural
+    Silver no conserva la dirección (puede ser su domicilio): sus establecimientos no se
+    distinguen y cuenta el de mayor capacidad.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    d = distribuidores.filter(F.col("entidad_id").isNotNull() & (F.col("capacidad_kg") > 0))
+    por_local = (d.groupBy("entidad_id", F.coalesce(F.col("direccion"), F.lit("")).alias("_local"))
+                 .agg(F.max("capacidad_kg").alias("_cap")))
+    return por_local.groupBy("entidad_id").agg(F.sum("_cap").alias("capacidad_kg"))
+
+
+def s5_distribuidores(ventas_detalle, distribuidores, puente, aplicar_ventana: bool = True):
+    """S5 sobre Silver: kg de GLP vendidos a un cliente en el mes sobre la capacidad de su almacén.
+
+    Resolución cliente × mes y ventana del catálogo (feb-2021 y abr-2024), los meses con
+    ventas por cliente. Solo se evalúan los clientes que el puente une con un distribuidor
+    con capacidad declarada; los demás no son evaluables y `cobertura_s5` los cuenta.
+    puntaje = kg del mes ÷ capacidad.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+    from pyspark.sql.functions import broadcast  # noqa: PLC0415
+
+    v = ventas_detalle.filter(F.coalesce(F.col("es_glp"), F.lit(False)) & (F.col("kg") > 0)
+                              & F.col("cliente_id").isNotNull())
+    v = v.filter(en_ventana("S5")) if aplicar_ventana else v
+    mes = (v.groupBy("cliente_id", "anio", "mes").agg(F.sum("kg").alias("_kg_mes"))
+           .withColumn("fecha", F.make_date("anio", "mes", F.lit(1))))
+    cap = puente.join(capacidad_distribuidor(distribuidores), "entidad_id", "inner")
+    d = mes.join(broadcast(cap), "cliente_id", "inner").filter(F.col("_kg_mes") > F.col("capacidad_kg"))
+    return _alertas(d, "S5", "volumen_del_mes_sobre_capacidad_del_almacen", kg=F.col("_kg_mes"),
+                    puntaje=F.col("_kg_mes") / F.col("capacidad_kg"), unidad=F.col("cliente_id"), rol="cliente")
+
+
+def cobertura_s5(ventas_detalle, distribuidores, puente) -> dict:
+    """Distribuidores con capacidad, cuántos tienen ventas por cliente y clientes sin capacidad."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    cap = capacidad_distribuidor(distribuidores)
+    con_ventas = (ventas_detalle.filter(F.coalesce(F.col("es_glp"), F.lit(False)) & F.col("cliente_id").isNotNull())
+                  .select("cliente_id").distinct())
+    unidos = con_ventas.join(puente, "cliente_id", "inner").join(cap, "entidad_id", "inner")
+    return {"distribuidores_con_capacidad": cap.count(),
+            "distribuidores_con_ventas": unidos.select("entidad_id").distinct().count(),
+            "clientes_con_ventas": con_ventas.count(),
+            "clientes_no_evaluables": con_ventas.count() - unidos.select("cliente_id").distinct().count()}
+
+
 def calcular(compras, ventas, flota, maestro):
     """Alertas de las señales que leen la muestra sintética antigua."""
     from functools import reduce  # noqa: PLC0415
@@ -275,6 +398,35 @@ def s3(compras, aplicar_ventana: bool = True):
     return _alertas(d, "S3", F.col("_motivo"), kg=F.col("kg"),
                     puntaje=F.col("precio_usd_kg") / F.col("_base") - F.lit(1.0),
                     unidad=F.col("unidad_id"), factura=F.col("factura_id"), scop=F.col("codigo_scop"))
+
+
+def control_sobrecobros(sobrecobros, aplicar_ventana: bool = True):
+    """Control de sobrecobros del F08: monto facturado mayor que el pactado (S3, con importe).
+
+    Es `src/signals/s3.s3_control` del WP 0.8 en Spark, con el mismo contrato de entrada
+    (factura_id, fecha, monto_facturado_soles, monto_pactado_soles) y las mismas reglas: la
+    fecha y la factura deben ser válidas y la factura única, o el control no corre; dispara
+    si facturado ≥ 0, pactado > 0 y facturado − pactado > 0. puntaje = diferencia ÷ pactado
+    y valor_soles = diferencia: es un importe cobrado de más, no unos kg sin valorizar.
+    """
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    requeridas = {"factura_id", "fecha", "monto_facturado_soles", "monto_pactado_soles"}
+    if not requeridas <= set(sobrecobros.columns):
+        raise ValueError("control_sobrecobros: contrato F08 incompleto")
+    c = sobrecobros.withColumn("fecha", F.to_date("fecha"))
+    r = c.agg(F.sum(F.when(F.col("fecha").isNull() | F.col("factura_id").isNull(), 1).otherwise(0)).alias("nulas"),
+              (F.count("factura_id") - F.countDistinct("factura_id")).alias("repetidas")).take(1)[0]
+    if (r["nulas"] or 0) > 0 or (r["repetidas"] or 0) > 0:
+        raise ValueError("control_sobrecobros: fecha o factura inválida/duplicada")
+    facturado = F.col("monto_facturado_soles").cast("double")
+    pactado = F.col("monto_pactado_soles").cast("double")
+    c = c.withColumn("_diferencia", facturado - pactado).withColumn("_pactado", pactado)
+    d = c.filter((facturado >= 0) & (pactado > 0) & (F.col("_diferencia") > 0))
+    d = d.filter(en_ventana("S3")) if aplicar_ventana else d
+    kg = F.col("kg") if "kg" in d.columns else F.lit(None)
+    return _alertas(d, "S3", "sobrecobro_control_F08", kg=kg, puntaje=F.col("_diferencia") / F.col("_pactado"),
+                    factura=F.col("factura_id"), valor=F.col("_diferencia"))
 
 
 def calendario_tc(tc):

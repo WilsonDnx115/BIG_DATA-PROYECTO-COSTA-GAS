@@ -71,8 +71,8 @@ commit de `dev-bruno`; «integrado» exige que el PR esté fusionado en `main`. 
 ## Decisiones propias
 
 - Refresco del tablero cada 5 min, no cada minuto (costo de Athena; README de `dashboards/grafana/`).
-- Protocolo ciego: 5 alertas con doble revisión por semana; niveles de evidencia `documental` y
-  `parcial`; «sustracción confirmada» exige evidencia documental y conformidad de la gerencia.
+- Protocolo ciego: 5 alertas con doble revisión por semana; niveles de evidencia 1 a 3 de la
+  Tabla 4.8f; «sustracción confirmada» exige el nivel 3 (campo) y conformidad de la gerencia.
 - Responsables de cada KPI en la página Resumen, tomados de la Tabla 4.10: gerencia (KPI 1 y 2), administración (KPI 3), operaciones (KPI 4) y control interno (KPI 5).
 
 ## Registro de cambios
