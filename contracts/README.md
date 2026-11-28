@@ -31,6 +31,13 @@ python -c "from src.silver import procesar; procesar.procesar_archivo('<archivo>
 `COMPRAS MENSUALES (1).xlsx` es copia de `COMPRAS MENSUALES.xlsx` y no suma: el patrón del
 contrato no la toma, y en AWS la Lambda de ingesta la rechaza sola por su huella SHA-256.
 
+El perfil local de 2 244 y el control AWS de 2 172 son conteos de corridas distintas; el total
+oficial cargado en Silver es 1 285. En AWS hubo 1 286 filas efectivas antes de filtros y una fila
+se excluyó al formar la salida. La hoja `MEGA GAS` de `distribuidores_mega_gas_relacion` recorrió
+996 filas y produjo 111 efectivas; la otra fuente `MEGA GAS` produjo 131. El contrato de relación
+deja pendiente la hoja 2 del libro de almacenes porque sus columnas no estan documentadas. La
+base oficial de control es `silver/_control/distribuidores/*.json`.
+
 Cada contrato lista su propio pendiente en la clave `pendiente`.
 
 Una tabla **no cubierta** y una tabla **pendiente** no son lo mismo, y conviene no confundirlas al
