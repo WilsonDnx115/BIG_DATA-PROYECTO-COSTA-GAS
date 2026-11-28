@@ -430,6 +430,8 @@ def modo_evento(spark, args) -> dict:
     resumen["kpi_4_motivo"] = calidad_kpi4["motivo"]
     resumen["escrito"].append(paso_unidad_mes(spark, unidad_mes_puntuado,
                                                senales.pop("alertas_df")))
+    resumen["escrito"].append(paso_fact_serie(spark, unidad_mes_puntuado,
+                                               entradas["ventas_detalle"], args.lake_uri))
     modelo = paso_modelo_s12(spark, args)
     if modelo["tabla"]:
         resumen["escrito"].append(modelo["tabla"])
