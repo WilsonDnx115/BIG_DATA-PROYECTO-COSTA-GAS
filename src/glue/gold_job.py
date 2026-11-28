@@ -208,6 +208,24 @@ def paso_senales(spark, args, entradas: dict | None = None) -> dict:
         return {"tabla": None, "senales": [], "omitidas": omitidas, "alertas_df": None}
 
     alertas = alertas.withColumn("probabilidad", F.lit(None).cast("double"))
+    # El grano contractual de fact_alerta es id_alerta. Algunas fuentes pueden
+    # producir el mismo evento más de una vez (p. ej. líneas repetidas de una
+    # factura), lo que hace que Iceberg rechace el MERGE. Conservamos una sola
+    # fila de forma determinista por id; ordenamos por todo el payload para que
+    # reejecuciones con los mismos datos elijan siempre la misma representación.
+    duplicadas = (alertas.groupBy("id_alerta").count()
+                  .filter(F.col("count") > 1)
+                  .agg(F.sum(F.col("count") - 1).alias("filas_excedentes"))
+                  .first()["filas_excedentes"])
+    if duplicadas:
+        from pyspark.sql import Window  # noqa: PLC0415
+        from pyspark.sql.functions import row_number  # noqa: PLC0415
+
+        orden = Window.partitionBy("id_alerta").orderBy(
+            *[F.col(c).cast("string").asc_nulls_first() for c in alertas.columns])
+        alertas = (alertas.withColumn("_orden_alerta", row_number().over(orden))
+                   .filter(F.col("_orden_alerta") == 1).drop("_orden_alerta"))
+        print(f"[evento] fact_alerta: omitidas {duplicadas} filas excedentes por id_alerta repetido")
     tabla = iceberg.escribir_merge(spark, alertas, TABLA_ALERTA, LLAVE_ALERTA)
     return {"tabla": tabla, "senales": sorted(set(ENTRADAS_SENAL) - set(omitidas)),
             "omitidas": omitidas, "alertas_df": alertas}
