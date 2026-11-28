@@ -128,6 +128,25 @@ LAKE_URI=s3://costagas-trujillo-lake-equipo01 python -m sql.athena.crear_tablas
 
 Al terminar: `SUFIJO=equipo01 ./infra/scripts/teardown.sh`.
 
+## Estado real al 28/11/2026
+
+Implementado, probado, desplegado y corrido son cuatro cosas distintas, y esta tabla dice cuál
+alcanzó cada parte. El estado completo, con lo que falta y de quién depende, está en
+[docs/estado_y_pendientes.md](docs/estado_y_pendientes.md).
+
+| Parte | Hasta dónde llega | Evidencia |
+|---|---|---|
+| Contratos de las diez tablas Silver | **Corrido** sobre los 35 archivos de la entrega | [contracts/README.md](contracts/README.md) |
+| Ingesta y Bronze → Silver en AWS | **Corrido** el 28/11/2026: 26 Parquet y sus controles en `silver/`, las diez tablas en el catálogo `costagas_silver` | [calidad de la carga inicial](docs/evidencias/calidad_carga_inicial.md) |
+| Calidad de Silver frente a la Tabla 3.7 | **Medida** sobre la corrida real, por tabla y por fuente | [calidad de la carga inicial](docs/evidencias/calidad_carga_inicial.md) |
+| Tablas y vistas de Gold | **Desplegadas**: las trece tablas Iceberg existen y cinco vistas están catalogadas | catálogo `costagas_gold` |
+| Job de Gold, KPI, señales y semáforo | **No corrido**: `costagas-gold-conciliacion` no tiene ninguna ejecución y `gold/` no tiene archivos de datos | [docs/estado_y_pendientes.md](docs/estado_y_pendientes.md) |
+| Pipeline completo de punta a punta | **Corrido en local** con la muestra sintética; sus cifras no son resultados del negocio | [docs/evidencias/linea_base.md](docs/evidencias/linea_base.md) |
+| Modelo base y detector | **Implementados y probados**; su validación con datos reales espera la corrida de Gold | [docs/evidencias/wp_0.8_modelo_base.md](docs/evidencias/wp_0.8_modelo_base.md) |
+
+Mientras Gold no corra, **ninguna cifra de KPI, señal o semáforo puede presentarse como resultado
+de la empresa**.
+
 ## Equipo y responsabilidades
 
 Los roles rotan en la Semana 8 (informe v16, 0.1). Estas son las responsabilidades de la
