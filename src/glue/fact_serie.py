@@ -114,6 +114,24 @@ def unidades_semana_pandas(ventas_detalle: pd.DataFrame) -> pd.DataFrame:
     return _semanas(v, "placa_norm", "unidad", "reparto")
 
 
+def unidades_semana_spark(ventas_detalle):
+    """Ventas Silver → kg GLP por unidad y semana ISO, agregados en Spark."""
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    return (ventas_detalle
+            .filter((F.col("es_glp") == F.lit(True)) & F.col("placa_norm").isNotNull()
+                    & F.col("fecha").isNotNull() & F.col("kg").isNotNull() & (F.col("kg") > 0))
+            .withColumn("_fecha", F.to_date("fecha"))
+            .withColumn("_periodo", F.to_date(F.date_trunc("week", F.col("_fecha").cast("timestamp"))))
+            .groupBy("placa_norm", "_periodo")
+            .agg(F.sum(F.col("kg").cast("double")).alias("valor"))
+            .select(F.lit("unidad").alias("entidad_tipo"),
+                    F.col("placa_norm").alias("entidad_id"), F.lit("reparto").alias("grupo"),
+                    F.lit("semana").alias("granularidad"), F.col("_periodo").alias("periodo"),
+                    "valor")
+            .filter(F.col("valor") > 0))
+
+
 def bajar_a_vendedor_y_cliente(ventas_detalle: pd.DataFrame, serie_unidades: pd.DataFrame) -> pd.DataFrame:
     """Vendedores y clientes de las unidades que ya están en ámbar o rojo (informe v16, 4.3).
 
