@@ -140,12 +140,15 @@ alcanzó cada parte. El estado completo, con lo que falta y de quién depende, e
 | Ingesta y Bronze → Silver en AWS | **Corrido** el 28/11/2026: 26 Parquet y sus controles en `silver/`, las diez tablas en el catálogo `costagas_silver` | [calidad de la carga inicial](docs/evidencias/calidad_carga_inicial.md) |
 | Calidad de Silver frente a la Tabla 3.7 | **Medida** sobre la corrida real, por tabla y por fuente | [calidad de la carga inicial](docs/evidencias/calidad_carga_inicial.md) |
 | Tablas y vistas de Gold | **Desplegadas**: las quince tablas Iceberg y las ocho vistas están catalogadas, `fact_unidad_mes` incluida | catálogo `costagas_gold` |
-| Job de Gold, KPI, señales y semáforo | **En pruebas**: `costagas-gold-conciliacion` acumula cuatro ejecuciones fallidas el 28/11 y ninguna en `SUCCEEDED` | [docs/estado_y_pendientes.md](docs/estado_y_pendientes.md) |
+| Job de Gold | **Corrido** el 28/11 en su quinto intento: `fact_balance_planta` 57 filas, `fact_unidad_mes` 287 y `fact_alerta` 2 349, más las cinco dimensiones | [corrida de Gold](docs/evidencias/corrida_gold_2026-11-28.md) |
+| KPI por unidad y semáforo | **Bloqueados por calidad, como está diseñado**: las 287 filas salieron con `calidad_fuente_bloqueada` porque `gastos` y `unidades` incumplen `META_PLACA_VALIDA` | [corrida de Gold](docs/evidencias/corrida_gold_2026-11-28.md) |
 | Pipeline completo de punta a punta | **Corrido en local** con la muestra sintética; sus cifras no son resultados del negocio | [docs/evidencias/linea_base.md](docs/evidencias/linea_base.md) |
 | Modelo base y detector | **Implementados y probados**; su validación con datos reales espera la corrida de Gold | [docs/evidencias/wp_0.8_modelo_base.md](docs/evidencias/wp_0.8_modelo_base.md) |
 
-Mientras Gold no corra, **ninguna cifra de KPI, señal o semáforo puede presentarse como resultado
-de la empresa**.
+Gold ya corrió, pero **ninguna cifra de KPI por unidad puede presentarse todavía como resultado de
+la empresa**: el bloqueo por calidad de Silver sigue activo y 45 filas de `fact_unidad_mes` no
+tienen su unidad en `dim_unidad`. Las 2 349 alertas son candidatas a revisión documental, no robos
+confirmados.
 
 ## Equipo y responsabilidades
 

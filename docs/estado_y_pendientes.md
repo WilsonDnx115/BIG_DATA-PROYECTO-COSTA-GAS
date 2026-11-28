@@ -1,11 +1,12 @@
 # Costa Gas Trujillo · estado al 28/11/2026, tarde
 
 **Escribe:** Oftcher Anghelo Alcántara Pérez (Calidad y documentación) · Repositorio:
-`WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS`, `main` en el merge del PR #31.
+`WilsonDnx115/BIG_DATA-PROYECTO-COSTA-GAS`, `main` en el merge del PR #33.
 
-**Cambió lo principal desde la versión de esta madrugada: la carga inicial ya ocurrió.** Silver
-está cargada en S3 con los datos reales de la empresa y `main` volvió a verde. Gold sigue sin
-correr, y eso es ahora el único cuello de botella.
+**El sistema ya corrió de punta a punta sobre los datos reales de la empresa.** Los 35 archivos
+están en el lago, Silver tiene sus diez tablas y Gold se escribió en el modo `evento`. Lo que
+queda no es hacer correr el pipeline, sino corregir dos defectos que la corrida dejó a la vista y
+ejecutar los otros dos modos del job.
 
 ## Lo que cambió respecto de la versión anterior
 
@@ -29,25 +30,29 @@ sobre los commits de Frank sin fusionar ya no aplica.
 catalogaron las tres vistas que faltaban: `v_kpi_4`, `v_cubo_unidad` y `v_semaforo_unidades`. El
 catálogo de Gold tiene hoy sus **quince tablas y ocho vistas**.
 
-**El job de Gold está en pruebas, no cerrado.** `costagas-gold-conciliacion` registra cinco
-ejecuciones el 28/11 entre las 03:27 y las 03:45: cuatro fallaron y la quinta estaba corriendo al
-escribir esto. Los cuatro fallos, por si ayudan a Ingeniería de datos:
+**El job de Gold corrió y terminó bien.** `costagas-gold-conciliacion` necesitó cinco intentos el
+28/11 entre las 03:27 y las 03:45; el quinto terminó en `SUCCEEDED` y escribió `dim_tiempo` 108
+filas, `dim_senal` 12, `dim_persona` 43, `dim_unidad` 211, `dim_producto` 35,
+`fact_balance_planta` 57, `fact_alerta` 2 349 y `fact_unidad_mes` 287. Siguen vacías
+`calidad_silver`, `dim_contraparte`, `fact_operacion`, `fact_serie`, `mercado_mes`,
+`modelo_factura` y `revision_alerta`, que las escriben los otros modos del job y el portal.
+Todo medido en [la corrida de Gold](evidencias/corrida_gold_2026-11-28.md).
 
-| Hora | Error |
-|---|---|
-| 03:27 | `NotADirectoryError` al leer `src/signals/catalogo.yaml` dentro de `costagas_src.zip` |
-| 03:30 | `ValueError: fact_unidad_mes: hay placas sin rol en dim_unidad; se cancela para no inventar el rol` |
-| 03:37 | `PATH_NOT_FOUND` de `data/lake/silver/_control/*/*.json` dentro del zip, en vez de la ruta de S3 |
-| 03:40 | `INCONSISTENT_BEHAVIOR_CROSS_VERSION.READ_ANCIENT_DATETIME` al leer fechas anteriores a 1900 con Spark ≥ 3.0 |
+**Dos cosas de esa corrida hay que corregirlas**, y las dos son de Ingeniería de datos:
 
-El tercero y el cuarto son de empaquetado y de lectura de fechas antiguas. El segundo es el
-interesante para calidad: el job **se niega a inventar el rol** de una placa que `dim_unidad` no
-declara, que es exactamente lo que pide `CLAUDE.md`. Las placas sin rol salen de que
-`relacion_unidades` tiene 80.1 % de placas válidas y `soat_2020` 83.7 %
-([medición](evidencias/calidad_carga_inicial.md)).
+1. **45 filas de `fact_unidad_mes`, que son 10 unidades, no están en `dim_unidad`.** Es la prueba
+   de integridad referencial de AR05 y hoy no pasa sobre datos reales.
+2. **`dim_unidad` tiene 28 placas sin rol** de 211. Sin rol, la unidad no es evaluable en el modelo
+   base. Viene de que `relacion_unidades` tiene 80.1 % de placas válidas y `soat_2020` 83.7 %
+   ([medición](evidencias/calidad_carga_inicial.md)).
 
-Mientras ese job no termine en `SUCCEEDED`, **ninguna cifra de KPI, señal o semáforo puede
-presentarse como resultado de la empresa**.
+**El bloqueo por calidad está actuando y es correcto.** Las 287 filas salieron con
+`estado_puntaje = calidad_fuente_bloqueada` y `alerta_base = false`, porque `gastos` y `unidades`
+incumplen `META_PLACA_VALIDA`. Es `calidad_silver.bloqueos` haciendo lo que manda `CLAUDE.md`:
+**el KPI 4 y S9 no se publican** mientras su fuente Silver incumpla su contrato. Para
+desbloquearlos, o sube la tasa de placas válidas en origen, o el contrato declara que `OTROS
+GASTOS` y `CO01` no aportan placa y el KPI 4 se calcula solo sobre `GASTOS FLOTA`. Es decisión del
+equipo.
 
 La regla `costagas-silver-actualizado` sigue en **DISABLED**, como manda el
 [ADR 0020](adr/0020-regla-gold-prefijos-internos.md), y `costagas-glue-fallido` en ENABLED.
@@ -56,8 +61,11 @@ La regla `costagas-silver-actualizado` sigue en **DISABLED**, como manda el
 
 | Quién | Qué | Desbloquea |
 |---|---|---|
-| **Wilson** | Que `costagas-gold-conciliacion` termine en `SUCCEEDED` | **AR17 completo y AR24**, y todas las cifras de Gold del informe |
-| **Wilson** | Las placas sin rol en `dim_unidad`, que cancelan `fact_unidad_mes` | El KPI 4 y el semáforo |
+| **Wilson** | Las 10 unidades de `fact_unidad_mes` que no están en `dim_unidad` | La integridad referencial de AR05 y cualquier cruce por unidad |
+| **Wilson** | Las 28 placas sin rol de `dim_unidad` | Que esas unidades sean evaluables en el modelo base |
+| **Wilson** | Correr los modos `entrenar` y `operacion` del job | `fact_serie`, `modelo_factura`, `fact_operacion` y `calidad_silver` en Gold, y con ellas **AR24** |
+| **Bruno** | La validación documental ciega de las 20 alertas de mayor puntaje (BR19) | La fila «Modelos» de la Tabla 2.9 y las metas de la Tabla 4.7 |
+| **El equipo** | Decidir cómo se desbloquea el KPI 4: subir la tasa de placas válidas, o declarar que solo `GASTOS FLOTA` aporta placa | El KPI 4 y el semáforo |
 | **Wilson** | Subir el escenario B sellado a `sim/_spec/` y correr `costagas-validacion-detector` | **AR18 y AR19** |
 | **Wilson o el titular** | En mi política: `s3:ListBucket` sobre el bucket y `s3:PutObject`/`GetObject` sobre `athena-results/*` | Poder citar consultas de Athena como evidencia |
 | **Bruno** | Roles de la Semana 8 en `equipo.md`; protocolo ciego alineado con `revision.py`; proteger `main` | Coherencia con el informe y la revisión ciega real |
@@ -90,15 +98,18 @@ en la evidencia de AR16.
 
 | Commit | Espera |
 |---|---|
-| AR17 completo | La corrida de Gold; la parte de ingesta, Silver y contratos ya está medida |
 | AR18 · AR19 | Que el escenario B sellado esté en `sim/_spec/` y corra su Lambda |
-| AR24 | AR17 y los resultados de Frank y Wilson |
+| AR24 | Los modos `entrenar` y `operacion` del job, y los resultados de Frank y Wilson |
+
+**AR17 está cerrado** con la corrida de Gold: las trece filas de la Tabla 2.9 tienen resultado, y
+se sumaron dos propias del repositorio ([plan de pruebas](evidencias/pruebas_sistema.md)).
 
 ## Cuatro cosas que conviene no perder de vista
 
 **Implementado, probado, desplegado y corrido son cuatro cosas distintas.** Hoy el sistema está
-corrido **hasta Silver** sobre datos reales. Gold no. Ninguna cifra de KPI, señal o semáforo puede
-presentarse todavía como resultado de la empresa.
+corrido **de punta a punta hasta Gold** sobre datos reales, en el modo `evento`. Aun así, el KPI
+por unidad no se publica: lo bloquea la calidad de Silver, y además faltan 10 unidades en
+`dim_unidad`. Las 2 349 alertas son candidatas a revisión, **no robos confirmados**.
 
 **Las cifras de la muestra sintética no son resultados del negocio.** El pipeline completo corre en
 local con `python -m src.pipeline --regenerar-muestra`, y sirve para desarrollar y probar, pero sus
