@@ -4,20 +4,27 @@ Un archivo YAML por tabla. Es la única fuente de verdad del esquema (base B5 y 
 
 ## Estado de cada contrato
 
-**Diez contratos, todos con fuente declarada y leída.** Las filas de abajo son una **corrida
-local** sobre los 35 archivos de la entrega (pandas, sin escribir nada en el lago). No son las de
-la carga a S3: cuando esa corrida exista, las cifras se vuelven a tomar de `silver/_control/`,
-que es la fuente oficial.
+**Diez contratos, todos con fuente declarada y leída.** Las filas de abajo salen de
+`silver/_control/`, que es la fuente oficial: son las de la **carga inicial a S3** del 28/11/2026,
+02:24–02:38 UTC, medidas en
+[`calidad_carga_inicial.md`](../docs/evidencias/calidad_carga_inicial.md).
 
 ```powershell
-python -c "from src.silver import procesar; procesar.procesar_archivo('<archivo>', escribir=False)"
+aws s3 cp s3://costagas-trujillo-lake-upao-g4-2026/silver/_control/ .\_control\ --recursive --profile costagas-gobierno
 ```
+
+Nueve de las diez tablas coinciden al dígito con la corrida local en pandas que publicaba este
+cuadro antes de la carga. La décima, `distribuidores`, se corrigió: decía 2 244 filas en 6 hojas,
+que era un conteo del orden de las **filas leídas**; las **efectivas** son 1 285 en 7 hojas. Las
+cuatro fuentes leen 2 172 filas en bruto, y casi todo el hueco viene de `MEGA GAS` de relación,
+que lee 996 filas y solo tiene 111 con dato: el resto son filas vacías por debajo del último
+registro. No hay pérdida de datos.
 
 | Tabla | Filas efectivas | Fuentes | Lo que no cubre |
 |---|---|---|---|
 | `clientes` | 66 984 | 3 hojas de `CLIENTES TOTAL.xlsx` | `CLIENTES AGOSTO.xls`: su hoja empieza en datos |
 | `compras_glp` | 1 495 | `COMPRAS MENSUALES.xlsx` (1 066), `COMPRAS TOTAL 2020.xlsx` (429) | La hoja SETIEMBRE de 2020, sin encabezado |
-| `distribuidores` | 2 244 | 6 hojas de los dos libros de distribuidores | — |
+| `distribuidores` | 1 285 | 7 hojas de los dos libros de distribuidores: maestra (587), por envasadora (456), MEGA GAS almacenes (131) y MEGA GAS relación (111) | — |
 | `gastos` | 16 322 | `GASTOS FLOTA` (13 600), `OTROS GASTOS` (1 043), `CO01/Sheet1` (1 679) | El gasto por unidad de `OTROS GASTOS` y de `CO01`: no traen placa ([evidencia](../docs/evidencias/gastos_posiciones.md)) |
 | `pedidos_proveedor` | 1 150 | PETROPERU (108), SOLGAS (474), **PRIMAX (523)**, PLUSPETROL (45) | `fecha_vence` de PRIMAX, que no tiene esa columna ([evidencia](../docs/evidencias/primax_posiciones.md)) |
 | `produccion_diaria` | 32 | `ProduccionReal-Cap Efec (Octub)`, **31 días de oct-2018** | Los demás meses y el piloto 2020: la entrega no los trae ([evidencia](../docs/evidencias/produccion_diaria_en_la_entrega.md)) |

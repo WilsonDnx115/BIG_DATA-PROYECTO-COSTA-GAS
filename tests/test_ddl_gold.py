@@ -62,7 +62,8 @@ def ddl(tabla: str) -> Path:
 
 
 def test_hay_un_ddl_por_tabla_declarada():
-    assert len(ARCHIVOS) == 14, [a.name for a in ARCHIVOS]
+    # 15 desde que W07 agrego gold_fact_unidad_mes.sql (PR #32).
+    assert len(ARCHIVOS) == 15, [a.name for a in ARCHIVOS]
 
 
 @pytest.mark.parametrize("archivo", ARCHIVOS, ids=lambda a: a.stem)
