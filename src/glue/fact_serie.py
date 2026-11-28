@@ -29,14 +29,14 @@ import pandas as pd
 from src.common import config
 from src.models import detector
 
-COLUMNAS = ["entidad_tipo", "entidad_id", "grupo", "granularidad", "periodo", "anio", "mes",
+COLUMNAS = ["entidad_tipo", "entidad_id", "grupo", "granularidad", "periodo",
             "valor_real", "valor_esperado", "residuo", "z", "cusum", "ewma", "estado",
-            "periodo_inicio", "kg_acumulados", "soles_acumulados"]
+            "periodo_inicio", "kg_acumulados", "soles_acumulados", "anio", "mes"]
 
 ESQUEMA = ("entidad_tipo string, entidad_id string, grupo string, granularidad string, periodo date, "
-           "anio int, mes int, valor_real double, valor_esperado double, residuo double, z double, "
+           "valor_real double, valor_esperado double, residuo double, z double, "
            "cusum double, ewma double, estado string, periodo_inicio date, kg_acumulados double, "
-           "soles_acumulados double")
+           "soles_acumulados double, anio int, mes int")
 
 
 # --- Núcleo en pandas (lo que corre dentro de cada tarea) ----------------------------
