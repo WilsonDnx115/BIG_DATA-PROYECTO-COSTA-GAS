@@ -42,6 +42,12 @@ CORRECCIONES = ("fechas_invertidas",)
 VALIDEZ = ("placa_valida", "kg_con_placa_valida", "kg_positivo", "scop_presente",
            "fecha_valida", "documento_presente", "mes_reconocido", "entidad_id_presente")
 
+# Estos contratos declaran que la fuente no trae placa y que no se atribuye a una unidad.
+# Un 0 en `placa_valida` es «no aplica», no un incumplimiento de META_PLACA_VALIDA.
+FUENTES_SIN_PLACA = {
+    "gastos": ("gastos_proyecto_2019", "otros_gastos_2020"),
+}
+
 
 # Fuentes Silver de cada KPI de la Tabla 4.10. Se deriva de la tabla de Gold que lee su
 # vista (`sql/athena/vistas/v_kpi_*.sql`) y de los contratos de `contracts/` que la
@@ -239,13 +245,20 @@ def construir(spark, ruta_control: str | None = None):
                       sum((F.coalesce(F.col("calidad").getItem(m), F.lit(0.0)) for m in CORRECCIONES),
                           F.lit(0.0)).cast("long")))
 
+    sin_placa = F.coalesce(
+        (F.col("fuente").isin(*FUENTES_SIN_PLACA["gastos"]) & (F.col("tabla") == "gastos")),
+        F.lit(False))
     for metrica in VALIDEZ:                        # nula si la corrida no mide esa tasa
-        df = df.withColumn(metrica, F.col("calidad").getItem(metrica))
+        valor = F.col("calidad").getItem(metrica)
+        if metrica == "placa_valida":
+            valor = F.when(sin_placa, F.lit(None).cast("double")).otherwise(valor)
+        df = df.withColumn(metrica, valor)
 
     # Una meta solo se evalua si su metrica esta presente; si falta, no se incumple.
     incumplidas = F.array_compact(F.array(*[
-        F.when(F.col("calidad").getItem(m).isNotNull() & (F.col("calidad").getItem(m) < F.lit(umbral)),
-               F.lit(nombre))
+        F.when(F.col("calidad").getItem(m).isNotNull()
+               & (F.col("calidad").getItem(m) < F.lit(umbral))
+               & (F.lit(m != "placa_valida") | ~sin_placa), F.lit(nombre))
         for m, (nombre, umbral) in METAS.items()]))
 
     return (df
