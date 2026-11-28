@@ -1,0 +1,54 @@
+# Contrato de la tabla Silver produccion_diaria (commit AR27).
+#
+# Es la fuente de la senal S11 y la unica forma de que la variacion de stock del KPI 1
+# sea medida en vez de supuesta. La hoja existe en la entrega, con una fila por dia y
+# los 31 dias de octubre de 2018; donde esta y como se encontro:
+# docs/evidencias/produccion_diaria_en_la_entrega.md.
+#
+# La hoja tiene el encabezado en DOS filas: el concepto en la primera y la marca en la
+# segunda, con un bloque de siete columnas por concepto que cierra con su TOTAL. La
+# interfaz `produccion` del WP 0.8 es de planta, asi que se toma el TOTAL de cada
+# bloque; las columnas por marca son un desglose que hoy no usa ninguna metrica.
+#
+# Es de 2018, fuera del piloto 2020: sirve para S11, no para el KPI 1 del piloto.
+tabla: produccion_diaria
+dominio: produccion
+descripcion: Balance diario de planta con stock inicial, produccion, ventas, bonificaciones y stock final
+grano: dia
+llave: [fecha]
+
+fuentes:
+  - id: produccion_octubre_2018
+    familia: F36
+    archivo: '^Reporte de Produccion CGT 2018\.xlsx$'
+    hojas: '^ProduccionReal-Cap Efec \(Octub\)$'
+    primera_fila: 3
+    exigir: [fecha]
+    # El TOTAL de cada bloque, medido sobre la hoja (evidencia, seccion «Que se encontro»):
+    # B stock inicial -> H · I ventas -> O · P bonificaciones -> V ·
+    # W stock final -> AC · AD produccion -> AJ
+    posiciones:
+      A: fecha
+      H: stock_inicial
+      O: ventas
+      V: bonificaciones
+      AC: stock_final
+      AJ: produccion
+
+pendiente:
+  - "Solo octubre de 2018. La entrega no trae el balance diario de ningun otro mes ni del piloto 2020, asi que el KPI 1 de 2020 sigue tomando la variacion de stock como 0, marcada con stock_es_supuesto."
+  - "No cubierto: el desglose por marca de cada bloque (seis columnas antes de cada TOTAL). La interfaz produccion del WP 0.8 es de planta; se declara cuando una metrica lo necesite."
+  - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de esta hoja por separado."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje, regla: "id de la fuente del contrato"}
+  - {nombre: hoja, tipo: string, rol: linaje, regla: "hoja de Excel de origen"}
+  - {nombre: fila, tipo: int, rol: linaje, regla: "fila de Excel de origen"}
+  - {nombre: fecha, tipo: date, rol: llave, regla: "dia del balance; lo no convertible pasa a nulo y se cuenta"}
+  - {nombre: stock_inicial, tipo: double, rol: medida, regla: "kg en planta al abrir el dia, TOTAL del bloque"}
+  - {nombre: produccion, tipo: double, rol: medida, regla: "kg envasados en el dia, TOTAL del bloque"}
+  - {nombre: ventas, tipo: double, rol: medida, regla: "kg vendidos en el dia, TOTAL del bloque"}
+  - {nombre: bonificaciones, tipo: double, rol: medida, regla: "kg entregados sin venta, TOTAL del bloque"}
+  - {nombre: stock_final, tipo: double, rol: medida, regla: "kg en planta al cerrar el dia, TOTAL del bloque"}
+  - {nombre: stock_final_es_calculado, tipo: bool, rol: calidad, regla: "verdadero siempre: la planta no contabiliza su inventario fisico, lo calcula para que el balance diario cuadre (informe v17, 1.1 y cierres_medidos_fisicamente: 0). Sin esta marca el stock se leeria como una medicion"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en mas de una fila; se conserva y se marca"}

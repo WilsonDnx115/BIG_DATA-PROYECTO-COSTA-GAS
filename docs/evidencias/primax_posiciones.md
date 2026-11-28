@@ -31,21 +31,49 @@ columna que solo tiene dato en el 0.2 % de las filas.
 | **F**, **K**, **L**, **M**, **N**, **O**, **P** | Importes parciales | numéricos de 4 a 6 dígitos con dato en el 11 % al 56 % de las filas; por su forma son desgloses de importe (percepción, saldo, pagos), no cantidades |
 | **S**, **T** | — | **No cubiertas: 7 % de las filas, valores de 0 a 1 dígito** |
 
-## Qué falta para que PRIMAX entre al contrato
+## La posición D es la cantidad en kg
 
-Dos cosas, y ninguna es mía:
+Ayer quedó sin declarar porque la estructura sola no alcanzaba. Se resuelve comparando la
+**forma** de cada columna numérica con la de `CANTIDAD` en las tres hojas que sí tienen
+encabezado. Solo estadísticos de forma; ningún valor:
 
-1. **Lectura por posición en el lector de contratos.** `src/silver/contratos.py` empareja por
-   nombre de encabezado normalizado, y esta hoja empieza en datos. Es el mismo bloqueo que tiene
-   el contrato de gastos, y está descrito con el formato propuesto en
-   [`gastos_posiciones.md`](gastos_posiciones.md), sección 4.
-2. **Confirmar cuál es la cantidad en kg.** El cruce S12 compara los kg de tesorería contra los
-   de logística con una tolerancia de 1 kg (`TOL_KG_S12`), así que declarar la columna
-   equivocada no daría un error: daría descuadres falsos en el KPI 3. Con la estructura sola, la
-   posición D es la única candidata y no alcanza. Quien abra la hoja lo resuelve en un minuto
-   mirando el encabezado visual del libro.
+| Columna | Mediana (log10) | Enteros | Rango p10-p90 |
+|---|---|---|---|
+| `PETROPERU.CANTIDAD` | 4.35 | 100 % | 4.34–4.37 |
+| `SOLGAS.CANTIDAD` | 4.36 | 100 % | 4.35–4.38 |
+| `PLUSPETROL.CANTIDAD CARGADA` | 4.37 | 100 % | 4.35–4.38 |
+| **PRIMAX, posición D** | **4.36** | **100 %** | **4.34–4.38** |
+| PRIMAX, F · G · K · L · M | 4.75 a 4.92 | 1 a 2 % | ancho |
+| PRIMAX, N · O · P | 4.83 a 4.96 | 41 a 86 % | muy ancho |
 
-Mientras tanto, el contrato declara las tres hojas con encabezado y deja PRIMAX como no cubierta,
-con este documento como evidencia. **No se inventa una cuarta fuente**: una fuente de tesorería
-mal mapeada se vería en el KPI 3 como descuadres entre tesorería y logística, que es justamente
-la señal que el proyecto quiere medir.
+La firma de una carga de cisterna es inconfundible: **enteros y un rango muy estrecho** alrededor
+de las 22-24 toneladas. Las demás columnas numéricas son importes (casi todos con decimales) o
+tienen una dispersión que ninguna carga tiene. La D es la única que encaja.
+
+**La D trae dato en el 27 % de las filas.** Las demás entran al cruce S12 como
+`kg_desconocido`, que es una de las clases que `cruce_s12` ya contempla: se cuentan como compra
+sin confirmar, no se descartan ni se inventan.
+
+## Resultado: PRIMAX ya entra a Silver
+
+Corrida sobre el archivo real, sin escribir nada y sin publicar ningún valor:
+
+| Fuente | Filas de salida | Fecha válida | Con kg positivo |
+|---|---|---|---|
+| `pedidos_primax` | **523** de 3 524 leídas | 99.8 % | 23.5 % |
+
+Una sola fila se descartó por no traer factura. Con esto el cruce tesorería × logística tiene sus
+**cuatro** proveedores.
+
+## Lo que sigue sin cubrirse
+
+
+
+**La fecha de vencimiento.** Las otras tres hojas traen `VENCIMIENTO` o `VENCE`; PRIMAX solo
+tiene dos columnas de fecha, la B y la Q, y la Q está en la misma posición relativa que la
+«fecha de pago» de SOLGAS, justo antes del banco. Así que `fecha_vence` queda **no cubierta**
+para este proveedor: el cruce S12 usa la fecha de pago cuando falta, que es lo que ya hace con
+PETROPERU.
+
+**Las columnas F, K, L, M, N, O y P**, importes parciales: no se declaran mientras ninguna
+métrica las necesite, igual que los desgloses de PLUSPETROL.

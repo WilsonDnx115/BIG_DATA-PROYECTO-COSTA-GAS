@@ -11,6 +11,7 @@ import re
 
 import pandas as pd
 
+from src.common import config
 from src.common import limpieza as L
 from src.silver.lector import a_texto
 
@@ -365,6 +366,37 @@ def gastos(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return o, calidad
 
 
+def produccion_diaria(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Balance diario de planta. Es la fuente de S11 y del stock medido del KPI 1.
+
+    `stock_final_es_calculado` es verdadero siempre, y no es un supuesto nuestro: el
+    informe dice que el inventario final de planta no se contabiliza fisicamente, sino
+    que se calcula para que el balance diario cuadre. Dejarlo nulo invitaria a leer ese
+    stock como una medicion, que es justo lo que S11 busca desmentir.
+    """
+    o = pd.DataFrame(index=df.index)
+    o["fecha"] = _col(df, "fecha").map(L.a_fecha)
+    for columna in ("stock_inicial", "produccion", "ventas", "bonificaciones", "stock_final"):
+        o[columna] = _num(_col(df, columna))
+    o["stock_final_es_calculado"] = pd.Series(True, index=df.index, dtype="boolean")
+
+    # Un dia del balance necesita su fecha: la hoja cierra con una fila de totales que
+    # trae las cinco medidas y ninguna fecha, y contarla daria 32 dias en un mes de 31.
+    completo = (o[["stock_inicial", "produccion", "ventas", "bonificaciones",
+                   "stock_final"]].notna().all(axis=1) & o["fecha"].notna())
+    residuo = (o["stock_inicial"] + o["produccion"] - o["ventas"] - o["bonificaciones"]
+               - o["stock_final"])
+    cero = completo & residuo.abs().le(config.TOL_RESIDUO_STOCK)
+    calidad = {
+        "fecha_valida": _tasa(o["fecha"].notna()),
+        "produccion_valida": _tasa(o["produccion"].notna()),
+        "stock_final_valido": _tasa(o["stock_final"].notna()),
+        "dias_completos": int(completo.sum()),
+        "dias_con_residuo_cero": int(cero.sum()),
+    }
+    return o, calidad
+
+
 def _identidad(documento, nombre_razon, codigo_sn=None) -> dict:
     """Separa empresa de persona natural y seudonimiza lo que identifica a una persona.
 
@@ -452,4 +484,5 @@ TRANSFORMACIONES = {"compras_glp": compras_glp, "scop": scop, "unidades": unidad
                     "ventas_unidad_mes": ventas_unidad_mes, "ventas_detalle": ventas_detalle,
                     "pedidos_proveedor": pedidos_proveedor,
                     "distribuidores": distribuidores, "clientes": clientes,
-                    "gastos": gastos}
+                    "gastos": gastos,
+                    "produccion_diaria": produccion_diaria}

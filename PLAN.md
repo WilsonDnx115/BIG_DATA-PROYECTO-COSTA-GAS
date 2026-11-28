@@ -435,9 +435,9 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 - [x] **A03** · docs(adr): 0015 YouTube Data API y 0016 Grafana Cloud
 - [x] **A04** · docs(adr): 0017 cola de corridas y 0018 lago op/
 - [x] **A05** · docs(adr): 0019 revisiones, 0020 regla de Gold y 0021 memoria de Lambda
-- [ ] **A06** · feat(contratos): contrato de gastos con conductor seudonimizado — la fuente `GASTOS FLOTA` por posicion espera lectura por posicion en el lector de contratos; el contrato, su DDL y las posiciones medidas ya estan en `main` (docs/evidencias/gastos_posiciones.md)
+- [x] **A06** · feat(contratos): contrato de gastos con conductor seudonimizado
 - [x] **A07** · feat(contratos): contrato de tesoreria con fecha de pago y vencimiento
-- [ ] **A08** · feat(contratos): produccion diaria, distribuidores y clientes — distribuidores y clientes, hechos; `produccion_diaria` tiene su fuente localizada (Reporte de Produccion CGT 2018, hoja ProduccionReal-Cap Efec (Octub), 31 dias de oct-2018) y espera lo mismo
+- [x] **A08** · feat(contratos): produccion diaria, distribuidores y clientes
 - [ ] **A09** · feat(contratos): BCRP, Facilito y YouTube hacia silver/entorno — no se hace: lo cubre el W21 de ingenieria de datos, y duplicarlo mantendria dos esquemas de la misma tabla
 
 *Bruno · coordinación*
@@ -548,7 +548,7 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 *Anghelo · calidad y documentación*
 
 - [x] **A20** · docs: tecnicas de ingenieria con archivo y linea
-- [ ] **A21** · docs(evidencias): plan de pruebas del sistema ejecutado — espera la carga inicial a S3 (W09)
+- [ ] **A21** · docs(evidencias): plan de pruebas del sistema ejecutado — espera la carga inicial a S3 (W09); el estado de los contratos con sus filas efectivas ya esta en contracts/README.md, medido en local
 - [x] **A22** · docs: diccionario de datos de Gold
 
 *Bruno · coordinación*
