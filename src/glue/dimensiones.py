@@ -161,10 +161,15 @@ def _catalogo_yaml(ruta: Path | None = None) -> dict:
     """
     import yaml  # noqa: PLC0415
 
-    archivo = ruta or CATALOGO_YAML
-    if not archivo.exists():
-        return {}
-    datos = yaml.safe_load(archivo.read_text(encoding="utf-8")) or {}
+    if ruta is not None:
+        if not ruta.exists():
+            return {}
+        contenido = ruta.read_text(encoding="utf-8")
+    else:
+        from importlib.resources import files  # noqa: PLC0415
+
+        contenido = files("src.signals").joinpath("catalogo.yaml").read_text(encoding="utf-8")
+    datos = yaml.safe_load(contenido) or {}
     return datos.get("senales", {})
 
 
