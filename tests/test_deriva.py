@@ -3,6 +3,8 @@
 La prueba que pide el A15: dos muestras de la misma distribución dan PSI < 0.1, una
 desplazada da PSI > 0.2, y con 50 facturas la respuesta es «insuficiente».
 """
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -117,3 +119,53 @@ def test_los_nulos_y_los_infinitos_se_descartan(cortes):
     sucia.loc[21:30, "kg"] = np.inf
     r = deriva.evaluar(sucia, cortes)
     assert np.isfinite(r["psi"]["kg"])
+
+
+# --- Guardar los cortes con el modelo (commit AR08) ---------------------------
+def test_ida_y_vuelta_sin_perdida(cortes):
+    """Los cortes se guardan con el modelo (FR13): lo que vuelve es lo que se guardo."""
+    recuperados = deriva.desde_dict(json.loads(json.dumps(deriva.a_dict(cortes))))
+    assert set(recuperados) == set(cortes)
+    for var, info in cortes.items():
+        assert recuperados[var]["cortes"] == pytest.approx(info["cortes"])
+        assert recuperados[var]["esperado"] == pytest.approx(info["esperado"])
+        assert recuperados[var]["n"] == info["n"]
+
+
+def test_el_json_guardado_es_json_estricto(cortes):
+    """`Infinity` es JSON invalido: lo relee Python y lo rechaza cualquier otro lector."""
+    texto = json.dumps(deriva.a_dict(cortes))
+    assert "Infinity" not in texto and "NaN" not in texto
+    json.loads(texto, parse_constant=lambda c: (_ for _ in ()).throw(
+        AssertionError(f"constante no estandar en el JSON: {c}")))
+    assert deriva.a_dict(cortes)["kg"]["cortes"][0] is None       # tramo abierto por abajo
+    assert deriva.a_dict(cortes)["kg"]["cortes"][-1] is None      # y por arriba
+
+
+def test_el_psi_sale_igual_despues_de_guardar_y_leer(cortes):
+    """Lo que importa de la ida y vuelta: el PSI no cambia por haber pasado por disco."""
+    nuevas = _muestra(4000, media_kg=1300)
+    antes = deriva.evaluar(nuevas, cortes)
+    despues = deriva.evaluar(nuevas, deriva.desde_dict(deriva.a_dict(cortes)))
+    assert despues["psi"] == antes["psi"]
+    assert despues["variables_con_deriva"] == antes["variables_con_deriva"]
+
+
+def test_los_tipos_guardados_son_nativos(cortes):
+    """Un np.float64 suelto rompe la serializacion mas adelante y cuesta de encontrar."""
+    guardado = deriva.a_dict(cortes)["kg"]
+    assert isinstance(guardado["n"], int)
+    assert all(isinstance(p, float) for p in guardado["esperado"])
+    assert all(b is None or isinstance(b, float) for b in guardado["cortes"])
+
+
+def test_una_variable_sin_cortes_tambien_va_y_vuelve():
+    vacia = {"kg": {"cortes": [], "esperado": [], "n": 0}}
+    assert deriva.desde_dict(deriva.a_dict(vacia)) == vacia
+
+
+def test_un_borde_nulo_en_el_medio_se_rechaza():
+    """Con un borde perdido el PSI daria un numero que parece bueno y no lo es."""
+    corrupto = {"kg": {"cortes": [None, 1.0, None, 3.0, None], "esperado": [0.25] * 4, "n": 10}}
+    with pytest.raises(ValueError, match="no es un extremo"):
+        deriva.desde_dict(corrupto)

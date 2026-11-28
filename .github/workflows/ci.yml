@@ -70,26 +70,11 @@ jobs:
           raise SystemExit(1 if hallazgos else 0)
           PY
 
+      # `--validar` es la misma comprobación que hacía este paso escrita a mano, y algo
+      # más: además de que cada DDL versionado siga siendo el de su contrato, revisa que
+      # el contrato tenga llave natural, dominio, fuentes y tipos que Athena entienda, y
+      # que dos archivos no declaren la misma tabla (se pisarían sin avisar). Vive en el
+      # repositorio (`src/silver/contratos.py`), así que la CI y quien corre las pruebas
+      # en su máquina ejecutan exactamente lo mismo. Sale con 1 si algo falla.
       - name: Los contratos cargan y el DDL sigue siendo el suyo
-        run: |
-          python - <<'PY'
-          import pathlib
-          import tempfile
-
-          from src.silver import contratos
-
-          cargados = contratos.cargar()
-          print(f"{len(cargados)} contratos: {', '.join(sorted(cargados))}")
-
-          temporal = pathlib.Path(tempfile.mkdtemp())
-          desfasados = []
-          for generado in contratos.escribir_ddl(temporal):
-              comiteado = pathlib.Path("sql/athena/ddl") / generado.name
-              if (not comiteado.exists()
-                      or generado.read_text(encoding="utf-8").strip()
-                      != comiteado.read_text(encoding="utf-8").strip()):
-                  desfasados.append(generado.name)
-          for nombre in desfasados:
-              print(f"{nombre} no coincide con su contrato: regenere el DDL en el mismo cambio")
-          raise SystemExit(1 if desfasados else 0)
-          PY
+        run: python -m src.silver.contratos --validar

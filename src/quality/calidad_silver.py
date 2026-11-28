@@ -11,6 +11,12 @@ incumplen las metas de su contrato: `cumple` es la columna que permite ver ese b
 
 Lo llama el job de Gold (W07) y se lee con un esquema declarado, nunca con inferSchema.
 
+`bloqueos()` da el paso que falta (commit AR09): traduce esas filas a la pregunta que
+de verdad se hace al publicar, que es por KPI y no por tabla. Un KPI se publica solo si
+todas sus fuentes Silver cumplen; si alguna incumple o no se midio, el KPI sale bloqueado
+con el nombre de la tabla y de la meta, para que el tablero muestre el motivo en lugar de
+una cifra calculada sobre datos que no pasaron el contrato.
+
 Uso local:
     python -m src.quality.calidad_silver
 """
@@ -35,6 +41,136 @@ CORRECCIONES = ("fechas_invertidas",)
 # Tasas de validez que se publican como columna propia cuando la corrida las trae.
 VALIDEZ = ("placa_valida", "kg_con_placa_valida", "kg_positivo", "scop_presente",
            "fecha_valida", "documento_presente", "mes_reconocido", "entidad_id_presente")
+
+
+# Fuentes Silver de cada KPI de la Tabla 4.10. Se deriva de la tabla de Gold que lee su
+# vista (`sql/athena/vistas/v_kpi_*.sql`) y de los contratos de `contracts/` que la
+# alimentan. `opcionales` son las fuentes cuya ausencia el KPI ya declara como supuesto
+# en su propia vista, asi que no lo bloquean: el stock fisico no esta medido y el KPI 1
+# publica `stock_es_supuesto` en lugar de callarlo.
+KPI_FUENTES: dict[str, dict] = {
+    "kpi_1": {"tabla_gold": "fact_balance_planta",
+              "exigidas": ("compras_glp", "ventas_detalle"),
+              "opcionales": ("produccion_diaria",)},
+    "kpi_2": {"tabla_gold": "fact_balance_planta",
+              "exigidas": ("compras_glp", "ventas_detalle"),
+              "opcionales": ("produccion_diaria",)},
+    "kpi_3": {"tabla_gold": "modelo_factura",
+              "exigidas": ("compras_glp", "pedidos_proveedor"),
+              "opcionales": ()},
+    "kpi_4": {"tabla_gold": "fact_unidad_mes",
+              "exigidas": ("ventas_unidad_mes", "unidades", "gastos"),
+              "opcionales": ()},
+    "kpi_5": {"tabla_gold": "v_alerta",
+              "exigidas": ("compras_glp", "scop", "ventas_detalle", "unidades"),
+              "opcionales": ()},
+}
+
+PUBLICADO = "publicado"
+BLOQUEADO = "bloqueado"
+SIN_MEDIR = "sin_medir"
+
+# Tope de filas que se traen al driver: `calidad_silver` tiene una fila por tabla y
+# fuente (decenas), no una por dato. Con `take` el limite es explicito; `collect()` esta
+# prohibido en este proyecto justamente para que nadie lo descubra con una tabla grande.
+LIMITE_FILAS = 500
+
+
+def _filas(calidad) -> list[dict]:
+    """Acepta un DataFrame de `construir()` o cualquier iterable de diccionarios."""
+    if hasattr(calidad, "take"):
+        return [fila.asDict() for fila in calidad.take(LIMITE_FILAS)]
+    return [dict(fila) for fila in calidad]
+
+
+def _estado_por_tabla(calidad) -> dict[str, dict]:
+    """Resume las corridas de cada tabla: una sola fuente que incumple basta.
+
+    Una tabla Silver se arma de varias fuentes (varias hojas o varios libros). Si una
+    de esas corridas no cumple, la tabla no cumple: la metrica de Gold se calcula sobre
+    la tabla completa, no sobre la fuente que si paso.
+    """
+    resumen: dict[str, dict] = {}
+    for fila in _filas(calidad):
+        tabla = fila.get("tabla")
+        if not tabla:
+            continue
+        info = resumen.setdefault(tabla, {"cumple": True, "metas_incumplidas": [],
+                                          "fuentes": [], "fuentes_que_incumplen": []})
+        info["fuentes"].append(fila.get("fuente"))
+        metas = list(fila.get("metas_incumplidas") or [])
+        if not fila.get("cumple", True) or metas:
+            info["cumple"] = False
+            info["fuentes_que_incumplen"].append(fila.get("fuente"))
+            for meta in metas:
+                if meta not in info["metas_incumplidas"]:
+                    info["metas_incumplidas"].append(meta)
+    return resumen
+
+
+def bloqueos(calidad, kpi_fuentes: dict | None = None) -> dict[str, dict]:
+    """Que KPI se puede publicar con esta calidad de Silver, y si no, por que.
+
+    `CLAUDE.md` («Contratos y capas») prohibe publicar una metrica de Gold cuando sus
+    fuentes Silver incumplen las metas de su contrato, y pide informar el bloqueo. Esto
+    es ese informe: por cada KPI, su estado y la lista de tablas con la meta que falló.
+
+    Tres estados, y la diferencia entre los dos ultimos importa:
+
+    * `publicado`: todas sus fuentes exigidas se midieron y cumplen.
+    * `bloqueado`: alguna fuente incumple una meta de la Tabla 3.7. Hay un dato y es malo.
+    * `sin_medir`: alguna fuente no tiene corrida en `silver/_control/`. No hay dato.
+      Publicar un KPI en este estado seria presentar como medicion algo que nadie midio.
+    """
+    kpi_fuentes = kpi_fuentes or KPI_FUENTES
+    por_tabla = _estado_por_tabla(calidad)
+
+    salida: dict[str, dict] = {}
+    for kpi, cfg in kpi_fuentes.items():
+        incumplen, sin_medir, metas = [], [], []
+        for tabla in cfg["exigidas"]:
+            info = por_tabla.get(tabla)
+            if info is None:
+                sin_medir.append(tabla)
+                continue
+            if not info["cumple"]:
+                incumplen.append(tabla)
+                metas += [m for m in info["metas_incumplidas"] if m not in metas]
+
+        # Una fuente opcional que incumple no bloquea, pero se informa: el KPI ya declara
+        # ese supuesto en su vista y el tablero lo etiqueta.
+        opcionales = [t for t in cfg["opcionales"]
+                      if t in por_tabla and not por_tabla[t]["cumple"]]
+        opcionales += [t for t in cfg["opcionales"] if t not in por_tabla]
+
+        if incumplen:
+            estado = BLOQUEADO
+            motivo = (f"{', '.join(sorted(incumplen))} incumple "
+                      f"{', '.join(sorted(metas))} (Tabla 3.7)")
+        elif sin_medir:
+            estado = SIN_MEDIR
+            motivo = (f"sin corrida en silver/_control/ de {', '.join(sorted(sin_medir))}: "
+                      "no hay nada medido que publicar")
+        else:
+            estado = PUBLICADO
+            motivo = "todas sus fuentes Silver cumplen las metas de la Tabla 3.7"
+
+        salida[kpi] = {
+            "estado": estado,
+            "publicable": estado == PUBLICADO,
+            "tabla_gold": cfg["tabla_gold"],
+            "tablas_que_incumplen": sorted(incumplen),
+            "tablas_sin_medir": sorted(sin_medir),
+            "metas_incumplidas": sorted(metas),
+            "fuentes_opcionales_ausentes_o_incumplidas": sorted(set(opcionales)),
+            "motivo": motivo,
+        }
+    return salida
+
+
+def kpi_bloqueados(calidad, kpi_fuentes: dict | None = None) -> list[str]:
+    """Solo los nombres de los KPI que no se pueden publicar. Util para el tablero."""
+    return sorted(k for k, v in bloqueos(calidad, kpi_fuentes).items() if not v["publicable"])
 
 
 def esquema():

@@ -1,0 +1,100 @@
+# Contrato de la tabla Silver gastos (commit AR01).
+#
+# El gasto de flota es lo que alimenta `gasto_combustible` de `fact_unidad_mes`, y con
+# el el KPI 4 y la senal S9. De las tres hojas de gasto de la entrega, solo una tiene
+# encabezado: las otras dos empiezan en datos y necesitan lectura por posicion, que el
+# lector todavia no hace. Que mide cada posicion de esas dos hojas esta medido y escrito
+# en docs/evidencias/gastos_posiciones.md, listo para cuando el lector lo admita.
+#
+# Un hallazgo que cambia lo previsto: la columna llamada PLACA de OTROS GASTOS no trae
+# placas (0 % encaja con la forma de placa peruana, 29 valores distintos, 12 % numericos)
+# y ninguno de sus valores coincide con las 26 placas de GASTOS FLOTA. Se guarda como
+# `unidad_codigo`, un atributo, y no como `placa_norm`: afirmar que es una placa seria
+# inventar una llave que no se puede unir con dim_unidad.
+tabla: gastos
+dominio: gastos
+descripcion: Gastos de la operacion por mes, con su categoria, su monto y su proveedor
+grano: linea de gasto
+llave: [origen, fila]
+
+fuentes:
+  - id: otros_gastos_2020
+    familia: F26
+    archivo: '^GASTOS 2020\.xls$'
+    hojas: '^OTROS GASTOS$'
+    fila_encabezado: 1
+    exigir: [monto_soles]
+    columnas:
+      MES: mes_texto
+      FECHA: fecha
+      PLACA: unidad_codigo
+      ÁREA: area
+      DESCRIPCIÓN: descripcion
+      COMENTARIOS: comentarios
+      MONTO: monto_soles
+      PROVEEDOR: proveedor
+      PLANTA: planta
+  - id: gastos_flota_2020
+    familia: F27
+    archivo: '^GASTOS 2020\.xls$'
+    hojas: '^GASTOS FLOTA$'
+    primera_fila: 3
+    exigir: [monto_soles]
+    # Que mide cada posicion esta medido sobre la entrega, sin copiar ningun valor:
+    # docs/evidencias/gastos_posiciones.md, seccion 1. Las posiciones J a O no se
+    # declaran: estan vacias o con dato en menos del 0.05 % de las filas.
+    posiciones:
+      A: mes_texto
+      B: fecha
+      C: placa_norm
+      D: area
+      E: categoria
+      F: descripcion
+      G: monto_soles
+      H: proveedor
+      I: planta
+  - id: gastos_proyecto_2019
+    familia: F28
+    archivo: '^CO01\. GASTOS DETALLADO POR PROYECTO X RANGO DE FECHA\.xls$'
+    hojas: '^Sheet1$'
+    primera_fila: 3
+    exigir: [monto_soles]
+    # Seccion 2 de la misma evidencia. Sin placa en ninguna posicion: este gasto es por
+    # proyecto, asi que no se puede atribuir a una unidad. La posicion B esta vacia.
+    posiciones:
+      A: fecha
+      C: proyecto
+      D: documento_gasto
+      E: categoria
+      F: descripcion
+      G: monto_soles
+      H: proveedor
+
+pendiente:
+  - "CO01. GASTOS DETALLADO POR PROYECTO X RANGO DE FECHA.xls, hoja Sheet1: se lee por posicion, pero su gasto NO se puede atribuir a una unidad. Ninguna de sus ocho posiciones supera el 1 % de valores con forma de placa: es gasto por proyecto, y de 2019. Sirve para el gasto de planta, no para fact_unidad_mes (evidencia, seccion 2)."
+  - "GASTOS 2020.xls, hoja GASTOS FLOTA 2020 (fila 5, 15 columnas, 289 filas): no es fuente. Es un cuadro cruzado de totales por mes, util para cuadrar el detalle, no para cargarlo."
+  - "No cubierto: el gasto por unidad de OTROS GASTOS y de CO01. La unica hoja con placa es GASTOS FLOTA. OTROS GASTOS trae un codigo de unidad que no se puede traducir a placa con los archivos de la entrega, y CO01 no trae ninguna."
+  - "OTROS GASTOS no trae categoria, asi que su es_combustible queda nulo, nunca falso: no se sabe. La categoria vive en la posicion E de GASTOS FLOTA, con 13 valores, uno de ellos combustible (15.6 % de las filas)."
+  - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de estas hojas por separado."
+
+columnas:
+  - {nombre: origen, tipo: string, rol: linaje, regla: "id de la fuente del contrato"}
+  - {nombre: hoja, tipo: string, rol: linaje, regla: "hoja de Excel de origen"}
+  - {nombre: fila, tipo: int, rol: linaje, regla: "fila de Excel de origen"}
+  - {nombre: mes_texto, tipo: string, rol: dimension, regla: "mes tal como lo escribe la hoja; de ahi sale anio y mes cuando la fecha falta"}
+  - {nombre: fecha, tipo: date, rol: dimension, regla: "fecha del gasto; lo no convertible pasa a nulo y se cuenta"}
+  - {nombre: anio, tipo: int, rol: dimension, regla: "anio de la fecha; nulo si la fecha no se pudo convertir"}
+  - {nombre: mes, tipo: int, rol: dimension, regla: "mes de la fecha; si falta, el que se reconozca de mes_texto"}
+  - {nombre: unidad_codigo, tipo: string, rol: atributo, regla: "identificador de unidad de OTROS GASTOS; NO es una placa y no une con dim_unidad (evidencia, seccion 3)"}
+  - {nombre: placa_norm, tipo: string, rol: llave, regla: "placa normalizada de 6 caracteres; solo la trae GASTOS FLOTA. Nula en OTROS GASTOS y en CO01, que no traen placa"}
+  - {nombre: area, tipo: string, rol: dimension, regla: "area que asume el gasto"}
+  - {nombre: proyecto, tipo: string, rol: dimension, regla: "proyecto o centro de costo; solo la hoja CO01, que no tiene placa"}
+  - {nombre: documento_gasto, tipo: string, rol: atributo, regla: "documento del gasto; solo la hoja CO01"}
+  - {nombre: categoria, tipo: string, rol: dimension, regla: "categoria del gasto; la trae la posicion E de GASTOS FLOTA, hoy no cubierta"}
+  - {nombre: es_combustible, tipo: bool, rol: senal, regla: "verdadero si la categoria es de combustible; nulo mientras la categoria no este cubierta, nunca falso por defecto"}
+  - {nombre: descripcion, tipo: string, rol: atributo, regla: "texto libre del concepto"}
+  - {nombre: comentarios, tipo: string, rol: atributo, regla: "texto libre adicional de la hoja"}
+  - {nombre: monto_soles, tipo: double, rol: medida, regla: "monto en soles; lo no convertible pasa a nulo y se cuenta"}
+  - {nombre: proveedor, tipo: string, rol: atributo, regla: "razon social del proveedor; el RUC no se publica aunque venga pegado al nombre"}
+  - {nombre: planta, tipo: string, rol: dimension, regla: "planta que registra el gasto"}
+  - {nombre: llave_repetida, tipo: bool, rol: calidad, regla: "la llave natural aparece en mas de una fila; se conserva y se marca"}

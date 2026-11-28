@@ -44,6 +44,25 @@ fuentes:
       fecha de pago: fecha_pago
       banco: banco
       modalidad: modalidad
+  - id: pedidos_primax
+    familia: F04
+    archivo: '^1\. PEDIDOS GLP\.xlsx$'
+    hojas: '^(?P<empresa>PRIMAX)$'
+    primera_fila: 3
+    exigir: [factura]
+    # La hoja empieza en datos: no hay encabezado que emparejar. Que mide cada posicion
+    # esta medido sobre la entrega, sin copiar ningun valor, en
+    # docs/evidencias/primax_posiciones.md. La D es la cantidad en kg: es la unica
+    # posicion con la firma de CANTIDAD de las tres hojas con encabezado (100 % enteros,
+    # mediana de 5 digitos y rango estrecho); las demas numericas son importes.
+    posiciones:
+      B: fecha
+      D: cantidad
+      E: producto
+      G: total
+      H: factura
+      Q: fecha_pago
+      R: banco
   - id: pedidos_pluspetrol
     familia: F03
     archivo: '^1\. PEDIDOS GLP\.xlsx$'
@@ -66,11 +85,11 @@ fuentes:
       CON IMPUESTOS: total
 
 pendiente:
-  - "Hoja PRIMAX: el inventario no publica los nombres de sus 25 columnas (encabezados_raw.md). Falta declararla; mientras tanto ese proveedor no llega a Silver."
+  - "Hoja PRIMAX: no cubierta. La hoja empieza en datos y el lector empareja por nombre de encabezado, asi que necesita lectura por posicion. Que mide cada posicion esta medido en docs/evidencias/primax_posiciones.md: B fecha, E producto, G importe, H documento SERIE-NUMERO, Q fecha de pago y R banco; la cantidad en kg no se puede determinar desde la estructura. Mientras tanto ese proveedor no llega a Silver."
   - "PETROPERU no registra fecha de pago ni moneda: fecha_pago queda nula y para esas facturas se usa fecha_vence (informe v16, 4.3)."
   - "PETROPERU y SOLGAS no traen tipo de cambio; solo PLUSPETROL tiene la columna T.C."
   - "Columnas de PLUSPETROL no declaradas: CANTIDAD ORDEN, S/, SOLES, SIN IGV SIN FISE y CON FISE. Son desgloses del mismo importe; se declaran cuando una metrica las necesite."
-  - "Columna CAMBISTA de PLUSPETROL: puede nombrar a una persona natural, asi que no pasa a Silver hasta definir su seudonimizacion."
+  - "Columna CAMBISTA de PLUSPETROL: puede nombrar a una persona natural, asi que no pasa a Silver. Una columna de persona solo entra seudonimizada con limpieza.seudonimizar, y ninguna metrica de S12 la necesita."
   - "Sin valor_esperado: el diccionario v3.0 no publica el conteo de estas hojas por separado."
   - "La hoja CALCULO PLUS PETROL es un resumen y no pasa a Silver."
 

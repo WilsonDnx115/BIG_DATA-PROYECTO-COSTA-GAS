@@ -432,13 +432,13 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 
 - [x] **A01** · docs: README alineado con el informe v16
 - [x] **A02** · docs: PLAN con us-east-2, Grafana y la fase de implementacion del v16
-- [ ] **A03** · docs(adr): 0015 YouTube Data API y 0016 Grafana Cloud
-- [ ] **A04** · docs(adr): 0017 cola de corridas y 0018 lago op/
-- [ ] **A05** · docs(adr): 0019 revisiones, 0020 regla de Gold y 0021 memoria de Lambda
-- [ ] **A06** · feat(contratos): contrato de gastos con conductor seudonimizado
-- [ ] **A07** · feat(contratos): contrato de tesoreria con fecha de pago y vencimiento
-- [ ] **A08** · feat(contratos): produccion diaria, distribuidores y clientes
-- [ ] **A09** · feat(contratos): BCRP, Facilito y YouTube hacia silver/entorno
+- [x] **A03** · docs(adr): 0015 YouTube Data API y 0016 Grafana Cloud
+- [x] **A04** · docs(adr): 0017 cola de corridas y 0018 lago op/
+- [x] **A05** · docs(adr): 0019 revisiones, 0020 regla de Gold y 0021 memoria de Lambda
+- [x] **A06** · feat(contratos): contrato de gastos con conductor seudonimizado
+- [x] **A07** · feat(contratos): contrato de tesoreria con fecha de pago y vencimiento
+- [x] **A08** · feat(contratos): produccion diaria, distribuidores y clientes
+- [ ] **A09** · feat(contratos): BCRP, Facilito y YouTube hacia silver/entorno — no se hace: lo cubre el W21 de ingenieria de datos, y duplicarlo mantendria dos esquemas de la misma tabla
 
 *Bruno · coordinación*
 
@@ -466,10 +466,10 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 
 *Anghelo · calidad y documentación*
 
-- [ ] **A10** · feat(calidad): tabla calidad_silver desde silver/_control
-- [ ] **A11** · ci: pytest con PySpark local, cfn-lint y validacion de contratos
-- [ ] **A12** · test(privacidad): sin nombres, DNI ni RUC de persona natural
-- [ ] **A13** · test(gold): integridad referencial de hechos contra dimensiones
+- [x] **A10** · feat(calidad): tabla calidad_silver desde silver/_control
+- [x] **A11** · ci: pytest con PySpark local, cfn-lint y validacion de contratos
+- [x] **A12** · test(privacidad): sin nombres, DNI ni RUC de persona natural
+- [x] **A13** · test(gold): integridad referencial de hechos contra dimensiones
 
 *Bruno · coordinación*
 
@@ -505,12 +505,12 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 
 *Anghelo · calidad y documentación*
 
-- [ ] **A14** · feat(calidad): compensacion de pares redigitados para el detector
-- [ ] **A15** · feat(deriva): PSI con deciles del entrenamiento y minimo de 100
-- [ ] **A16** · feat(sim): escenario A calibrado con agregados de 2020
-- [ ] **A17** · feat(sim): inyeccion ciega del escenario B con especificacion sellada
-- [ ] **A18** · feat(sim): validacion del detector con escenarios A y B en lotes
-- [ ] **A19** · docs(modelos): ficha automatica de cada version del modelo
+- [x] **A14** · feat(calidad): compensacion de pares redigitados para el detector
+- [x] **A15** · feat(deriva): PSI con deciles del entrenamiento y minimo de 100
+- [x] **A16** · feat(sim): escenario A calibrado con agregados de 2020
+- [x] **A17** · feat(sim): inyeccion ciega del escenario B con especificacion sellada
+- [x] **A18** · feat(sim): validacion del detector con escenarios A y B en lotes
+- [x] **A19** · docs(modelos): ficha automatica de cada version del modelo
 
 ### 6.4 · Controles y operación
 
@@ -547,9 +547,9 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 
 *Anghelo · calidad y documentación*
 
-- [ ] **A20** · docs: tecnicas de ingenieria con archivo y linea
-- [ ] **A21** · docs(evidencias): plan de pruebas del sistema ejecutado
-- [ ] **A22** · docs: diccionario de datos de Gold
+- [x] **A20** · docs: tecnicas de ingenieria con archivo y linea
+- [ ] **A21** · docs(evidencias): plan de pruebas del sistema ejecutado — espera la carga inicial a S3 (W09); el estado de los contratos con sus filas efectivas ya esta en contracts/README.md, medido en local
+- [x] **A22** · docs: diccionario de datos de Gold
 
 *Bruno · coordinación*
 
@@ -575,8 +575,8 @@ salen de la rama `dev-wilson` y entran a `main` con el pull request #13.
 
 *Anghelo · calidad y documentación*
 
-- [ ] **A23** · docs: bitacora de decisiones y riesgos al cierre
-- [ ] **A24** · docs(resultados): insumos y cierre de hipotesis para el informe v17
+- [x] **A23** · docs: bitacora de decisiones y riesgos al cierre
+- [ ] **A24** · docs(resultados): insumos y cierre de hipotesis para el informe v17 — espera F24, W21 y el A21
 
 *Bruno · coordinación*
 

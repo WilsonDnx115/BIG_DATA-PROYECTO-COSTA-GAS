@@ -40,7 +40,10 @@ def _alertas(df: pd.DataFrame, senal: str, placa: str, kg: str, puntaje=None) ->
         "senal": senal, "tipo": "regla", "fecha": df["fecha"].values,
         "placa_norm": df[placa].values, "documento": df["documento"].astype(str).values,
         "kg": df[kg].astype(float).values,
-        "valor_soles": df[kg].astype(float).values * config.PRECIO_REF_KG,
+        # Nulo a proposito: unos kg senalados no son una perdida. Solo lleva
+        # importe la senal que cuantifica soles (el sobrecobro de F08), igual
+        # que en `src/signals/common.py` y en `src/glue/senales_spark.py`.
+        "valor_soles": float("nan"),
         "puntaje": puntaje.values if puntaje is not None else 1.0,
         "grado_evidencia": CATALOGO[senal][1], "estado_revision": "pendiente",
         "anio": df["anio"].astype("int32").values, "mes": df["mes"].astype("int32").values,

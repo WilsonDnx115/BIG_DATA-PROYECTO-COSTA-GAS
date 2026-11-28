@@ -106,11 +106,12 @@ def _filtrar(df: pd.DataFrame, f: contratos.Fuente) -> tuple[pd.DataFrame, dict]
     """Quita filas de total y filas sin los campos exigidos por el contrato."""
     presentes = [c for c in _COLUMNAS_DE_TOTAL if c in df.columns]
     es_total = df[presentes].apply(lambda fila: L.es_fila_total(*fila), axis=1) if presentes else pd.Series(False, index=df.index)
-    # Encabezado repetido en medio de los datos: la celda dice lo mismo que el título de su columna
+    # Encabezado repetido en medio de los datos: la celda dice lo mismo que el título de su columna.
+    # En una fuente por posición no hay títulos que comparar, así que no hay nada que buscar.
     titulos = {estandar: titulo for titulo, estandar in f.columnas.items()}
     es_titulo = pd.Series(False, index=df.index)
     for col in (f.exigir or list(titulos)[:2]):
-        if col in df.columns:
+        if col in df.columns and col in titulos:
             es_titulo |= df[col].map(lambda v, t=titulos[col]: contratos.normalizar_encabezado(lector.a_texto(v)) == t)
     df = df[~es_total & ~es_titulo]
     incompleta = pd.Series(False, index=df.index)

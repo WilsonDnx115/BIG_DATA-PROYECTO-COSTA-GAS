@@ -364,3 +364,154 @@ def test_encabezado_legitimo_de_compras_no_se_invalida(tmp_path):
     assert hoja["encabezado_dudoso"] is False
     assert hoja["fila_encabezado"] == 2
     assert [c["nombre"] for c in hoja["columnas"]] == reales
+
+
+# --- encabezado declarado a mano (--encabezado) -------------------------------
+
+def test_parsear_encabezados_normaliza_y_acepta_hoja_vacia():
+    forzadas = enc.parsear_encabezados([
+        "GASTOS 2020.xls:GASTOS FLOTA:4",
+        "ventas.csv::2",
+    ])
+
+    assert forzadas[("GASTOS 2020.XLS", "GASTOS FLOTA")] == 4
+    assert forzadas[("VENTAS.CSV", "")] == 2
+
+
+@pytest.mark.parametrize("crudo", [
+    "sin los dos puntos",
+    "archivo.xls:hoja:cero" ,
+    "archivo.xls:hoja:0",
+    "archivo.xls:hoja:999",          # mas alla de FILAS_INSPECCION
+])
+def test_parsear_encabezados_rechaza_lo_mal_formado(crudo):
+    with pytest.raises(enc.EncabezadoMalFormado):
+        enc.parsear_encabezados([crudo])
+
+
+def _libro_sin_encabezado_claro(tmp_path, titulo_hoja="PRODUCCION"):
+    """Hoja cuyo encabezado real esta en la fila 3 pero no puntua como tal.
+
+    Imita el caso de las hojas de produccion: los nombres son meses, que el
+    inventario trata como numero corto o texto breve, y la fila de abajo
+    tambien es texto, asi que no hay contraste.
+    """
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = titulo_hoja
+    ws.append([2020, 2020, 2020])
+    ws.append([1.5, 2.5, 3.5])
+    ws.append(["AREA", "ENERO", "FEBRERO"])        # fila 3: el encabezado real
+    ws.append(["ENVASADO", 1000.25, 1100.75])
+    wb.save(tmp_path / "GASTOS 2020.xlsx")
+    return tmp_path
+
+
+def test_encabezado_forzado_publica_los_nombres_de_la_fila_declarada(tmp_path):
+    origen = _libro_sin_encabezado_claro(tmp_path)
+
+    forzadas = enc.parsear_encabezados(["GASTOS 2020.xlsx:PRODUCCION:3"])
+    hoja = enc.inventariar(origen, forzadas=forzadas)["archivos"][0]["hojas"][0]
+
+    assert hoja["encabezado_forzado"] is True
+    assert hoja["encabezado_dudoso"] is False
+    assert hoja["fila_encabezado"] == 3
+    assert [c["nombre"] for c in hoja["columnas"]] == ["AREA", "ENERO", "FEBRERO"]
+
+
+def test_encabezado_forzado_ignora_la_tilde_y_las_mayusculas(tmp_path):
+    origen = _libro_sin_encabezado_claro(tmp_path, titulo_hoja="PRODUCCIÓN")
+
+    forzadas = enc.parsear_encabezados(["gastos 2020.xlsx:produccion:3"])
+    hoja = enc.inventariar(origen, forzadas=forzadas)["archivos"][0]["hojas"][0]
+
+    assert hoja["encabezado_forzado"] is True
+    assert [c["nombre"] for c in hoja["columnas"]][0] == "AREA"
+
+
+def test_encabezado_forzado_no_levanta_la_criba_de_datos_personales(tmp_path):
+    """Declarar la fila no autoriza a publicar un RUC ni una placa."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "GASTOS FLOTA"
+    ws.append(["ENERO", "5530-5B", "COMBUSTIBLE", "P20127765279 - COESTI S.A."])
+    ws.append(["FEBRERO", "5530-5B", "COMBUSTIBLE", "P20127765279 - COESTI S.A."])
+    wb.save(tmp_path / "GASTOS 2020.xlsx")
+
+    forzadas = enc.parsear_encabezados(["GASTOS 2020.xlsx:GASTOS FLOTA:1"])
+    inv = enc.inventariar(tmp_path, forzadas=forzadas)
+    hoja = inv["archivos"][0]["hojas"][0]
+
+    assert hoja["encabezado_forzado"] is False
+    assert hoja["encabezado_dudoso"] is True
+    assert hoja["motivo_dudoso"] == "identificador_en_la_fila"
+    assert all(c["nombre"] == "" for c in hoja["columnas"])
+
+    pj, pm = enc.guardar(inv, tmp_path / "e.json", tmp_path / "e.md")
+    for texto in (pj.read_text(encoding="utf-8"), pm.read_text(encoding="utf-8")):
+        assert "20127765279" not in texto
+        assert "5530-5B" not in texto
+
+
+def test_encabezado_forzado_fuera_de_rango_se_avisa_y_no_publica(tmp_path):
+    origen = _libro_sin_encabezado_claro(tmp_path)
+
+    forzadas = enc.parsear_encabezados(["GASTOS 2020.xlsx:PRODUCCION:19"])
+    hoja = enc.inventariar(origen, forzadas=forzadas)["archivos"][0]["hojas"][0]
+
+    assert hoja["encabezado_dudoso"] is True
+    assert hoja["motivo_dudoso"] == "fila_forzada_fuera_de_rango"
+    assert all(c["nombre"] == "" for c in hoja["columnas"])
+
+
+def test_encabezado_forzado_con_hoja_mal_escrita_queda_avisado(tmp_path):
+    """Un nombre de hoja equivocado no debe parecer una corrida correcta."""
+    origen = _libro_sin_encabezado_claro(tmp_path)
+
+    forzadas = enc.parsear_encabezados(["GASTOS 2020.xlsx:HOJA QUE NO EXISTE:3"])
+    inv = enc.inventariar(origen, forzadas=forzadas)
+
+    assert inv["resumen"]["hojas_con_encabezado_forzado"] == 0
+    assert inv["encabezados_forzados_sin_usar"] == [
+        {"archivo": "GASTOS 2020.XLSX", "hoja": "HOJA QUE NO EXISTE", "fila": 3}
+    ]
+
+
+def test_el_markdown_distingue_no_publicada_de_parece_dato(tmp_path):
+    """En una hoja dudosa, `omitidas` no significa que la celda parezca dato."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "SIN ENCABEZADO"
+    ws.append([0.022, dt.datetime(2021, 11, 4), 896902.36])
+    ws.append([0.019, dt.datetime(2021, 11, 5), 896903.36])
+    wb.save(tmp_path / "x.xlsx")
+
+    inv = enc.inventariar(tmp_path)
+    texto = enc.a_markdown(inv)
+
+    assert "no publicadas (hoja sin encabezado claro)" in texto
+    assert "omitidas por parecer dato" not in texto
+
+
+def test_informe_dudosas_explica_cada_hoja_sin_abrir_los_datos(tmp_path):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "GASTOS FLOTA"
+    ws.append(["ENERO", "P20127765279 - COESTI S.A."])
+    ws.append(["FEBRERO", "P20127765279 - COESTI S.A."])
+    wb.save(tmp_path / "GASTOS 2020.xlsx")
+
+    informe = enc.informe_dudosas(enc.inventariar(tmp_path))
+
+    assert "Hojas sin encabezado claro: 1" in informe
+    assert "identificador_en_la_fila: 1" in informe
+    assert "la hoja no tiene encabezado" in informe
+    assert "20127765279" not in informe

@@ -20,3 +20,18 @@ def test_plan_broadcast_y_pruning(spark, lago):
     assert "BroadcastHashJoin" in plan
     assert "PartitionFilters" in plan and "PushedFilters" in plan
     assert conc.count() == len(conciliacion.conciliar_pandas(anios=[2020], producto="B10"))
+
+
+def test_el_worker_de_python_usa_el_interprete_de_la_suite(spark):
+    """WR19: sin esto el worker arranca con el `python` del PATH y no conecta.
+
+    El sintoma era «Python worker failed to connect back» en `test_dimensiones.py`:
+    la JVM lanzaba un interprete sin pyspark instalado. Se comprueba despues de la
+    fixture porque es ella la que lo fija, antes de crear la sesion.
+    """
+    import os
+    import sys
+
+    assert os.environ["PYSPARK_PYTHON"] == sys.executable
+    assert os.environ["PYSPARK_DRIVER_PYTHON"] == sys.executable
+    assert spark.range(3).count() == 3          # el worker de verdad responde

@@ -24,7 +24,7 @@ commit de `dev-bruno`; «integrado» exige que el PR esté fusionado en `main`. 
 | ID | Asunto | Estado | Commit | Prueba | Requiere / bloqueo |
 |---|---|---|---|---|---|
 | B01 | CODEOWNERS, plantilla de PR y flujo de Git | hecho | `ace192a` | — (sin pruebas) | — |
-| B02 | Base del tablero en Grafana y variables | hecho | `74aa582` + fix `1edbe88` | JSON válido | Columnas de las dimensiones por confirmar con el DDL de W09 |
+| B02 | Base del tablero en Grafana y variables | hecho | `74aa582` + fix `1edbe88` | JSON válido | Las columnas de las dimensiones las fija el DDL de W09; el tablero las toma de `COLUMNAS_GOLD` (`tests/test_vistas_sql.py`), que es el contrato que las nombra |
 | B03 | Página Resumen (5 KPI, semáforo, calidad) | hecho, **sin probar en Athena** | `8190855` | JSON válido; 1 consulta por refresco | F06 (`v_kpi_1` a `v_kpi_5`) y A10 (`calidad_silver`); W11 |
 | B04 | Página Balance y unidades | bloqueado | — | — | `fact_balance_planta` y `fact_unidad_mes` (W06, W07, W09) |
 | B05 | Página Bandeja de alertas | bloqueado | — | — | `v_alerta` (W09); datos con W12 |

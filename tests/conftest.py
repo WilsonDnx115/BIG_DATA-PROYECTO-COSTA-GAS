@@ -1,6 +1,7 @@
 """Cada prueba de integración corre sobre un lago temporal (LAKE_URI=file://<tmp>)."""
 import importlib
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,13 @@ def spark(tmp_path_factory):
     motivo = _spark_no_disponible()
     if motivo:
         pytest.skip(motivo)
+    # El worker de Python lo lanza la JVM, y si no se le dice con que interprete,
+    # usa el `python` del PATH. Cuando ese no es el del entorno virtual, el worker
+    # arranca sin pyspark y el driver se queda esperando el saludo:
+    # «Python worker failed to connect back» (asi fallaba test_dimensiones.py en
+    # Windows). `sys.executable` es el interprete que ya tiene todo instalado.
+    os.environ["PYSPARK_PYTHON"] = sys.executable
+    os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
     almacen = "file:///" + tmp_path_factory.mktemp("almacen").as_posix().lstrip("/")
     from src.glue.gold_job import crear_sesion
 
