@@ -328,3 +328,63 @@ def test_las_demas_alertas_no_valorizan_kg(spark):
 
     c = _compras([("F-3", "2022-03-03", "P2", None, 1000.0, 0.6, 3.8)])
     assert senales_spark.s2(_a_spark(spark, c)).filter("valor_soles IS NOT NULL").count() == 0
+
+
+# --- FR16 · S10 sobre ventas_detalle de Silver --------------------------------------
+def _ventas_detalle(filas):
+    cols = ["documento", "fecha", "articulo_codigo", "articulo", "es_glp", "precio_unitario", "kg", "cliente_id"]
+    df = pd.DataFrame(filas, columns=cols)
+    df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
+    df["anio"] = [f.year for f in df["fecha"]]
+    df["mes"] = [f.month for f in df["fecha"]]
+    return df
+
+
+def test_s10_doce_por_ciento_bajo_la_mediana_dispara_y_cinco_no(spark):
+    from src.glue import senales_spark
+
+    v = _ventas_detalle([
+        ("B-1", "2020-05-03", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c1"),
+        ("B-2", "2020-05-04", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c2"),
+        ("B-3", "2020-05-05", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c3"),
+        ("B-4", "2020-05-06", "GLP10", "GLP 10 KG", True, 88.0, 10.0, "c4"),      # 12 % bajo: dispara
+        ("B-5", "2020-05-07", "GLP10", "GLP 10 KG", True, 95.0, 10.0, "c5"),      # 5 % bajo: no
+        ("B-6", "2020-05-07", "ARROZ", "ARROZ 5 KG", False, 10.0, None, "c6"),    # no es GLP
+        ("B-7", "2020-05-08", "GLP10", "GLP 10 KG", True, 0.0, 10.0, "c7"),       # precio cero: falta el dato
+        ("B-8", "2022-05-08", "GLP10", "GLP 10 KG", True, 50.0, 10.0, "c8"),      # fuera de la ventana
+        ("B-9", "2022-05-09", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c9"),
+    ])
+    a = senales_spark.s10_ventas(_a_spark(spark, v))
+    assert a.columns == COLUMNAS
+    (fila,) = a.take(5)
+    assert (fila["factura_id"], fila["unidad_id"], fila["rol"]) == ("B-4", "c4", "cliente")
+    assert fila["puntaje"] == pytest.approx(0.12) and fila["resolucion"] == "linea_venta"
+    assert fila["valor_soles"] is None
+
+
+def test_s10_compara_cada_articulo_con_su_propia_mediana(spark):
+    from src.glue import senales_spark
+
+    v = _ventas_detalle([
+        ("A-1", "2024-04-02", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c1"),
+        ("A-2", "2024-04-03", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c2"),
+        ("A-3", "2024-04-04", "GLP45", "GLP 45 KG", True, 400.0, 45.0, "c3"),
+        ("A-4", "2024-04-05", "GLP45", "GLP 45 KG", True, 400.0, 45.0, "c4"),
+        ("A-5", "2024-04-06", "GLP45", "GLP 45 KG", True, 330.0, 45.0, "c5"),    # mediana 400: 17.5 % bajo
+    ])
+    assert _filas(senales_spark.s10_ventas(_a_spark(spark, v)), "factura_id") == {("A-5",)}
+
+
+def test_s10_usa_el_canal_cuando_la_tabla_lo_trae(spark):
+    from src.glue import senales_spark
+
+    v = _ventas_detalle([
+        ("D-1", "2020-05-02", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c1"),
+        ("D-2", "2020-05-03", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c2"),
+        ("D-3", "2020-05-04", "GLP10", "GLP 10 KG", True, 100.0, 10.0, "c3"),
+        ("I-1", "2020-05-05", "GLP10", "GLP 10 KG", True, 85.0, 10.0, "c4"),    # 15 % bajo la mediana de todas
+    ])
+    sin_canal = senales_spark.s10_ventas(_a_spark(spark, v))
+    assert _filas(sin_canal, "factura_id", "motivo") == {("I-1", "precio_bajo_mediana_de_la_presentacion")}
+    con_canal = v.assign(canal=["directa", "directa", "directa", "indirecta"])
+    assert senales_spark.s10_ventas(_a_spark(spark, con_canal)).count() == 0   # cada canal, su propia mediana

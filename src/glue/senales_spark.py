@@ -25,11 +25,17 @@ Un solo esquema por tabla (CLAUDE.md). Este módulo no declara contratos propios
   S8  venta sin compra que la respalde (SCOP)           left_anti                    (fixture)
   S9  combustible sin volumen o atípico para su rol     z robusto del log, por rol (base_mad)
   S10 precio de venta bajo la mediana de su canal       ventana con percentile exacto (fixture)
+      y sobre Silver ventas_detalle: mediana del artículo y el mes, solo GLP
   S11 cierre de planta calculado sin medición física    por día
   S12 factura sin pareja o con kg distinto              full_outer tesorería × logística
 
 Las marcadas «fixture» leen las tablas de la muestra sintética antigua
 (`src/signals/senales_fixture.py`) y se prueban contra ella. Sin collect().
+
+Señales por cliente (S5 y S10 sobre ventas_detalle). El contrato `fact_alerta_base` tiene una
+sola columna de entidad, `unidad_id`. En estas alertas lleva el cliente seudonimizado
+(`cliente_id`, SHA-256 con sal, el mismo de Silver) y `rol` = «cliente», así la bandeja y la
+convergencia por cliente (`src/models/convergencia.py`) las distinguen de las de una unidad.
 """
 from __future__ import annotations
 
@@ -186,6 +192,36 @@ def s10(ventas):
     return _alertas(d, "S10", "precio_bajo_mediana_del_canal", kg=F.col("kg"),
                     puntaje=F.lit(1.0) - F.col("precio") / F.col("mediana"), unidad=F.col("placa_norm"),
                     factura=F.col("documento"), scop=F.col("codigo_scop"))
+
+
+def s10_ventas(ventas_detalle, aplicar_ventana: bool = True):
+    """S10 sobre Silver `ventas_detalle`: precio TOL_PRECIO_S10 bajo la mediana de su canal y presentación.
+
+    Solo líneas de GLP (`es_glp`) con precio_unitario > 0: la planta también vende abarrotes,
+    y un precio cero no es una venta bajo precio sino un dato que falta. La mediana es exacta
+    (percentile, 0.5) y se toma en el mismo mes, la misma presentación (articulo_codigo; el
+    nombre si no hay código) y, si la tabla trae la columna `canal`, el mismo canal (informe,
+    Tabla 4.3 y diccionario: «precio por canal y presentación»). Los archivos de ventas de la
+    entrega (F09 y F18) no traen esa columna (contrato ventas_detalle): con ellos la mediana es
+    la de la presentación y el mes. Ventana del catálogo: 2019-2021 y abr-2024. Resolución:
+    línea de venta, con el cliente seudonimizado.
+    """
+    from pyspark.sql import Window  # noqa: PLC0415
+    from pyspark.sql import functions as F  # noqa: PLC0415
+
+    v = ventas_detalle.filter(F.coalesce(F.col("es_glp"), F.lit(False))
+                              & (F.col("precio_unitario") > 0))
+    v = v.filter(en_ventana("S10")) if aplicar_ventana else v
+    v = v.withColumn("_articulo", F.coalesce(F.col("articulo_codigo"), F.col("articulo"))).filter(
+        F.col("_articulo").isNotNull())
+    grupo = ["_articulo", "anio", "mes"] + (["canal"] if "canal" in v.columns else [])
+    w = Window.partitionBy(*grupo)
+    v = v.withColumn("_mediana", F.expr("percentile(precio_unitario, 0.5)").over(w))
+    d = v.filter(F.col("precio_unitario") < F.col("_mediana") * F.lit(1 - config.TOL_PRECIO_S10))
+    motivo = "precio_bajo_mediana_del_canal_y_presentacion" if "canal" in v.columns         else "precio_bajo_mediana_de_la_presentacion"
+    return _alertas(d, "S10", motivo, kg=F.col("kg"),
+                    puntaje=F.lit(1.0) - F.col("precio_unitario") / F.col("_mediana"),
+                    unidad=F.col("cliente_id"), rol="cliente", factura=F.col("documento"))
 
 
 def calcular(compras, ventas, flota, maestro):
