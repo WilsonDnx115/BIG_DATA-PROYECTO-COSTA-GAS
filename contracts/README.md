@@ -9,6 +9,8 @@ local** sobre los 35 archivos de la entrega (pandas, sin escribir nada en el lag
 la carga a S3: cuando esa corrida exista, las cifras se vuelven a tomar de `silver/_control/`,
 que es la fuente oficial.
 
+Excepción: el conteo de `distribuidores` se actualiza con la corrida AWS del 28/11/2026.
+
 ```powershell
 python -c "from src.silver import procesar; procesar.procesar_archivo('<archivo>', escribir=False)"
 ```
@@ -17,7 +19,7 @@ python -c "from src.silver import procesar; procesar.procesar_archivo('<archivo>
 |---|---|---|---|
 | `clientes` | 66 984 | 3 hojas de `CLIENTES TOTAL.xlsx` | `CLIENTES AGOSTO.xls`: su hoja empieza en datos |
 | `compras_glp` | 1 495 | `COMPRAS MENSUALES.xlsx` (1 066), `COMPRAS TOTAL 2020.xlsx` (429) | La hoja SETIEMBRE de 2020, sin encabezado |
-| `distribuidores` | 2 244 | 6 hojas de los dos libros de distribuidores | — |
+| `distribuidores` | **1 285 en AWS** (2 244 en el perfil local) | 7 fuentes/hojas del contrato; AWS: 2 172 filas leídas y 1 285 escritas a Silver | — |
 | `gastos` | 16 322 | `GASTOS FLOTA` (13 600), `OTROS GASTOS` (1 043), `CO01/Sheet1` (1 679) | El gasto por unidad de `OTROS GASTOS` y de `CO01`: no traen placa ([evidencia](../docs/evidencias/gastos_posiciones.md)) |
 | `pedidos_proveedor` | 1 150 | PETROPERU (108), SOLGAS (474), **PRIMAX (523)**, PLUSPETROL (45) | `fecha_vence` de PRIMAX, que no tiene esa columna ([evidencia](../docs/evidencias/primax_posiciones.md)) |
 | `produccion_diaria` | 32 | `ProduccionReal-Cap Efec (Octub)`, **31 días de oct-2018** | Los demás meses y el piloto 2020: la entrega no los trae ([evidencia](../docs/evidencias/produccion_diaria_en_la_entrega.md)) |
