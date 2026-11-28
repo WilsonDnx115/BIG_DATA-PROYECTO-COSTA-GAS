@@ -36,6 +36,9 @@ ANIO_VENTANA = 2020
 
 # Grado de evidencia de la señal (dim_senal) → grado que lleva cada alerta.
 GRADO_ALERTA = {'alta': 'alto', 'media': 'medio', 'indicio': 'indicio'}
+# Peso de cada grado en el puntaje de convergencia (informe v17, 4.3): la escala ordinal de los
+# grados de la Tabla 4.3, donde cada grado vale uno más que el inferior.
+PESO_GRADO = {'alto': 3.0, 'medio': 2.0, 'indicio': 1.0}
 
 
 def grado_evidencia(regla: dict) -> str:
