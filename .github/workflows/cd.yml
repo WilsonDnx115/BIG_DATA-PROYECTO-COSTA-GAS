@@ -7,6 +7,10 @@
 # El cambio nunca se aplica solo: el primer trabajo crea un change set y lo
 # muestra; el segundo lo ejecuta y solo arranca cuando alguien aprueba el
 # environment «produccion», que el titular configura en GitHub.
+#
+# Mientras el rol de despliegue no exista (secreto AWS_ROL_DESPLIEGUE vacío), el trabajo
+# corre las pruebas y cfn-lint y se detiene antes de pedir credenciales, con un aviso: no
+# hay nada que desplegar y el check no debe salir en rojo por una cuenta sin configurar.
 name: cd
 
 on:
@@ -27,6 +31,7 @@ env:
   AWS_REGION: us-east-2
   STACK: costagas-trujillo
   PLANTILLA: infra/cloudformation/stack.yaml
+  HAY_ROL: ${{ secrets.AWS_ROL_DESPLIEGUE != '' }}
 
 jobs:
   plan:
@@ -59,13 +64,19 @@ jobs:
           raise SystemExit(1 if hallazgos else 0)
           PY
 
+      - name: Sin rol de despliegue
+        if: env.HAY_ROL != 'true'
+        run: echo "::notice::AWS_ROL_DESPLIEGUE no esta configurado; no se crea change set (el rol costagas-github-deploy se crea con el primer despliegue del stack)."
+
       - uses: aws-actions/configure-aws-credentials@v4
+        if: env.HAY_ROL == 'true'
         with:
           role-to-assume: ${{ secrets.AWS_ROL_DESPLIEGUE }}
           aws-region: us-east-2
 
       - name: Crear el change set
         id: crear
+        if: env.HAY_ROL == 'true'
         env:
           SUFIJO: ${{ vars.PROYECTO_SUFIJO }}
           CORREO1: ${{ secrets.COSTAGAS_CORREO1 }}
