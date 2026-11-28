@@ -80,7 +80,7 @@ En el portal, desde la página «Revisión ciega» de Grafana (enlace `#revision
 |---|---|
 | Estado | `confirmada` (el segundo registro muestra la discrepancia que señala la alerta) o `descartada` (los documentos coinciden y no hay discrepancia) |
 | Causa | digitación · pago tardío · entrega parcial · nota de crédito · sustracción confirmada · sin explicar |
-| Nivel de evidencia | `documental` (segundo registro que respalda la conclusión) · `parcial` (un solo documento o documento incompleto) |
+| Nivel de evidencia | `1` indicio: lo marcó el sistema (no lo registra el revisor) · `2` descuadre confirmado: la factura, el pago y la orden SCOP confirman la diferencia · `3` pérdida atribuida: la causa se verificó en campo con pesaje, SCOP y ruta (Tabla 4.8f; `src/portal/revision.py` solo acepta 1, 2 o 3) |
 | Nota | Texto breve: qué documentos se compararon y qué mostraron. Sin datos personales |
 
 Reglas:
@@ -90,8 +90,8 @@ Reglas:
 - La decisión vigente de cada alerta es su **última fila**, que resuelve la vista `v_alerta`.
 - **Sin segundo registro no hay confirmación.** Si falta el documento, la alerta no se registra:
   queda pendiente y se informa como «pendiente por falta de documento».
-- «Sustracción confirmada» exige nivel `documental` y la conformidad de la gerencia; el sistema no
-  la declara por sí solo.
+- «Sustracción confirmada» exige nivel `3` (verificación en campo) y la conformidad de la gerencia;
+  `revision.py` rechaza esa causa en otro nivel y el sistema no la declara por sí solo.
 - Las señales S1 y S8 no se usan como etiqueta débil: una alerta solo cuenta como confirmada por
   esta revisión documental. S8 es no resoluble y no entra a la muestra.
 
